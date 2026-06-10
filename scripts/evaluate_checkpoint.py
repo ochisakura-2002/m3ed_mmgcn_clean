@@ -90,6 +90,21 @@ def parse_args() -> argparse.Namespace:
         help="Override device. If not set, use config system.device.",
     )
 
+    parser.add_argument(
+
+        "--active-modalities",
+
+        nargs="+",
+
+        choices=["text", "audio", "visual"],
+
+        default=None,
+
+        help="Override active modalities at evaluation time, e.g. --active-modalities text audio.",
+
+    )
+
+
     return parser.parse_args()
 
 
@@ -649,6 +664,20 @@ def main() -> None:
         split=args.split,
         batch_size=batch_size,
     )
+
+    # Evaluate-time active_modalities override.
+
+    # This mutates only the in-memory config loaded from checkpoint.
+
+    # It does not modify the checkpoint file.
+
+    if getattr(args, "active_modalities", None) is not None:
+
+        config.setdefault("modality", {})["active_modalities"] = list(args.active_modalities)
+
+        print("[Override] active_modalities:", config["modality"]["active_modalities"])
+
+    
 
     model = build_model(config).to(device)
 

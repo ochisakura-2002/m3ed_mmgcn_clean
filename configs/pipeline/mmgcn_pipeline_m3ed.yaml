@@ -1,12 +1,12 @@
 project:
-  pipeline_name: IEMOCAP_mmgcn_pipeline_full_GCN4_noresidual
+  pipeline_name: M3ED_mmgcn_pipeline_full_missing_modalities
 dataset:
-  name: IEMOCAP
+  name: M3ED
 model:
   name: MMGCN
 train:
   enabled: true
-  train_config_path: configs/train_mmgcn_iemocap_official.yaml
+  train_config_path: configs/train_mmgcn_m3ed.yaml
 evaluation:
   enabled: true
   splits:

@@ -50,6 +50,8 @@ PLOT_SINGLE_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_single_run_traini
 PLOT_SINGLE_RUN_FINAL_ANALYSIS_SCRIPT = "scripts/analyze/plot_single_run_final_analysis.py"
 PLOT_MULTI_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_multi_run_training_curves.py"
 PLOT_MULTI_RUN_FINAL_ANALYSIS_SCRIPT = "scripts/analyze/plot_multi_run_final_analysis.py"
+EVALUATE_MISSING_MODALITIES_SCRIPT = "scripts/experiments/evaluate_missing_modalities.py"
+PLOT_MISSING_MODALITY_SUMMARY_SCRIPT = "scripts/analyze/plot_missing_modality_summary.py"
 
 
 def parse_args() -> argparse.Namespace:
@@ -291,8 +293,9 @@ def get_existing_run_info(run_id: str) -> Dict[str, str]:
 def pipeline_needs_current_run(config: Dict[str, Any]) -> bool:
     evaluation_enabled = get_bool(config, ["evaluation", "enabled"], False)
     single_enabled = get_bool(config, ["single_run_analysis", "enabled"], False)
+    missing_enabled = get_bool(config, ["missing_modalities", "enabled"], False)
 
-    return bool(evaluation_enabled or single_enabled)
+    return bool(evaluation_enabled or single_enabled or missing_enabled)
 
 
 def resolve_current_run_info(
@@ -373,6 +376,7 @@ def print_pipeline_header(
     print("Evaluation enabled:", get_bool(config, ["evaluation", "enabled"], False))
     print("Analysis tables enabled:", get_bool(config, ["analysis_tables", "enabled"], True))
     print("Single-run analysis enabled:", get_bool(config, ["single_run_analysis", "enabled"], False))
+    print("Missing modalities enabled:", get_bool(config, ["missing_modalities", "enabled"], False))
     print("Multi-run training curves enabled:", get_bool(config, ["multi_run_training_curves", "enabled"], False))
     print("Multi-run final analysis enabled:", get_bool(config, ["multi_run_final_analysis", "enabled"], False))
     print("Dry run:", get_bool(config, ["execution", "dry_run"], False))
@@ -406,6 +410,13 @@ def print_pipeline_summary(
         print("\nSingle-run outputs:")
         print("  Training curves:", run_dir / "figures" / "training_curves")
         print("  Final analysis:", run_dir / "figures" / "final_analysis")
+
+        if get_bool(config, ["missing_modalities", "enabled"], False):
+            output_subdir = str(
+                safe_get(config, ["missing_modalities", "output_subdir"], "missing_modalities")
+            )
+            print("  Missing modalities:", run_dir / "logs" / output_subdir)
+            print("  Missing modality figures:", run_dir / "figures" / "missing_modalities")
     else:
         print("Target run_id: NONE")
 
@@ -571,6 +582,125 @@ def run_single_run_analysis_stage(
         )
 
 
+
+def normalize_checkpoint_name(checkpoint_name: str) -> str:
+    checkpoint_name = str(checkpoint_name).strip()
+
+    if not checkpoint_name:
+        checkpoint_name = "best_model.pt"
+
+    if not checkpoint_name.endswith(".pt"):
+        checkpoint_name = checkpoint_name + ".pt"
+
+    return checkpoint_name
+
+
+def run_missing_modalities_stage(
+    config: Dict[str, Any],
+    run_info: Optional[Dict[str, str]],
+    dry_run: bool,
+) -> None:
+    missing_enabled = get_bool(config, ["missing_modalities", "enabled"], False)
+
+    if not missing_enabled:
+        return
+
+    if run_info is None:
+        raise RuntimeError("missing_modalities.enabled=true but no target run is available.")
+
+    checkpoint_name_text = safe_get(
+        config,
+        ["missing_modalities", "checkpoint_name"],
+        None,
+    )
+
+    if checkpoint_name_text is None:
+        checkpoint_name_text = safe_get(
+            config,
+            ["missing_modalities", "checkpoint"],
+            safe_get(config, ["evaluation", "checkpoint_name"], "best_model.pt"),
+        )
+
+    checkpoint_name = normalize_checkpoint_name(str(checkpoint_name_text))
+
+    split = str(
+        safe_get(config, ["missing_modalities", "split"], "test")
+    )
+
+    settings = safe_get(
+        config,
+        ["missing_modalities", "settings"],
+        ["TAV", "TA", "TV", "AV", "T", "A", "V"],
+    )
+
+    if not isinstance(settings, list) or len(settings) == 0:
+        raise ValueError("missing_modalities.settings must be a non-empty list.")
+
+    output_subdir = str(
+        safe_get(config, ["missing_modalities", "output_subdir"], "missing_modalities")
+    )
+
+    make_figures = get_bool(
+        config,
+        ["missing_modalities", "make_figures"],
+        True,
+    )
+
+    skip_if_not_full = get_bool(
+        config,
+        ["missing_modalities", "skip_if_not_full_train_modalities"],
+        True,
+    )
+
+    checkpoint_path = get_checkpoint_path(
+        run_info=run_info,
+        checkpoint_name=checkpoint_name,
+    )
+
+    script_args = [
+        "--checkpoint",
+        path_to_command_arg(checkpoint_path),
+        "--split",
+        split,
+        "--output-subdir",
+        output_subdir,
+        "--settings",
+        *[str(setting) for setting in settings],
+    ]
+
+    if skip_if_not_full:
+        script_args.append("--skip-if-not-full-train-modalities")
+
+    run_project_script(
+        script_relative_path=EVALUATE_MISSING_MODALITIES_SCRIPT,
+        script_args=script_args,
+        dry_run=dry_run,
+    )
+
+    if not make_figures:
+        return
+
+    run_dir = Path(run_info["run_dir"])
+    stage_name = f"{split}_{Path(checkpoint_name).stem}"
+    summary_path = run_dir / "logs" / output_subdir / stage_name / "summary.csv"
+
+    if not dry_run and not summary_path.exists():
+        print(
+            "[Skip] Missing-modality summary not found. "
+            f"Maybe evaluation was skipped: {summary_path}"
+        )
+        return
+
+    run_project_script(
+        script_relative_path=PLOT_MISSING_MODALITY_SUMMARY_SCRIPT,
+        script_args=[
+            "--summary",
+            path_to_command_arg(summary_path),
+        ],
+        dry_run=dry_run,
+    )
+
+
 def run_multi_run_training_curves_stage(
     config: Dict[str, Any],
     dry_run: bool,
@@ -680,6 +810,12 @@ def main() -> None:
     )
 
     run_single_run_analysis_stage(
+        config=config,
+        run_info=run_info,
+        dry_run=dry_run,
+    )
+
+    run_missing_modalities_stage(
         config=config,
         run_info=run_info,
         dry_run=dry_run,

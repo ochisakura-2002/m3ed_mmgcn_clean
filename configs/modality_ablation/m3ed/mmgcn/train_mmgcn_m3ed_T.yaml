@@ -1,0 +1,70 @@
+project:
+  name: m3ed_mmgcn_clean
+  experiment_name: mmgcn_m3ed_ablation_T
+system:
+  seed: 42
+  device: cuda
+  output_dir: outputs
+dataset:
+  name: M3ED
+  raw_dir: data/raw/M3ED
+  processed_dir: data/processed
+  metadata_dir: data/metadata
+  metadata_path: data/metadata/m3ed_metadata.csv
+  label_mapping_path: data/metadata/m3ed_label_mapping.csv
+  feature_pkl_path: data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl
+  feature_split_order: m3ed_official_val_test_swapped
+  num_classes: 7
+  label_list:
+  - Happy
+  - Neutral
+  - Sad
+  - Disgust
+  - Anger
+  - Fear
+  - Surprise
+  split_strategy: movie_level
+  sample_unit: dialogue
+model:
+  name: MMGCN
+  text_feature_dim: 768
+  audio_feature_dim: 1024
+  visual_feature_dim: 342
+  hidden_dim: 256
+  dropout: 0.5
+train:
+  batch_size: 8
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  max_epochs: 10
+  num_workers: 0
+logging:
+  save_best: true
+  save_last: true
+  monitor_metric: val_uar
+notes:
+  stage: skeleton_only
+  description: 'This is a placeholder config for the M3ED + MMGCN baseline. Do not
+    assume class number, feature dimensions, or split strategy before inspecting the
+    official dataset and baseline code.
+
+    '
+  modality_ablation:
+    setting: T
+    active_modalities: &id001
+    - text
+    base_config: configs/train_mmgcn_m3ed.yaml
+    description: Training-time modality ablation config.
+graph:
+  context_mode: full
+  window_past: null
+  window_future: null
+  num_layers: 2
+  lamda: 0.5
+  alpha: 0.1
+  gamma: 0.7
+  use_speaker: true
+  use_modal: true
+  use_residual: true
+modality:
+  active_modalities: *id001

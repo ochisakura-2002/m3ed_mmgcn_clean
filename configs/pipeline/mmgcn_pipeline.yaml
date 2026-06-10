@@ -1,0 +1,41 @@
+project:
+  pipeline_name: IEMOCAP_mmgcn_pipeline_full_GCN4_noresidual
+
+dataset:
+  name: IEMOCAP
+
+model:
+  name: MMGCN
+
+train:
+  enabled: true
+  train_config_path: configs/train_mmgcn_iemocap_official.yaml
+
+evaluation:
+  enabled: true
+  splits:
+    - val
+    - test
+  checkpoint_name: best_model.pt
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+
+multi_run_training_curves:
+  enabled: false
+  config_path: configs/analysis/multi_run_training_curves.yaml
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: configs/analysis/multi_run_final_analysis.yaml
+
+run_control:
+  skip_train_use_run_id: ""
+
+execution:
+  dry_run: false

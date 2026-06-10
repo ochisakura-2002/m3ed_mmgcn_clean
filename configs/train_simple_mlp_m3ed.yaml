@@ -1,0 +1,61 @@
+project:
+  name: m3ed_mmgcn_clean
+  experiment_name: simple_mlp_m3ed_debug
+
+system:
+  seed: 42
+  device: cuda
+  output_dir: outputs
+
+dataset:
+  name: M3ED
+  raw_dir: data/raw/M3ED
+  processed_dir: data/processed
+  metadata_dir: data/metadata
+  metadata_path: data/metadata/m3ed_metadata.csv
+  label_mapping_path: data/metadata/m3ed_label_mapping.csv
+
+  feature_pkl_path: data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl
+  feature_split_order: m3ed_official_val_test_swapped
+
+  num_classes: 7
+  label_list:
+    - Happy
+    - Neutral
+    - Sad
+    - Disgust
+    - Anger
+    - Fear
+    - Surprise
+  split_strategy: movie_level
+  sample_unit: dialogue
+
+model:
+  name: SimpleMLP
+
+  text_feature_dim: 768
+  audio_feature_dim: 1024
+  visual_feature_dim: 342
+
+  hidden_dim: 256
+  dropout: 0.3
+
+train:
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  max_epochs: 3
+  num_workers: 0
+
+logging:
+  save_best: true
+  save_last: true
+  monitor_metric: val_uar
+
+notes:
+  stage: simple_training_loop_debug
+  description: >
+    This config trains a simple multimodal MLP on M3ED features.
+    It is not the final MMGCN baseline.
+    It is used to verify the full training, evaluation, checkpoint,
+    and logging pipeline.

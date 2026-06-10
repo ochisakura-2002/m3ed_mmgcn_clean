@@ -1,0 +1,73 @@
+analysis:
+  name: final_analysis_IEMOCAP_GCN4
+  output_dir: outputs/report_figures/final_analysis_IEMOCAP_GCN4
+  split: test
+
+runs:
+  - run_id: 20260608_193553_mmgcn_iemocap_official_full_GCN4
+    display_name: mmgcn_iemocap_full_GCN4
+
+  - run_id: 20260608_215334_mmgcn_iemocap_official_full_GCN4
+    display_name: mmgcn_iemocap_causal_GCN4
+
+  - run_id: 20260608_233754_mmgcn_iemocap_official_full_GCN4
+    display_name: mmgcn_iemocap_causal_GCN4_gamma0
+
+  - run_id: 20260609_122713_mmgcn_iemocap_official_full_GCN4
+    display_name: mmgcn_iemocap_full_GCN4_gamma0
+
+  - run_id: 20260609_145547_mmgcn_iemocap_official_full_GCN4
+    display_name: mmgcn_iemocap_full_nomodal
+
+  - run_id: 20260609_165214_mmgcn_iemocap_official_full_GCN4_noresidual
+    display_name: mmgcn_iemocap_full_GCN4_noresidual
+
+
+
+overall:
+  metrics:
+    - acc
+    - uar
+    - macro_f1
+    - weighted_f1
+    - loss
+
+  title: Overall Test Metrics
+  filename: overall_metrics_comparison
+
+per_class:
+  metrics:
+    - recall
+    - precision
+    - f1
+    - support
+    - one_vs_rest_acc
+
+  titles:
+    recall: Per-class Recall
+    precision: Per-class Precision
+    f1: Per-class F1
+    support: Per-class Support
+    one_vs_rest_acc: Per-class One-vs-Rest Accuracy
+
+  filenames:
+    recall: per_class_recall_comparison
+    precision: per_class_precision_comparison
+    f1: per_class_f1_comparison
+    support: per_class_support_comparison
+    one_vs_rest_acc: per_class_one_vs_rest_acc_comparison
+
+ranking:
+  primary_metric: macro_f1
+  secondary_metric: uar
+  higher_is_better:
+    loss: false
+    acc: true
+    uar: true
+    macro_f1: true
+    weighted_f1: true
+
+figure:
+  save_png: true
+  save_pdf: true
+  dpi: 300

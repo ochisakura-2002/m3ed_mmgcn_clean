@@ -296,6 +296,11 @@ def build_model(config: dict) -> M3EDMMGCN:
     graph_config = config.get("graph", {})
     model_config = config["model"]
     dataset_config = config["dataset"]
+    modality_config = config.get("modality", {})
+    active_modalities = modality_config.get(
+        "active_modalities",
+        ["text", "audio", "visual"],
+    )
 
     model = M3EDMMGCN(
         text_dim=int(model_config["text_feature_dim"]),
@@ -311,6 +316,7 @@ def build_model(config: dict) -> M3EDMMGCN:
         use_speaker=parse_bool(graph_config.get("use_speaker", True), True),
         use_modal=parse_bool(graph_config.get("use_modal", True), True),
         use_residual=parse_bool(graph_config.get("use_residual", False), False),
+        active_modalities=active_modalities,
         context_mode=str(graph_config.get("context_mode", "full")),
         window_past=graph_config.get("window_past", None),
         window_future=graph_config.get("window_future", None),
@@ -795,6 +801,7 @@ def print_config_summary(config: dict, run_paths: Dict[str, Path]) -> None:
     print("  use_speaker:", graph_config.get("use_speaker", True))
     print("  use_modal:", graph_config.get("use_modal", True))
     print("  use_residual:", graph_config.get("use_residual", False))
+    print("  active_modalities:", config.get("modality", {}).get("active_modalities", ["text", "audio", "visual"]))
     print("=" * 100)
 
 

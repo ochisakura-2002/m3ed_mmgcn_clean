@@ -243,6 +243,11 @@ def build_model(config: dict) -> nn.Module:
 
     if model_name == "MMGCN":
         graph_config = config.get("graph", {})
+        modality_config = config.get("modality", {})
+        active_modalities = modality_config.get(
+            "active_modalities",
+            ["text", "audio", "visual"],
+        )
 
         model = M3EDMMGCN(
             text_dim=int(config["model"]["text_feature_dim"]),
@@ -258,6 +263,7 @@ def build_model(config: dict) -> nn.Module:
             use_speaker=parse_bool(graph_config.get("use_speaker", True), True),
             use_modal=parse_bool(graph_config.get("use_modal", True), True),
             use_residual=parse_bool(graph_config.get("use_residual", False), False),
+            active_modalities=active_modalities,
             context_mode=str(graph_config.get("context_mode", "full")),
             window_past=graph_config.get("window_past", None),
             window_future=graph_config.get("window_future", None),

@@ -1,33 +1,22 @@
 """
-Official-aligned dense multimodal graph utilities for M3ED-MMGCN.
+Official-aligned dense multimodal graph utilities.
 
-This module adapts the official MMGCN adjacency construction to the local
-M3ED dialogue-batch format.
+本文件负责构造 MMGCN 使用的 dense multimodal adjacency。
 
-Official MMGCN idea:
-    1. Each valid utterance has one node per modality.
-    2. Same-modality utterance edges are weighted by cosine similarity:
-           sim = 1 - acos(cosine) / pi
-    3. Cross-modality edges connect the same utterance across modalities,
-       also weighted by cosine similarity.
-    4. The final adjacency is normalized as:
-           D^{-1/2} A D^{-1/2}
-
-Local extension:
-    context_mode = "full"
-        use all allowed utterances inside each dialogue.
-
-    context_mode = "causal"
-        target utterance can only receive source utterances from history
-        where source_time <= target_time.
-
-Node layout:
-    modality order is [audio, visual, text], matching the official MMGCN
-    convention [a, v, l].
-
+节点布局固定为官方 MMGCN 顺序：
     audio node  = 0 * N + utterance_global_index
     visual node = 1 * N + utterance_global_index
     text node   = 2 * N + utterance_global_index
+
+为什么固定保留三类节点：
+    1. classifier 输入维度保持 3H 不变；
+    2. 旧 checkpoint 结构不变；
+    3. 测试时缺失模态可以复用三模态 checkpoint；
+    4. full 三模态默认行为尽量保持旧逻辑。
+
+active_modalities 只控制哪些模态参与建边：
+    full:  audio + visual + text，行为等价旧版本；
+    缺失: inactive 模态节点保留，但对应 row/col 没有边。
 """
 
 from __future__ import annotations
@@ -37,13 +26,19 @@ from typing import List, Optional, Sequence, Tuple
 import torch
 
 
+MODALITY_ORDER: Tuple[str, str, str] = ("audio", "visual", "text")
+FULL_MODALITIES: Tuple[str, str, str] = ("text", "audio", "visual")
+
+
 def lengths_to_list(lengths) -> List[int]:
+    """把 lengths 转成 Python int list。"""
     if torch.is_tensor(lengths):
         return [int(x) for x in lengths.detach().cpu().tolist()]
     return [int(x) for x in lengths]
 
 
 def normalize_window(value: Optional[int]) -> Optional[int]:
+    """把 window 配置统一成 int 或 None。"""
     if value is None:
         return None
 
@@ -53,6 +48,60 @@ def normalize_window(value: Optional[int]) -> Optional[int]:
         return int(value)
 
     return int(value)
+
+
+def normalize_active_modalities(
+    active_modalities: Optional[Sequence[str]] = None,
+) -> Tuple[str, ...]:
+    """
+    标准化 active_modalities。
+
+    输入可以是：
+        None
+        ["text", "audio"]
+        ("audio", "text")
+
+    输出固定按照 text/audio/visual 顺序：
+        ("text", "audio")
+    """
+    if active_modalities is None:
+        return FULL_MODALITIES
+
+    valid = set(FULL_MODALITIES)
+    normalized = []
+
+    for name in active_modalities:
+        value = str(name).strip().lower()
+
+        if value == "":
+            continue
+
+        if value not in valid:
+            raise ValueError(
+                f"Unknown modality={name!r}. "
+                "Supported modalities are: text, audio, visual."
+            )
+
+        if value not in normalized:
+            normalized.append(value)
+
+    if len(normalized) == 0:
+        raise ValueError("active_modalities cannot be empty.")
+
+    return tuple(name for name in FULL_MODALITIES if name in normalized)
+
+
+def active_modalities_to_node_mask(
+    active_modalities: Optional[Sequence[str]] = None,
+) -> Tuple[bool, bool, bool]:
+    """
+    转成图节点顺序 [audio, visual, text] 的 bool mask。
+
+    返回：
+        audio_active, visual_active, text_active
+    """
+    active = set(normalize_active_modalities(active_modalities))
+    return tuple(name in active for name in MODALITY_ORDER)  # type: ignore[return-value]
 
 
 def build_utterance_index(
@@ -98,6 +147,7 @@ def context_allowed(
     window_past: Optional[int],
     window_future: Optional[int],
 ) -> bool:
+    """判断 source_time 是否允许向 target_time 传信息。"""
     context_mode = str(context_mode).lower()
 
     if context_mode not in {"full", "causal"}:
@@ -124,9 +174,9 @@ def cosine_to_mm_similarity(cosine: torch.Tensor) -> torch.Tensor:
     Convert cosine similarity to official MMGCN edge similarity.
 
     Official form:
-        sim = 1 - acos(cosine * 0.99999) / pi
+        sim = 1 - acos(cosine) / pi
 
-    Here we clamp for numerical stability.
+    这里 clamp 是为了避免 acos 的数值越界。
     """
     cosine = cosine.clamp(min=-0.99999, max=0.99999)
     return 1.0 - torch.acos(cosine) / torch.pi
@@ -179,16 +229,20 @@ def build_official_like_multimodal_adjacency(
     window_past: Optional[int] = None,
     window_future: Optional[int] = None,
     gamma: float = 0.7,
+    active_modalities: Optional[Sequence[str]] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[int, int]]]:
     """
     Build official-aligned multimodal adjacency.
 
     Args:
-        audio_nodes:  [N, H]
+        audio_nodes: [N, H]
         visual_nodes: [N, H]
-        text_nodes:   [N, H]
-        lengths: dialogue lengths
+        text_nodes: [N, H]
+        lengths: [B]
         max_len: padded max dialogue length
+        active_modalities:
+            None 或 ["text", "audio", "visual"] 表示完整三模态。
+            例如 ["text", "audio"] 表示 visual 节点保留但不参与建边。
 
     Returns:
         adj: [3N, 3N]
@@ -209,11 +263,15 @@ def build_official_like_multimodal_adjacency(
     )
 
     num_utterances = len(positions)
+
+    # 图内部顺序固定为 [audio, visual, text]。
     modal_features = [audio_nodes, visual_nodes, text_nodes]
+    modal_active = active_modalities_to_node_mask(active_modalities)
+
     modal_count = 3
     num_nodes = modal_count * num_utterances
 
-    if num_nodes == 0:
+    if num_utterances == 0:
         empty_adj = torch.zeros((0, 0), dtype=dtype, device=device)
         return empty_adj, global_index, positions
 
@@ -224,27 +282,29 @@ def build_official_like_multimodal_adjacency(
     )
 
     length_list = lengths_to_list(lengths)
-
     start = 0
 
-    for dialogue_length in length_list:
-        valid_length = min(int(dialogue_length), int(max_len))
+    for length in length_list:
+        dialogue_length = min(int(length), int(max_len))
+        end = start + dialogue_length
 
-        if valid_length <= 0:
+        if dialogue_length <= 0:
+            start = end
             continue
 
-        end = start + valid_length
-
-        # Same-modality edges.
+        # 1. 同模态边。
         for modal_index, features in enumerate(modal_features):
+            if not modal_active[modal_index]:
+                continue
+
             sub_features = features[start:end]
             sub_adj = pairwise_mm_similarity(sub_features)
 
-            for target_time in range(valid_length):
+            for target_time in range(dialogue_length):
                 target_global = start + target_time
                 target_node = modal_index * num_utterances + target_global
 
-                for source_time in range(valid_length):
+                for source_time in range(dialogue_length):
                     if not context_allowed(
                         target_time=target_time,
                         source_time=source_time,
@@ -258,17 +318,23 @@ def build_official_like_multimodal_adjacency(
                     source_node = modal_index * num_utterances + source_global
                     adj[target_node, source_node] = sub_adj[target_time, source_time]
 
-        # Cross-modality edges for the same utterance.
+        # 2. 跨模态边，只连接同一句 utterance 的不同模态。
         for target_modal in range(modal_count):
+            if not modal_active[target_modal]:
+                continue
+
             for source_modal in range(modal_count):
                 if target_modal == source_modal:
+                    continue
+
+                if not modal_active[source_modal]:
                     continue
 
                 target_features = modal_features[target_modal][start:end]
                 source_features = modal_features[source_modal][start:end]
                 diag_sim = paired_mm_similarity(target_features, source_features)
 
-                for time_index in range(valid_length):
+                for time_index in range(dialogue_length):
                     utterance_global = start + time_index
                     target_node = target_modal * num_utterances + utterance_global
                     source_node = source_modal * num_utterances + utterance_global
@@ -276,6 +342,8 @@ def build_official_like_multimodal_adjacency(
 
         start = end
 
+    # 3. D^{-1/2} A D^{-1/2}
+    # inactive 节点 degree=0，所以这里必须 clamp，避免 NaN。
     degree = adj.sum(dim=1).clamp_min(1e-8)
     degree_inv_sqrt = torch.pow(degree, -0.5)
     adj = degree_inv_sqrt.view(-1, 1) * adj * degree_inv_sqrt.view(1, -1)
@@ -284,6 +352,7 @@ def build_official_like_multimodal_adjacency(
 
 
 def adjacency_density(adj: torch.Tensor) -> float:
+    """返回非零边密度，用于 debug 和日志。"""
     if adj.numel() == 0:
         return 0.0
 

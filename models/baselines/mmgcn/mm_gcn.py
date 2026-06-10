@@ -1,34 +1,30 @@
 """
-M3ED-compatible official-aligned MMGCN baseline.
+Dialogue-level official-aligned MMGCN baseline.
 
-This module adapts the official MMGCN implementation to the local M3ED
-dialogue-batch training interface.
+这个文件实现当前项目使用的 MMGCN 适配版本。
 
-It is not a byte-for-byte copy of the official code, because the local training
-script passes padded dialogue tensors:
+输入是项目统一的 padded dialogue batch：
     text_features:   [B, T, D_text]
     audio_features:  [B, T, D_audio]
     visual_features: [B, T, D_visual]
 
-The model preserves the main official mechanisms:
-    1. Modality-specific linear projection.
-    2. Speaker embedding added only to language/text branch.
-    3. Modal embedding added to audio/visual/text branches.
-    4. Similarity-weighted multimodal adjacency.
-    5. GCNII-style propagation.
-    6. Concatenation of audio, visual, text graph features for classification.
+核心机制保留官方 MMGCN 主路径：
+    1. 三模态分别线性投影到 hidden_dim；
+    2. speaker embedding 只加到 text/language 分支；
+    3. modal embedding 加到 audio/visual/text 分支；
+    4. 每个 utterance-modality pair 作为图节点；
+    5. 使用 similarity-weighted multimodal adjacency；
+    6. 使用 GCNII-style 图传播；
+    7. 拼接 [audio, visual, text] 图后特征做 utterance-level 分类。
 
-Output:
-    {
-        "logits": [B, T, num_classes],
-        "logits_flat": [N, num_classes],
-        ...
-    }
+新增能力：
+    active_modalities 可选控制哪些模态参与计算。
+    不写 active_modalities 时默认完整三模态，尽量保持旧行为。
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import math
 
@@ -39,21 +35,24 @@ from torch.nn.parameter import Parameter
 
 from .dense_graph import (
     adjacency_density,
+    active_modalities_to_node_mask,
     build_official_like_multimodal_adjacency,
+    normalize_active_modalities,
 )
+
+
+FULL_MODALITIES: Tuple[str, str, str] = ("text", "audio", "visual")
 
 
 class GraphConvolution(nn.Module):
     """
     Official MMGCN / GCNII-style graph convolution.
 
-    Formula follows the official GraphConvolution:
+    公式对应官方 GraphConvolution 主逻辑：
         theta = log(lamda / layer + 1)
         hi = A @ input
         support = (1 - alpha) * hi + alpha * h0
         output = theta * support @ W + (1 - theta) * support
-
-    If variant=True, support is concat([hi, h0]) and r remains the mixed state.
     """
 
     def __init__(
@@ -99,7 +98,10 @@ class GraphConvolution(nn.Module):
             support = (1.0 - float(alpha)) * hi + float(alpha) * h0
             residual_mix = support
 
-        output = theta * torch.matmul(support, self.weight) + (1.0 - theta) * residual_mix
+        output = (
+            theta * torch.matmul(support, self.weight)
+            + (1.0 - theta) * residual_mix
+        )
 
         if self.residual:
             output = output + input_features
@@ -181,7 +183,10 @@ class GCNIIBackbone(nn.Module):
 
 class M3EDMMGCN(nn.Module):
     """
-    Official-aligned MMGCN adapter for local M3ED features.
+    Official-aligned dialogue-level MMGCN adapter.
+
+    类名保留 M3EDMMGCN 是历史原因。
+    只要输入符合统一 batch 接口，它也可以用于 IEMOCAP。
     """
 
     def __init__(
@@ -202,6 +207,7 @@ class M3EDMMGCN(nn.Module):
         context_mode: str = "full",
         window_past: Optional[int] = None,
         window_future: Optional[int] = None,
+        active_modalities: Optional[Sequence[str]] = None,
     ) -> None:
         super().__init__()
 
@@ -225,6 +231,10 @@ class M3EDMMGCN(nn.Module):
         self.window_past = window_past
         self.window_future = window_future
 
+        # active_modalities 只是 Python 属性，不进入 state_dict。
+        # 这样旧 checkpoint 仍然可以 strict=True 加载。
+        self.active_modalities = normalize_active_modalities(active_modalities)
+
         # Official MMGCN uses modality-specific Linear layers.
         self.audio_fc = nn.Linear(self.audio_dim, self.hidden_dim)
         self.visual_fc = nn.Linear(self.visual_dim, self.hidden_dim)
@@ -232,8 +242,8 @@ class M3EDMMGCN(nn.Module):
 
         self.modal_embeddings = nn.Embedding(3, self.hidden_dim)
 
-        # M3ED is basically dyadic, but a slightly larger table avoids crashes
-        # if preprocessing uses ids beyond {0, 1}.
+        # M3ED/IEMOCAP 都是 dyadic speaker 为主。
+        # 留 16 个槽位是为了避免预处理里 speaker id 超出 {0, 1} 时直接崩。
         self.speaker_embeddings = nn.Embedding(16, self.hidden_dim)
 
         self.graph_net = GCNIIBackbone(
@@ -246,7 +256,58 @@ class M3EDMMGCN(nn.Module):
             use_residual=self.use_residual,
         )
 
+        # 固定 3H，inactive 模态用零向量占位。
+        # 这样 checkpoint 结构不变，三模态训练 checkpoint 也能用于测试时缺失模态评估。
         self.final_fc = nn.Linear(self.hidden_dim * 3, self.num_classes)
+
+    @staticmethod
+    def _is_full_modalities(active_modalities: Sequence[str]) -> bool:
+        """判断当前是否为完整三模态。"""
+        return tuple(active_modalities) == FULL_MODALITIES
+
+    def _make_hidden_zeros_like(
+        self,
+        reference: torch.Tensor,
+    ) -> torch.Tensor:
+        """构造 [B, T, H] 的零 hidden。"""
+        batch_size, max_len = reference.shape[0], reference.shape[1]
+        return reference.new_zeros((batch_size, max_len, self.hidden_dim))
+
+    def _build_node_active_mask(
+        self,
+        num_utterances: int,
+        active_modalities: Sequence[str],
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """
+        构造图节点级 mask。
+
+        图节点顺序固定为 [audio block, visual block, text block]。
+        返回形状：
+            [3N, 1]
+        """
+        audio_active, visual_active, text_active = active_modalities_to_node_mask(
+            active_modalities
+        )
+
+        values = [
+            1.0 if audio_active else 0.0,
+            1.0 if visual_active else 0.0,
+            1.0 if text_active else 0.0,
+        ]
+
+        blocks = [
+            torch.full(
+                (num_utterances, 1),
+                fill_value=value,
+                dtype=dtype,
+                device=device,
+            )
+            for value in values
+        ]
+
+        return torch.cat(blocks, dim=0)
 
     def _gather_valid_utterance_features(
         self,
@@ -269,25 +330,70 @@ class M3EDMMGCN(nn.Module):
         audio_features: torch.Tensor,
         visual_features: torch.Tensor,
         speaker_ids_int: Optional[torch.Tensor],
+        active_modalities: Sequence[str],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Project raw features to hidden dimension.
 
         Internal modality order follows official MMGCN:
             audio, visual, text
-        """
-        audio_h = self.audio_fc(audio_features)
-        visual_h = self.visual_fc(visual_features)
-        text_h = self.text_fc(text_features)
 
-        if self.use_speaker and speaker_ids_int is not None:
+        full 三模态时走旧逻辑。
+        非 full 时，inactive 模态直接置零，避免 fc bias/modal embedding 把缺失模态复活。
+        """
+        active = set(active_modalities)
+
+        if self._is_full_modalities(active_modalities):
+            audio_h = self.audio_fc(audio_features)
+            visual_h = self.visual_fc(visual_features)
+            text_h = self.text_fc(text_features)
+
+            if self.use_speaker and speaker_ids_int is not None:
+                speaker_ids = speaker_ids_int.long().clamp(
+                    min=0,
+                    max=self.speaker_embeddings.num_embeddings - 1,
+                )
+                speaker_h = self.speaker_embeddings(speaker_ids)
+
+                # Official MM_GCN adds speaker embedding only to language branch.
+                text_h = text_h + speaker_h
+
+            if self.use_modal:
+                modal_ids = torch.tensor(
+                    [0, 1, 2],
+                    dtype=torch.long,
+                    device=text_features.device,
+                )
+                modal_h = self.modal_embeddings(modal_ids)
+
+                audio_h = audio_h + modal_h[0].view(1, 1, -1)
+                visual_h = visual_h + modal_h[1].view(1, 1, -1)
+                text_h = text_h + modal_h[2].view(1, 1, -1)
+
+            return audio_h, visual_h, text_h
+
+        # 非 full 模式：inactive 模态不经过 Linear，不吃 bias，不加 embedding。
+        if "audio" in active:
+            audio_h = self.audio_fc(audio_features)
+        else:
+            audio_h = self._make_hidden_zeros_like(text_features)
+
+        if "visual" in active:
+            visual_h = self.visual_fc(visual_features)
+        else:
+            visual_h = self._make_hidden_zeros_like(text_features)
+
+        if "text" in active:
+            text_h = self.text_fc(text_features)
+        else:
+            text_h = self._make_hidden_zeros_like(text_features)
+
+        if "text" in active and self.use_speaker and speaker_ids_int is not None:
             speaker_ids = speaker_ids_int.long().clamp(
                 min=0,
                 max=self.speaker_embeddings.num_embeddings - 1,
             )
             speaker_h = self.speaker_embeddings(speaker_ids)
-
-            # Official MM_GCN adds speaker embedding only to language branch.
             text_h = text_h + speaker_h
 
         if self.use_modal:
@@ -298,9 +404,12 @@ class M3EDMMGCN(nn.Module):
             )
             modal_h = self.modal_embeddings(modal_ids)
 
-            audio_h = audio_h + modal_h[0].view(1, 1, -1)
-            visual_h = visual_h + modal_h[1].view(1, 1, -1)
-            text_h = text_h + modal_h[2].view(1, 1, -1)
+            if "audio" in active:
+                audio_h = audio_h + modal_h[0].view(1, 1, -1)
+            if "visual" in active:
+                visual_h = visual_h + modal_h[1].view(1, 1, -1)
+            if "text" in active:
+                text_h = text_h + modal_h[2].view(1, 1, -1)
 
         return audio_h, visual_h, text_h
 
@@ -313,11 +422,19 @@ class M3EDMMGCN(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         speaker_ids_int: Optional[torch.Tensor] = None,
         return_graph: bool = False,
+        active_modalities: Optional[Sequence[str]] = None,
     ) -> Dict[str, torch.Tensor]:
         if text_features.dim() != 3:
             raise ValueError(
                 f"text_features must be [B, T, D], got {tuple(text_features.shape)}"
             )
+
+        active_modalities = (
+            self.active_modalities
+            if active_modalities is None
+            else normalize_active_modalities(active_modalities)
+        )
+        is_full_modalities = self._is_full_modalities(active_modalities)
 
         batch_size, max_len, _ = text_features.shape
         device = text_features.device
@@ -327,10 +444,11 @@ class M3EDMMGCN(nn.Module):
             audio_features=audio_features,
             visual_features=visual_features,
             speaker_ids_int=speaker_ids_int,
+            active_modalities=active_modalities,
         )
 
-        # First get valid positions using graph utility. We pass placeholder
-        # compact nodes later after positions are known.
+        # 先用图工具得到有效 utterance 位置。
+        # 后面再 gather compact node features。
         from .dense_graph import build_utterance_index
 
         _, positions = build_utterance_index(
@@ -356,7 +474,9 @@ class M3EDMMGCN(nn.Module):
                     {
                         "adjacency": logits.new_zeros((0, 0)),
                         "node_features": logits.new_zeros((0, self.hidden_dim)),
-                        "utterance_features": logits.new_zeros((0, self.hidden_dim * 3)),
+                        "utterance_features": logits.new_zeros(
+                            (0, self.hidden_dim * 3)
+                        ),
                     }
                 )
 
@@ -365,6 +485,8 @@ class M3EDMMGCN(nn.Module):
         audio_nodes = self._gather_valid_utterance_features(audio_h, positions)
         visual_nodes = self._gather_valid_utterance_features(visual_h, positions)
         text_nodes = self._gather_valid_utterance_features(text_h, positions)
+
+        graph_active_modalities = None if is_full_modalities else active_modalities
 
         adj, global_index, positions = build_official_like_multimodal_adjacency(
             audio_nodes=audio_nodes,
@@ -376,6 +498,7 @@ class M3EDMMGCN(nn.Module):
             window_past=self.window_past,
             window_future=self.window_future,
             gamma=self.gamma,
+            active_modalities=graph_active_modalities,
         )
 
         # Official node order: [a, v, l].
@@ -388,10 +511,28 @@ class M3EDMMGCN(nn.Module):
             dim=0,
         )
 
+        node_active_mask: Optional[torch.Tensor] = None
+
+        if not is_full_modalities:
+            node_active_mask = self._build_node_active_mask(
+                num_utterances=num_utterances,
+                active_modalities=active_modalities,
+                device=device,
+                dtype=x.dtype,
+            )
+
+            # 进入 GCN 前先置零一次。
+            x = x * node_active_mask
+
         graph_features = self.graph_net(
             x=x,
             adj=adj,
         )
+
+        if node_active_mask is not None:
+            # GCNII 的 input_fc bias、h0 injection、residual 都可能让 inactive 节点重新非零。
+            # 所以图传播后必须再置零一次。是的，神经网络很会诈尸。
+            graph_features = graph_features * node_active_mask
 
         audio_out = graph_features[0:num_utterances]
         visual_out = graph_features[num_utterances : 2 * num_utterances]
@@ -419,28 +560,31 @@ class M3EDMMGCN(nn.Module):
         }
 
         if return_graph:
-            output.update(
-                {
-                    "adjacency": adj,
-                    "global_index": global_index,
-                    "node_features": graph_features,
-                    "node_features_initial": x,
-                    "num_utterance_nodes": torch.tensor(
-                        num_utterances,
-                        device=device,
-                        dtype=torch.long,
-                    ),
-                    "num_graph_nodes": torch.tensor(
-                        graph_features.shape[0],
-                        device=device,
-                        dtype=torch.long,
-                    ),
-                    "adjacency_density": torch.tensor(
-                        adjacency_density(adj),
-                        device=device,
-                        dtype=torch.float32,
-                    ),
-                }
-            )
+            graph_output = {
+                "adjacency": adj,
+                "global_index": global_index,
+                "node_features": graph_features,
+                "node_features_initial": x,
+                "num_utterance_nodes": torch.tensor(
+                    num_utterances,
+                    device=device,
+                    dtype=torch.long,
+                ),
+                "num_graph_nodes": torch.tensor(
+                    graph_features.shape[0],
+                    device=device,
+                    dtype=torch.long,
+                ),
+                "adjacency_density": torch.tensor(
+                    adjacency_density(adj),
+                    device=device,
+                    dtype=torch.float32,
+                ),
+            }
+
+            if node_active_mask is not None:
+                graph_output["node_active_mask"] = node_active_mask
+
+            output.update(graph_output)
 
         return output

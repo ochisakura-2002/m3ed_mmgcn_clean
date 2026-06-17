@@ -57,3 +57,6 @@ third_party/MMGCN_official/MELD_features/
 tmp/
 temp/
 *.tmp
+
+# Local official GS-MCC reference repository
+third_party/GS_MCC_official/

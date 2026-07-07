@@ -1,0 +1,42 @@
+seed: 42
+
+dataset:
+  name: MMGCN_SMOKE
+  batch_size: 2
+  num_workers: 0
+  num_classes: 4
+  label_list:
+    - Happy
+    - Neutral
+    - Sad
+    - Angry
+  split_sizes:
+    train: 4
+    val: 2
+  dialogue_lengths:
+    - 3
+    - 4
+  seed: 2026
+
+model:
+  name: MultiDAGCL
+  text_feature_dim: 16
+  audio_feature_dim: 12
+  visual_feature_dim: 8
+  hidden_dim: 32
+  num_classes: 4
+  num_speakers: 2
+  window_past: 2
+  dropout: 0.1
+  active_modalities: ["text", "audio", "visual"]
+  num_graph_layers: 1
+
+training:
+  epochs: 2
+  lr: 0.001
+  weight_decay: 0.0
+  grad_clip: 1.0
+  select_best_by: val_weighted_f1
+
+output:
+  run_root: outputs/smoke/multidag_cl

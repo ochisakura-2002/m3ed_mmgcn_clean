@@ -1,0 +1,43 @@
+project:
+  pipeline_name: multidag_cl_iemocap_modality_w5_tv
+
+dataset:
+  name: IEMOCAP
+
+model:
+  name: MultiDAGCL
+
+execution:
+  dry_run: false
+
+run_control:
+  skip_train_use_run_id: ""
+
+train:
+  enabled: true
+  train_config_path: configs/baselines/multidag_cl/iemocap/formal/modality_w5_tv.yaml
+
+evaluation:
+  enabled: true
+  checkpoint_name: best_model.pt
+  splits: [val, test]
+  max_batches: null
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+
+missing_modalities:
+  enabled: false
+
+multi_run_training_curves:
+  enabled: false
+  config_path: ""
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: ""

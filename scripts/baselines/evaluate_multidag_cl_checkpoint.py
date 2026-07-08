@@ -28,6 +28,7 @@ from utils.seed import set_seed  # noqa: E402
 IGNORE_INDEX = -100
 DEFAULT_PAST_ALL_WINDOW = 1_000_000
 METRIC_KEYS = ("acc", "uar", "macro_f1", "weighted_f1")
+FULL_MODALITIES = ("text", "audio", "visual")
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,7 +63,35 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional tiny evaluation cap for smoke checks.",
     )
+    parser.add_argument(
+        "--active-modalities",
+        nargs="+",
+        choices=FULL_MODALITIES,
+        default=None,
+        help=(
+            "Test-time modalities to keep. Missing modalities are zeroed before "
+            "forward; the checkpoint model structure is not changed."
+        ),
+    )
     return parser.parse_args()
+
+
+def normalize_modalities(modalities: Optional[List[str]]) -> Optional[Tuple[str, ...]]:
+    if modalities is None:
+        return None
+
+    normalized: List[str] = []
+    for name in modalities:
+        value = str(name).strip().lower()
+        if value not in FULL_MODALITIES:
+            raise ValueError(f"Unknown modality: {name}")
+        if value not in normalized:
+            normalized.append(value)
+
+    if not normalized:
+        raise ValueError("active modalities must not be empty")
+
+    return tuple(name for name in FULL_MODALITIES if name in normalized)
 
 
 def project_relative(path: Path) -> str:
@@ -223,6 +252,26 @@ def forward_batch(model: MultiDAGCLBaseline, batch: Dict[str, Any]) -> Dict[str,
     )
 
 
+def apply_test_time_modalities(
+    batch: Dict[str, Any],
+    active_modalities: Optional[Tuple[str, ...]],
+) -> Dict[str, Any]:
+    if active_modalities is None:
+        return batch
+
+    active = set(active_modalities)
+    feature_keys = {
+        "text": "text_features",
+        "audio": "audio_features",
+        "visual": "visual_features",
+    }
+    adjusted = dict(batch)
+    for modality, key in feature_keys.items():
+        if modality not in active:
+            adjusted[key] = torch.zeros_like(batch[key])
+    return adjusted
+
+
 def valid_mask(batch: Dict[str, Any]) -> torch.Tensor:
     return batch["attention_mask"].to(dtype=torch.bool) & (batch["labels"] != IGNORE_INDEX)
 
@@ -332,6 +381,7 @@ def evaluate(
     label_list: List[str],
     split: str,
     max_batches: Optional[int],
+    active_modalities: Optional[Tuple[str, ...]],
 ) -> Tuple[float, Dict[str, float], List[dict], List[int], List[int]]:
     model.eval()
     total_loss = 0.0
@@ -345,6 +395,7 @@ def evaluate(
             break
 
         batch = move_tensor_batch(batch, device)
+        batch = apply_test_time_modalities(batch, active_modalities)
         output = forward_batch(model, batch)
         loss = output["loss"]
         if loss is None:
@@ -385,6 +436,7 @@ def save_evaluation_outputs(
     y_true: List[int],
     y_pred: List[int],
     label_list: List[str],
+    active_modalities: Optional[Tuple[str, ...]],
 ) -> None:
     ensure_dir(eval_dir)
     metrics_row = {
@@ -396,6 +448,9 @@ def save_evaluation_outputs(
         "uar": float(metrics["uar"]),
         "macro_f1": float(metrics["macro_f1"]),
         "weighted_f1": float(metrics["weighted_f1"]),
+        "active_modalities": (
+            "+".join(active_modalities) if active_modalities is not None else ""
+        ),
     }
     pd.DataFrame([metrics_row]).to_csv(eval_dir / "metrics.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(prediction_rows).to_csv(eval_dir / "predictions.csv", index=False, encoding="utf-8-sig")
@@ -437,6 +492,7 @@ def main() -> None:
     batch_size = int(args.batch_size or get_training_config(config)["batch_size"])
     label_list = get_label_list(config)
     num_classes = int(config["dataset"]["num_classes"])
+    eval_active_modalities = normalize_modalities(args.active_modalities)
 
     print("=" * 100)
     print("Evaluate MultiDAG+CL checkpoint")
@@ -448,6 +504,8 @@ def main() -> None:
     print("Split:", args.split)
     print("Batch size:", batch_size)
     print("Device:", device)
+    if eval_active_modalities is not None:
+        print("Test-time active modalities:", list(eval_active_modalities))
     print("=" * 100)
 
     loader = build_dataloader(config=config, split=args.split, batch_size=batch_size)
@@ -462,6 +520,7 @@ def main() -> None:
         label_list=label_list,
         split=args.split,
         max_batches=args.max_batches,
+        active_modalities=eval_active_modalities,
     )
 
     run_dir = get_run_dir_from_checkpoint(checkpoint_path)
@@ -476,6 +535,7 @@ def main() -> None:
         y_true=y_true,
         y_pred=y_pred,
         label_list=label_list,
+        active_modalities=eval_active_modalities,
     )
 
     print("\n" + "=" * 100)

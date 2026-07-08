@@ -19,7 +19,18 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-ORDER: List[str] = ["TAV", "TA", "TV", "AV", "T", "A", "V"]
+ORDER: List[str] = [
+    "TAV",
+    "TA",
+    "missing_visual",
+    "TV",
+    "missing_audio",
+    "AV",
+    "missing_text",
+    "T",
+    "A",
+    "V",
+]
 
 
 def parse_args() -> argparse.Namespace:

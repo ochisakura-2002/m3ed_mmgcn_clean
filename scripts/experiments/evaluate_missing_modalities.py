@@ -34,6 +34,10 @@ import torch
 
 
 FULL_MODALITIES = ("text", "audio", "visual")
+EVALUATE_SCRIPT_BY_MODEL = {
+    "MMGCN": "scripts/evaluate_checkpoint.py",
+    "MultiDAGCL": "scripts/baselines/evaluate_multidag_cl_checkpoint.py",
+}
 
 SETTINGS: List[Tuple[str, List[str]]] = [
     ("TAV", ["text", "audio", "visual"]),
@@ -43,6 +47,9 @@ SETTINGS: List[Tuple[str, List[str]]] = [
     ("T", ["text"]),
     ("A", ["audio"]),
     ("V", ["visual"]),
+    ("missing_text", ["audio", "visual"]),
+    ("missing_audio", ["text", "visual"]),
+    ("missing_visual", ["text", "audio"]),
 ]
 
 
@@ -106,15 +113,24 @@ def normalize_modalities(modalities: Optional[Sequence[str]]) -> List[str]:
     return [name for name in FULL_MODALITIES if name in normalized]
 
 
-def read_checkpoint_config(checkpoint: Path) -> Dict[str, Any]:
-    payload = torch.load(
-        checkpoint,
-        map_location="cpu",
-    )
-
+def read_checkpoint_payload(checkpoint: Path) -> Dict[str, Any]:
+    try:
+        payload = torch.load(
+            checkpoint,
+            map_location="cpu",
+            weights_only=False,
+        )
+    except TypeError:
+        payload = torch.load(
+            checkpoint,
+            map_location="cpu",
+        )
     if not isinstance(payload, dict):
         return {}
+    return payload
 
+
+def get_checkpoint_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     config = payload.get("config", {})
 
     if not isinstance(config, dict):
@@ -123,7 +139,21 @@ def read_checkpoint_config(checkpoint: Path) -> Dict[str, Any]:
     return config
 
 
+def get_checkpoint_model_name(payload: Dict[str, Any], config: Dict[str, Any]) -> str:
+    model_name = payload.get("model_name", "")
+    if model_name:
+        return str(model_name)
+    return str(config.get("model", {}).get("name", ""))
+
+
 def get_trained_active_modalities(config: Dict[str, Any]) -> List[str]:
+    model_config = config.get("model", {})
+
+    if isinstance(model_config, dict) and "active_modalities" in model_config:
+        return normalize_modalities(
+            model_config.get("active_modalities", None)
+        )
+
     modality_config = config.get("modality", {})
 
     if not isinstance(modality_config, dict):
@@ -135,7 +165,7 @@ def get_trained_active_modalities(config: Dict[str, Any]) -> List[str]:
 
 
 def read_metrics(metrics_path: Path) -> Dict[str, str]:
-    with metrics_path.open("r", encoding="utf-8") as f:
+    with metrics_path.open("r", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
 
     if len(rows) != 1:
@@ -149,6 +179,7 @@ def read_metrics(metrics_path: Path) -> Dict[str, str]:
 def write_metadata(
     path: Path,
     checkpoint: Path,
+    model_name: str,
     split: str,
     settings: List[str],
     trained_active_modalities: List[str],
@@ -157,6 +188,7 @@ def write_metadata(
 ) -> None:
     metadata = {
         "checkpoint": str(checkpoint),
+        "model_name": model_name,
         "split": split,
         "settings": settings,
         "trained_active_modalities": trained_active_modalities,
@@ -177,7 +209,6 @@ def main() -> None:
     args = parse_args()
 
     project_root = Path(__file__).resolve().parents[2]
-    evaluate_script = project_root / "scripts" / "evaluate_checkpoint.py"
 
     checkpoint = Path(args.checkpoint).resolve()
 
@@ -214,7 +245,21 @@ def main() -> None:
     summary_path = stage_dir / "summary.csv"
     metadata_path = stage_dir / "metadata.json"
 
-    checkpoint_config = read_checkpoint_config(checkpoint)
+    checkpoint_payload = read_checkpoint_payload(checkpoint)
+    checkpoint_config = get_checkpoint_config(checkpoint_payload)
+    model_name = get_checkpoint_model_name(checkpoint_payload, checkpoint_config)
+    evaluate_script_relative = EVALUATE_SCRIPT_BY_MODEL.get(model_name)
+    if evaluate_script_relative is None:
+        supported = ", ".join(sorted(EVALUATE_SCRIPT_BY_MODEL))
+        raise ValueError(
+            f"Unsupported checkpoint model for missing-modality evaluation: "
+            f"{model_name!r}. Supported models: {supported}"
+        )
+
+    evaluate_script = project_root / evaluate_script_relative
+    if not evaluate_script.exists():
+        raise FileNotFoundError(f"Evaluation script not found: {evaluate_script}")
+
     trained_active_modalities = get_trained_active_modalities(checkpoint_config)
 
     trained_is_full = trained_active_modalities == list(FULL_MODALITIES)
@@ -230,6 +275,7 @@ def main() -> None:
         write_metadata(
             path=metadata_path,
             checkpoint=checkpoint,
+            model_name=model_name,
             split=args.split,
             settings=list(args.settings),
             trained_active_modalities=trained_active_modalities,
@@ -281,10 +327,10 @@ def main() -> None:
 
         metrics = read_metrics(dest_dir / "metrics.csv")
         metrics = {
+            **metrics,
             "setting": setting_name,
             "active_modalities": "+".join(modalities),
             "trained_active_modalities": "+".join(trained_active_modalities),
-            **metrics,
             "output_dir": str(dest_dir),
         }
         summary_rows.append(metrics)
@@ -296,6 +342,7 @@ def main() -> None:
         "split",
         "checkpoint",
         "loss",
+        "accuracy",
         "acc",
         "uar",
         "macro_f1",
@@ -307,6 +354,7 @@ def main() -> None:
         writer = csv.DictWriter(
             f,
             fieldnames=fieldnames,
+            extrasaction="ignore",
         )
         writer.writeheader()
         writer.writerows(summary_rows)
@@ -314,6 +362,7 @@ def main() -> None:
     write_metadata(
         path=metadata_path,
         checkpoint=checkpoint,
+        model_name=model_name,
         split=args.split,
         settings=list(args.settings),
         trained_active_modalities=trained_active_modalities,

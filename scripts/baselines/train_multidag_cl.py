@@ -9,9 +9,10 @@ from __future__ import annotations
 import argparse
 import copy
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 import torch
@@ -325,8 +326,37 @@ def valid_count(batch: Dict[str, Any]) -> int:
     return int(valid_mask(batch).sum().item())
 
 
-def max_batches_reached(index: int, max_batches: Optional[int]) -> bool:
-    return max_batches is not None and index > int(max_batches)
+def limited_batches(
+    loader: DataLoader,
+    max_batches: Optional[int],
+) -> Iterable[Dict[str, Any]]:
+    if max_batches is None:
+        return loader
+    return islice(loader, max(0, int(max_batches)))
+
+
+def effective_num_batches(
+    loader: DataLoader,
+    max_batches: Optional[int],
+) -> Optional[int]:
+    try:
+        loader_length = len(loader)
+    except TypeError:
+        loader_length = None
+
+    if max_batches is None:
+        return loader_length
+
+    cap = max(0, int(max_batches))
+    if loader_length is None:
+        return cap
+    return min(loader_length, cap)
+
+
+def current_learning_rate(optimizer: torch.optim.Optimizer) -> float:
+    if not optimizer.param_groups:
+        return 0.0
+    return float(optimizer.param_groups[0].get("lr", 0.0))
 
 
 def collect_predictions(
@@ -430,16 +460,19 @@ def train_one_epoch(
     grad_clip: float,
     max_train_batches: Optional[int],
     epoch: int,
+    total_epochs: int,
 ) -> float:
     model.train()
     total_loss = 0.0
     total_items = 0
 
-    progress = tqdm(loader, desc=f"Train epoch {epoch}", ncols=100)
+    progress = tqdm(
+        limited_batches(loader, max_train_batches),
+        total=effective_num_batches(loader, max_train_batches),
+        desc=f"Train epoch {epoch}/{total_epochs}",
+        ncols=100,
+    )
     for batch_index, batch in enumerate(progress, start=1):
-        if max_batches_reached(batch_index, max_train_batches):
-            break
-
         batch = move_tensor_batch(batch, device)
         optimizer.zero_grad(set_to_none=True)
         output = forward_batch(model, batch)
@@ -452,10 +485,18 @@ def train_one_epoch(
             torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip))
         optimizer.step()
 
-        item_count = max(valid_count(batch), 1)
-        total_loss += float(loss.item()) * float(item_count)
+        valid_items = valid_count(batch)
+        item_count = max(valid_items, 1)
+        batch_loss = float(loss.item())
+        total_loss += batch_loss * float(item_count)
         total_items += item_count
-        progress.set_postfix(loss=f"{float(loss.item()):.4f}")
+        running_avg = total_loss / float(max(total_items, 1))
+        progress.set_postfix(
+            loss=f"{batch_loss:.4f}",
+            avg=f"{running_avg:.4f}",
+            lr=f"{current_learning_rate(optimizer):.3g}",
+            valid=valid_items,
+        )
 
     return total_loss / float(max(total_items, 1))
 
@@ -477,19 +518,30 @@ def evaluate(
     all_true: List[int] = []
     all_pred: List[int] = []
 
-    for batch_index, batch in enumerate(tqdm(loader, desc=f"Evaluate {split}", ncols=100), start=1):
-        if max_batches_reached(batch_index, max_eval_batches):
-            break
-
+    progress = tqdm(
+        limited_batches(loader, max_eval_batches),
+        total=effective_num_batches(loader, max_eval_batches),
+        desc=f"Eval {split}",
+        ncols=100,
+    )
+    for batch_index, batch in enumerate(progress, start=1):
         batch = move_tensor_batch(batch, device)
         output = forward_batch(model, batch)
         loss = output["loss"]
         if loss is None:
             raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
 
-        item_count = max(valid_count(batch), 1)
-        total_loss += float(loss.item()) * float(item_count)
+        valid_items = valid_count(batch)
+        item_count = max(valid_items, 1)
+        batch_loss = float(loss.item())
+        total_loss += batch_loss * float(item_count)
         total_items += item_count
+        running_avg = total_loss / float(max(total_items, 1))
+        progress.set_postfix(
+            loss=f"{batch_loss:.4f}",
+            avg=f"{running_avg:.4f}",
+            valid=valid_items,
+        )
 
         rows, y_true, y_pred = collect_predictions(
             batch=batch,
@@ -608,13 +660,11 @@ def save_best_validation_outputs(
     )
 
 
-def metrics_summary(prefix: str, loss: float, metrics: Dict[str, float]) -> str:
-    return (
-        f"{prefix}_loss={loss:.6f} "
-        f"{prefix}_acc={metrics['acc']:.6f} "
-        f"{prefix}_uar={metrics['uar']:.6f} "
-        f"{prefix}_macro_f1={metrics['macro_f1']:.6f} "
-        f"{prefix}_weighted_f1={metrics['weighted_f1']:.6f}"
+def save_epoch_metrics(logs_dir: Path, epoch_rows: List[Dict[str, Any]]) -> None:
+    pd.DataFrame(epoch_rows).to_csv(
+        logs_dir / "epoch_metrics.csv",
+        index=False,
+        encoding="utf-8-sig",
     )
 
 
@@ -673,14 +723,15 @@ def main() -> None:
     max_train_batches = optional_int(training.get("max_train_batches"))
     max_val_batches = optional_int(training.get("max_val_batches"))
     grad_clip = float(training.get("grad_clip", 0.0))
+    total_epochs = int(training["epochs"])
 
     best_value = -float("inf")
     best_epoch = -1
     epoch_rows: List[Dict[str, Any]] = []
 
-    for epoch in range(1, int(training["epochs"]) + 1):
+    for epoch in range(1, total_epochs + 1):
         print("\n" + "=" * 100)
-        print(f"Epoch {epoch}/{int(training['epochs'])}")
+        print(f"Epoch {epoch}/{total_epochs}")
         print("=" * 100)
 
         train_loss = train_one_epoch(
@@ -691,6 +742,7 @@ def main() -> None:
             grad_clip=grad_clip,
             max_train_batches=max_train_batches,
             epoch=epoch,
+            total_epochs=total_epochs,
         )
         val_loss, val_metrics, val_predictions, y_true, y_pred = evaluate(
             model=model,
@@ -712,6 +764,7 @@ def main() -> None:
             "val_uar": float(val_metrics["uar"]),
         }
         epoch_rows.append(row)
+        save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
 
         monitor_value = float(row["val_weighted_f1"])
         last_checkpoint = run_paths["checkpoints_dir"] / "last_model.pt"
@@ -728,8 +781,14 @@ def main() -> None:
         )
 
         print(
-            f"[Epoch {epoch}] train_loss={train_loss:.6f} "
-            f"{metrics_summary('val', val_loss, val_metrics)}"
+            f"Epoch {epoch:02d}/{total_epochs:02d} | "
+            f"train_loss={train_loss:.6f} | "
+            f"val_loss={val_loss:.6f} | "
+            f"val_acc={val_metrics['acc']:.6f} | "
+            f"val_weighted_f1={val_metrics['weighted_f1']:.6f} | "
+            f"val_macro_f1={val_metrics['macro_f1']:.6f} | "
+            f"val_uar={val_metrics['uar']:.6f}",
+            flush=True,
         )
 
         if monitor_value > best_value:
@@ -757,14 +816,12 @@ def main() -> None:
                 y_pred=y_pred,
                 label_list=label_list,
             )
-            print(f"[BEST] epoch={best_epoch}, val_weighted_f1={best_value:.6f}")
+            print(
+                f"[BEST] epoch={best_epoch:02d} val_weighted_f1={best_value:.6f}",
+                flush=True,
+            )
 
-    epoch_df = pd.DataFrame(epoch_rows)
-    epoch_df.to_csv(
-        run_paths["logs_dir"] / "epoch_metrics.csv",
-        index=False,
-        encoding="utf-8-sig",
-    )
+    save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
 
     if best_epoch < 0:
         raise RuntimeError("No best checkpoint was selected.")

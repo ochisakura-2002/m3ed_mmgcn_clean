@@ -48,6 +48,7 @@ from utils.seed import set_seed  # noqa: E402
 from datasets.m3ed.torch_dataset import M3EDTorchDataset  # noqa: E402
 from datasets.collators.m3ed_collate import m3ed_dialogue_collate_fn  # noqa: E402
 from datasets.iemocap import build_iemocap_dataloader  # noqa: E402
+from datasets.smoke import build_mmgcn_smoke_dataloader  # noqa: E402
 from models.baselines.simple_mlp import M3EDConcatMLP  # noqa: E402
 from models.baselines.mmgcn.mm_gcn import M3EDMMGCN  # noqa: E402
 
@@ -235,9 +236,20 @@ def build_dataloader(
 
         return loader
 
+    if dataset_name == "MMGCN_SMOKE":
+        return build_mmgcn_smoke_dataloader(
+            dataset_config=dataset_config,
+            model_config=config["model"],
+            train_config=train_config,
+            split=split,
+            shuffle=False,
+            batch_size=int(batch_size),
+            pin_memory=torch.cuda.is_available(),
+        )
+
     raise ValueError(
         f"Unsupported dataset.name={dataset_config['name']}. "
-        "Use M3ED or IEMOCAP."
+        "Use M3ED, IEMOCAP, or MMGCN_SMOKE."
     )
 
 

@@ -30,6 +30,8 @@ model:
   dropout: 0.1
   active_modalities: ["text", "audio", "visual"]
   num_graph_layers: 1
+  modality_encoder_type: causal_gru
+  modality_encoder_layers: 1
 
 training:
   epochs: 2

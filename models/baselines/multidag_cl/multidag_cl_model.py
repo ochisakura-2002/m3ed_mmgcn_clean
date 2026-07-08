@@ -23,9 +23,11 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 _VALID_MODALITIES = ("text", "audio", "visual")
+_VALID_MODALITY_ENCODERS = ("causal_gru", "linear")
 
 
 def build_directed_past_adjacency(
@@ -221,6 +223,112 @@ class _SpeakerAwareDAGLayer(nn.Module):
         return torch.bmm(attention.unsqueeze(1), values).squeeze(1)
 
 
+class CausalModalityEncoder(nn.Module):
+    """Encode one modality with a device-neutral causal sequence encoder."""
+
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        dropout: float = 0.1,
+        encoder_type: str = "causal_gru",
+        num_layers: int = 1,
+    ) -> None:
+        super().__init__()
+        self.input_dim = int(input_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.dropout = float(dropout)
+        self.encoder_type = str(encoder_type)
+        self.num_layers = int(num_layers)
+        self._validate_init()
+
+        if self.encoder_type == "linear":
+            self.linear_path = nn.Sequential(
+                nn.Linear(self.input_dim, self.hidden_dim, bias=False),
+                nn.ReLU(),
+                nn.Dropout(self.dropout),
+            )
+            return
+
+        self.input_projection = nn.Linear(self.input_dim, self.hidden_dim, bias=False)
+        self.input_norm = nn.LayerNorm(self.hidden_dim)
+        self.input_dropout = nn.Dropout(self.dropout)
+        self.gru = nn.GRU(
+            input_size=self.hidden_dim,
+            hidden_size=self.hidden_dim,
+            num_layers=self.num_layers,
+            batch_first=True,
+            bidirectional=False,
+            dropout=self.dropout if self.num_layers > 1 else 0.0,
+        )
+        self.output_norm = nn.LayerNorm(self.hidden_dim)
+        self.output_dropout = nn.Dropout(self.dropout)
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        if features.dim() != 3:
+            raise ValueError(f"features must be [B, T, D], got {tuple(features.shape)}")
+        if attention_mask.shape != features.shape[:2]:
+            raise ValueError(
+                "attention_mask must match feature [B, T], "
+                f"got {tuple(attention_mask.shape)} for {tuple(features.shape)}"
+            )
+        if features.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"expected input_dim={self.input_dim}, got {features.shape[-1]}"
+            )
+        if attention_mask.device != features.device:
+            raise ValueError("features and attention_mask must share device")
+
+        mask = attention_mask.to(dtype=torch.bool, device=features.device)
+        valid_scale = mask.unsqueeze(-1).to(dtype=features.dtype)
+
+        if self.encoder_type == "linear":
+            return self.linear_path(features) * valid_scale
+
+        projected = self.input_projection(features)
+        projected = self.input_norm(projected)
+        projected = F.gelu(projected)
+        projected = self.input_dropout(projected) * valid_scale
+
+        batch_size, seq_len, _ = projected.shape
+        if seq_len == 0:
+            return projected.new_zeros(batch_size, seq_len, self.hidden_dim)
+
+        lengths = mask.to(dtype=torch.long).sum(dim=1).clamp_min(1)
+        packed = pack_padded_sequence(
+            projected,
+            lengths.detach().cpu().tolist(),
+            batch_first=True,
+            enforce_sorted=False,
+        )
+        encoded_packed, _ = self.gru(packed)
+        encoded, _ = pad_packed_sequence(
+            encoded_packed,
+            batch_first=True,
+            total_length=seq_len,
+        )
+        encoded = self.output_norm(encoded)
+        encoded = self.output_dropout(encoded)
+        return encoded * valid_scale
+
+    def _validate_init(self) -> None:
+        if self.input_dim <= 0:
+            raise ValueError("input_dim must be positive")
+        if self.hidden_dim <= 0:
+            raise ValueError("hidden_dim must be positive")
+        if self.num_layers <= 0:
+            raise ValueError("num_layers must be positive")
+        if self.encoder_type not in _VALID_MODALITY_ENCODERS:
+            raise ValueError(
+                "encoder_type must be one of "
+                f"{_VALID_MODALITY_ENCODERS}, got {self.encoder_type!r}"
+            )
+
+
 class MultiDAGCLBaseline(nn.Module):
     """Project-shaped MultiDAG+CL-style baseline for padded dialogue tensors."""
 
@@ -236,6 +344,8 @@ class MultiDAGCLBaseline(nn.Module):
         dropout: float = 0.1,
         active_modalities: tuple[str, ...] = ("text", "audio", "visual"),
         num_graph_layers: int = 2,
+        modality_encoder_type: str = "causal_gru",
+        modality_encoder_layers: int = 1,
     ) -> None:
         super().__init__()
         self.text_dim = int(text_dim)
@@ -247,17 +357,36 @@ class MultiDAGCLBaseline(nn.Module):
         self.window_past = int(window_past)
         self.active_modalities = tuple(active_modalities)
         self.num_graph_layers = int(num_graph_layers)
+        self.modality_encoder_type = str(modality_encoder_type)
+        self.modality_encoder_layers = int(modality_encoder_layers)
 
         self._validate_init()
 
-        self.modality_projections = nn.ModuleDict(
+        self.modality_encoders = nn.ModuleDict(
             {
-                "text": nn.Linear(self.text_dim, self.hidden_dim, bias=False),
-                "audio": nn.Linear(self.audio_dim, self.hidden_dim, bias=False),
-                "visual": nn.Linear(self.visual_dim, self.hidden_dim, bias=False),
+                "text": CausalModalityEncoder(
+                    input_dim=self.text_dim,
+                    hidden_dim=self.hidden_dim,
+                    dropout=float(dropout),
+                    encoder_type=self.modality_encoder_type,
+                    num_layers=self.modality_encoder_layers,
+                ),
+                "audio": CausalModalityEncoder(
+                    input_dim=self.audio_dim,
+                    hidden_dim=self.hidden_dim,
+                    dropout=float(dropout),
+                    encoder_type=self.modality_encoder_type,
+                    num_layers=self.modality_encoder_layers,
+                ),
+                "visual": CausalModalityEncoder(
+                    input_dim=self.visual_dim,
+                    hidden_dim=self.hidden_dim,
+                    dropout=float(dropout),
+                    encoder_type=self.modality_encoder_type,
+                    num_layers=self.modality_encoder_layers,
+                ),
             }
         )
-        self.input_dropout = nn.Dropout(float(dropout))
         self.fusion = nn.Sequential(
             nn.Linear(len(self.active_modalities) * self.hidden_dim, self.hidden_dim),
             nn.ReLU(),
@@ -311,8 +440,7 @@ class MultiDAGCLBaseline(nn.Module):
         }
         projected = {}
         for name, tensor in modality_inputs.items():
-            hidden = F.relu(self.modality_projections[name](tensor))
-            projected[name] = self.input_dropout(hidden) * valid_scale
+            projected[name] = self.modality_encoders[name](tensor, mask_bool)
 
         fused_input = torch.cat(
             [projected[name] for name in self.active_modalities],
@@ -412,6 +540,13 @@ class MultiDAGCLBaseline(nn.Module):
             raise ValueError("window_past must be non-negative")
         if self.num_graph_layers <= 0:
             raise ValueError("num_graph_layers must be positive")
+        if self.modality_encoder_layers <= 0:
+            raise ValueError("modality_encoder_layers must be positive")
+        if self.modality_encoder_type not in _VALID_MODALITY_ENCODERS:
+            raise ValueError(
+                "modality_encoder_type must be one of "
+                f"{_VALID_MODALITY_ENCODERS}, got {self.modality_encoder_type!r}"
+            )
         if not self.active_modalities:
             raise ValueError("active_modalities must not be empty")
         if len(set(self.active_modalities)) != len(self.active_modalities):

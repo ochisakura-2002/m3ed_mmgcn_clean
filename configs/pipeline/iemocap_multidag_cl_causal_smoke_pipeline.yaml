@@ -1,0 +1,45 @@
+project:
+  pipeline_name: IEMOCAP_multidag_cl_causal_smoke_pipeline
+
+dataset:
+  name: IEMOCAP
+
+model:
+  name: MultiDAGCL
+
+train:
+  enabled: true
+  train_config_path: configs/baselines/multidag_cl/iemocap_multidag_cl_causal_smoke.yaml
+
+evaluation:
+  enabled: true
+  splits:
+    - val
+    - test
+  checkpoint_name: best_model.pt
+  max_batches: 2
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+
+multi_run_training_curves:
+  enabled: false
+  config_path: configs/analysis/multi_run_training_curves.yaml
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: configs/analysis/multi_run_final_analysis.yaml
+
+run_control:
+  skip_train_use_run_id: ""
+
+execution:
+  dry_run: false
+
+missing_modalities:
+  enabled: false

@@ -124,6 +124,8 @@ def _build_model(config: Dict[str, Any]) -> MultiDAGCLBaseline:
         dropout=float(model_config.get("dropout", 0.1)),
         active_modalities=tuple(model_config.get("active_modalities", ["text", "audio", "visual"])),
         num_graph_layers=int(model_config.get("num_graph_layers", 1)),
+        modality_encoder_type=str(model_config.get("modality_encoder_type", "causal_gru")),
+        modality_encoder_layers=int(model_config.get("modality_encoder_layers", 1)),
     )
 
 

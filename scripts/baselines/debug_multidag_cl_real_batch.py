@@ -314,6 +314,8 @@ def build_model(config: Dict[str, Any], batch: Dict[str, Any]) -> MultiDAGCLBase
         dropout=float(model_config.get("dropout", 0.1)),
         active_modalities=_active_modalities(config),
         num_graph_layers=_num_graph_layers(config),
+        modality_encoder_type=str(model_config.get("modality_encoder_type", "causal_gru")),
+        modality_encoder_layers=int(model_config.get("modality_encoder_layers", 1)),
     )
 
 
@@ -472,6 +474,8 @@ def main() -> int:
         print(f"  window_past: {model.window_past}")
         print(f"  active_modalities: {model.active_modalities}")
         print(f"  num_graph_layers: {model.num_graph_layers}")
+        print(f"  modality_encoder_type: {model.modality_encoder_type}")
+        print(f"  modality_encoder_layers: {model.modality_encoder_layers}")
 
         result = run_forward_checks(model, batch)
         _print_result(result)

@@ -40,10 +40,16 @@ TRAIN_SCRIPT_REGISTRY = {
     "MMGCN": "scripts/train_mmgcn.py",
     "SimpleMLP": "scripts/train_simple_mlp.py",
     "GS_MCC": "scripts/train_gsmcc.py",
+    "MultiDAGCL": "scripts/baselines/train_multidag_cl.py",
 }
 
 
 EVALUATE_SCRIPT = "scripts/evaluate_checkpoint.py"
+EVALUATE_SCRIPT_REGISTRY = {
+    "MMGCN": EVALUATE_SCRIPT,
+    "SimpleMLP": EVALUATE_SCRIPT,
+    "MultiDAGCL": "scripts/baselines/evaluate_multidag_cl_checkpoint.py",
+}
 
 BUILD_ANALYSIS_TABLES_SCRIPT = "scripts/analyze/build_analysis_tables.py"
 PLOT_SINGLE_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_single_run_training_curves.py"
@@ -208,6 +214,20 @@ def choose_train_script(model_name: str) -> str:
         )
 
     script_relative_path = TRAIN_SCRIPT_REGISTRY[model_name]
+    ensure_project_script_exists(script_relative_path)
+
+    return script_relative_path
+
+
+def choose_evaluate_script(model_name: str) -> str:
+    if model_name not in EVALUATE_SCRIPT_REGISTRY:
+        supported = ", ".join(sorted(EVALUATE_SCRIPT_REGISTRY.keys()))
+        raise ValueError(
+            f"Unsupported model name for evaluation: {model_name}. "
+            f"Supported models: {supported}"
+        )
+
+    script_relative_path = EVALUATE_SCRIPT_REGISTRY[model_name]
     ensure_project_script_exists(script_relative_path)
 
     return script_relative_path
@@ -505,15 +525,30 @@ def run_evaluation_stage(
         checkpoint_name=checkpoint_name,
     )
 
+    evaluate_script = choose_evaluate_script(
+        str(safe_get(config, ["model", "name"], ""))
+    )
+    max_batches = safe_get(config, ["evaluation", "max_batches"], None)
+
     for split in splits:
+        script_args = [
+            "--checkpoint",
+            path_to_command_arg(checkpoint_path),
+            "--split",
+            str(split),
+        ]
+
+        if max_batches is not None:
+            if evaluate_script != EVALUATE_SCRIPT_REGISTRY["MultiDAGCL"]:
+                raise ValueError(
+                    "evaluation.max_batches is currently supported only for "
+                    "MultiDAGCL evaluation."
+                )
+            script_args.extend(["--max-batches", str(max_batches)])
+
         run_project_script(
-            script_relative_path=EVALUATE_SCRIPT,
-            script_args=[
-                "--checkpoint",
-                path_to_command_arg(checkpoint_path),
-                "--split",
-                str(split),
-            ],
+            script_relative_path=evaluate_script,
+            script_args=script_args,
             dry_run=dry_run,
         )
 

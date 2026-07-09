@@ -28,21 +28,21 @@ some modalities are zeroed during evaluation.
 
 Training configs:
 
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w0.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w1.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w3.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_past_all_causal.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_quick.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/context_w0_tav.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/context_w1_tav.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/context_w3_tav.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/context_w5_tav.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml`
+- `configs/baselines/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml`
 
 Pipeline configs:
 
-- `configs/pipeline/multidag_cl_iemocap_context_w0.yaml`
-- `configs/pipeline/multidag_cl_iemocap_context_w1.yaml`
-- `configs/pipeline/multidag_cl_iemocap_context_w3.yaml`
-- `configs/pipeline/multidag_cl_iemocap_context_w5.yaml`
-- `configs/pipeline/multidag_cl_iemocap_context_past_all.yaml`
-- `configs/pipeline/multidag_cl_iemocap_context_w5_quick.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml`
+- `configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml`
 
 Window semantics:
 
@@ -59,27 +59,27 @@ checkpoint under the listed `model.active_modalities`.
 
 Training configs:
 
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_text_only.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_audio_only.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_visual_only.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_text_audio.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_text_visual.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5_audio_visual.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_t.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_a.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_v.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_ta.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_tv.yaml`
+- `configs/baselines/multidag_cl/iemocap/formal/modality_w5_av.yaml`
 
 Pipeline configs:
 
-- `configs/pipeline/multidag_cl_iemocap_modality_text_only.yaml`
-- `configs/pipeline/multidag_cl_iemocap_modality_audio_only.yaml`
-- `configs/pipeline/multidag_cl_iemocap_modality_visual_only.yaml`
-- `configs/pipeline/multidag_cl_iemocap_modality_text_audio.yaml`
-- `configs/pipeline/multidag_cl_iemocap_modality_text_visual.yaml`
-- `configs/pipeline/multidag_cl_iemocap_modality_audio_visual.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_t.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_a.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_v.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_ta.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tv.yaml`
+- `configs/pipeline/multidag_cl/iemocap/formal/modality_w5_av.yaml`
 
 ## 5. Missing-modality evaluation
 
 Pipeline config:
 
-- `configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml`
+- `configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml`
 
 Before running it, fill:
 
@@ -124,17 +124,17 @@ performance.
 Run from the project root on the remote/data machine:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_context_w5.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
 ```
 
 Other context configs can be run by replacing the YAML path with:
 
 ```text
-configs/pipeline/multidag_cl_iemocap_context_w0.yaml
-configs/pipeline/multidag_cl_iemocap_context_w1.yaml
-configs/pipeline/multidag_cl_iemocap_context_w3.yaml
-configs/pipeline/multidag_cl_iemocap_context_past_all.yaml
-configs/pipeline/multidag_cl_iemocap_context_w5_quick.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml
+configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml
 ```
 
 The pipeline script uses the YAML field `execution.dry_run`; it does not expose
@@ -145,17 +145,17 @@ a separate `--dry-run` CLI option.
 Run one modality pipeline at a time from the project root:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_modality_text_only.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_t.yaml
 ```
 
 Then repeat for:
 
 ```text
-configs/pipeline/multidag_cl_iemocap_modality_audio_only.yaml
-configs/pipeline/multidag_cl_iemocap_modality_visual_only.yaml
-configs/pipeline/multidag_cl_iemocap_modality_text_audio.yaml
-configs/pipeline/multidag_cl_iemocap_modality_text_visual.yaml
-configs/pipeline/multidag_cl_iemocap_modality_audio_visual.yaml
+configs/pipeline/multidag_cl/iemocap/formal/modality_w5_a.yaml
+configs/pipeline/multidag_cl/iemocap/formal/modality_w5_v.yaml
+configs/pipeline/multidag_cl/iemocap/formal/modality_w5_ta.yaml
+configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tv.yaml
+configs/pipeline/multidag_cl/iemocap/formal/modality_w5_av.yaml
 ```
 
 These are from-scratch training runs. Do not compare them as if they were
@@ -166,19 +166,19 @@ test-time missing-modality settings from the same checkpoint.
 First run the full T+A+V causal w5 pipeline:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_context_w5.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
 ```
 
 After it finishes, copy its `run_id` into:
 
 ```text
-configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml
+configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
 ```
 
 Then run:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
 ```
 
 Expected missing-modality files:
@@ -208,8 +208,8 @@ outputs/runs/<run_id>/
 
 The multi-run comparison templates are:
 
-- `configs/analysis/multidag_cl_iemocap_context_compare.yaml`
-- `configs/analysis/multidag_cl_iemocap_modality_compare.yaml`
+- `configs/analysis/multidag_cl/iemocap/context_compare.yaml`
+- `configs/analysis/multidag_cl/iemocap/modality_compare.yaml`
 
 They intentionally keep `runs: []` until formal run IDs are available.
 

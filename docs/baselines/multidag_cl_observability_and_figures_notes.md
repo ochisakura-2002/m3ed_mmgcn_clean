@@ -118,18 +118,18 @@ Audited context-window pipeline YAMLs:
 
 | Pipeline YAML | Analysis tables | Training curves | Final analysis |
 |---|---:|---:|---:|
-| `configs/pipeline/multidag_cl_iemocap_context_w0.yaml` | yes | yes | yes |
-| `configs/pipeline/multidag_cl_iemocap_context_w1.yaml` | yes | yes | yes |
-| `configs/pipeline/multidag_cl_iemocap_context_w3.yaml` | yes | yes | yes |
-| `configs/pipeline/multidag_cl_iemocap_context_w5.yaml` | yes | yes | yes |
-| `configs/pipeline/multidag_cl_iemocap_context_past_all.yaml` | yes | yes | yes |
-| `configs/pipeline/multidag_cl_iemocap_context_w5_quick.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml` | yes | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml` | yes | yes | yes |
 
 Audited missing-modality pipeline:
 
 | Pipeline YAML | `missing_modalities.enabled` | `missing_modalities.make_figures` |
 |---|---:|---:|
-| `configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml` | yes | yes |
+| `configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml` | yes | yes |
 
 No YAML fix was required.
 
@@ -139,17 +139,17 @@ These commands generate figures if the required data/checkpoint files exist and
 the pipeline stages complete:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_context_w5.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
 ```
 
 The same is true for:
 
 ```text
-configs/pipeline/multidag_cl_iemocap_context_w0.yaml
-configs/pipeline/multidag_cl_iemocap_context_w1.yaml
-configs/pipeline/multidag_cl_iemocap_context_w3.yaml
-configs/pipeline/multidag_cl_iemocap_context_past_all.yaml
-configs/pipeline/multidag_cl_iemocap_context_w5_quick.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml
+configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml
+configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml
 ```
 
 Expected single-run figure outputs:
@@ -173,7 +173,7 @@ After filling `run_control.skip_train_use_run_id` with a trained causal_w5 TAV
 run id, this command generates missing-modality figures:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
 ```
 
 Expected missing-modality outputs:
@@ -190,7 +190,7 @@ outputs/runs/<run_id>/figures/missing_modalities/test_best_model/
 This command does not generate figures by itself:
 
 ```bash
-python scripts/baselines/train_multidag_cl.py --config configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5.yaml
+python scripts/baselines/train_multidag_cl.py --config configs/baselines/multidag_cl/iemocap/formal/context_w5_tav.yaml
 ```
 
 It generates training artifacts such as:
@@ -266,8 +266,8 @@ real IEMOCAP feature pkl in this local task.
 Figure generation was audited from code and YAML. It was not rerun locally here
 because that would require existing run outputs or the official feature pkl.
 
-`graph.context_mode: full` in old smoke YAMLs still maps to past-all causal
-semantics, not true offline bidirectional full context.
+Removed legacy `full` smoke YAMLs mapped to past-all causal semantics, not true
+offline bidirectional full context.
 
 Multi-run analysis YAMLs intentionally keep `runs: []` until formal run ids are
 available.
@@ -280,20 +280,20 @@ machine for formal training.
 A cautious next command is the quick pipeline:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_context_w5_quick.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml
 ```
 
 If the quick pass is already trusted, the next formal command can be:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_context_w5.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
 ```
 
 After the formal causal_w5 TAV run finishes, copy its run id into
-`configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml`, then run:
+`configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml`, then run:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl_iemocap_w5_missing_modalities.yaml
+python scripts/run_experiment_pipeline.py --config configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
 ```
 
 Required direct answers:

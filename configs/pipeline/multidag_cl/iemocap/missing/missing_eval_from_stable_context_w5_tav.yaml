@@ -1,0 +1,45 @@
+project:
+  pipeline_name: multidag_cl_iemocap_missing_eval_from_stable_context_w5_tav
+
+dataset:
+  name: IEMOCAP
+
+model:
+  name: MultiDAGCL
+
+execution:
+  dry_run: false
+
+run_control:
+  # Fill with the completed stable context_w5_tav run_id before running.
+  skip_train_use_run_id: ""
+
+train:
+  enabled: false
+  train_config_path: ""
+
+evaluation:
+  enabled: false
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: false
+
+missing_modalities:
+  enabled: true
+  checkpoint_name: best_model.pt
+  split: test
+  settings: ["TAV", "TA", "TV", "AV", "T", "A", "V", "missing_text", "missing_audio", "missing_visual"]
+  output_subdir: missing_modalities
+  make_figures: true
+  skip_if_not_full_train_modalities: true
+
+multi_run_training_curves:
+  enabled: false
+  config_path: ""
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: ""

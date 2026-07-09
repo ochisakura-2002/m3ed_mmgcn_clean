@@ -167,3 +167,27 @@ outputs/runs/<run_id>/figures/diagnostics/multidag_cl_training_diagnosis.csv
 
 Missing diagnostics do not fail the analysis. Missing required logs do fail the
 analysis with a list of absent files.
+
+## 8. Stable-candidate context comparison
+
+For the post-stabilization H-R context sweep, use the general multi-run
+training/final-analysis scripts with this template after all stable context run
+ids exist:
+
+```text
+configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
+```
+
+Expected display names:
+
+```text
+stable_w0
+stable_w3
+stable_w5
+stable_past_all_causal
+```
+
+This comparison is separate from `stabilization_20260709_compare.yaml`: the
+20260709 file explains why the conservative stable-candidate setting was
+chosen, while `stable_context_compare.yaml` compares context lengths under that
+chosen setting.

@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-This note records the standardization of formal MultiDAG+CL IEMOCAP YAMLs into
-canonical nested directories. It is a configuration and documentation task
-only: no model, dataset, MMGCN, or SDT code was changed.
+This note records the standardization and cleanup of formal MultiDAG+CL
+IEMOCAP YAMLs into canonical nested directories. It is a configuration and
+documentation task only: no model, dataset, MMGCN, or SDT code was changed.
 
 ## 2. Files added
 
@@ -26,6 +26,13 @@ Canonical formal/debug/missing pipeline YAMLs were added under:
 configs/pipeline/multidag_cl/iemocap/
 ```
 
+Canonical stabilization training and pipeline YAMLs were added under:
+
+```text
+configs/baselines/multidag_cl/iemocap/stabilize/
+configs/pipeline/multidag_cl/iemocap/stabilize/
+```
+
 Canonical multi-run analysis templates were added under:
 
 ```text
@@ -41,13 +48,20 @@ docs/baselines/multidag_cl_formal_yaml_standardization_notes.md
 
 ## 3. Files modified
 
-No existing model, dataset, training, evaluation, or analysis script was
-modified for this standardization. The old root-level YAMLs were kept in place
-as legacy/compat entries.
+No model, dataset, training, or evaluation script was modified for this
+standardization. One analyzer help example was updated to point at the
+canonical training YAML path:
 
-## 4. Files kept as legacy
+```text
+scripts/analyze/diagnose_iemocap_splits.py
+```
 
-Legacy training YAMLs kept under `configs/baselines/multidag_cl/`:
+The old duplicate root-level MultiDAG+CL YAMLs were removed after canonical
+replacements existed and active references were updated.
+
+## 4. Legacy YAMLs removed
+
+Legacy training YAMLs removed from `configs/baselines/multidag_cl/`:
 
 ```text
 iemocap_multidag_cl_causal_w0.yaml
@@ -66,7 +80,7 @@ iemocap_multidag_cl_causal_w5_text_visual.yaml
 iemocap_multidag_cl_causal_w5_audio_visual.yaml
 ```
 
-Legacy pipeline YAMLs kept under `configs/pipeline/`:
+Legacy pipeline YAMLs removed from `configs/pipeline/`:
 
 ```text
 multidag_cl_iemocap_context_w0.yaml
@@ -86,7 +100,7 @@ iemocap_multidag_cl_causal_smoke_pipeline.yaml
 iemocap_multidag_cl_full_smoke_pipeline.yaml
 ```
 
-Legacy analysis YAMLs kept under `configs/analysis/`:
+Legacy analysis YAMLs removed from `configs/analysis/`:
 
 ```text
 multidag_cl_iemocap_context_compare.yaml
@@ -122,7 +136,22 @@ configs/baselines/multidag_cl/iemocap/formal/modality_w5_tav.yaml
 All formal training YAMLs use `training.epochs: 30`,
 `training.select_best_by: val_weighted_f1`, and no train/validation batch caps.
 
-## 6. Formal pipeline YAMLs
+## 6. Stable-candidate training YAMLs
+
+Stable-candidate context training YAMLs:
+
+```text
+configs/baselines/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
+configs/baselines/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
+configs/baselines/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+configs/baselines/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+```
+
+These use causal GRU, one graph layer, dropout `0.2`, LR `0.0005`, weight
+decay `0.0001`, grad clipping `1.0`, 30 epochs, batch size 8, validation
+Weighted-F1 checkpoint selection, and no train/validation batch caps.
+
+## 7. Formal pipeline YAMLs
 
 Formal context-window pipeline YAMLs:
 
@@ -158,7 +187,21 @@ single_run_analysis.final_analysis: true
 
 All formal pipelines set `evaluation.max_batches: null`.
 
-## 7. Debug YAMLs
+## 8. Stable-candidate pipeline YAMLs
+
+Stable-candidate context pipeline YAMLs:
+
+```text
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+```
+
+All stable-candidate pipelines enable val/test evaluation, analysis tables,
+single-run training curves, and final analysis figures.
+
+## 9. Debug YAMLs
 
 Debug training YAMLs:
 
@@ -179,12 +222,13 @@ configs/pipeline/multidag_cl/iemocap/debug/context_past_all_causal_tav_smoke.yam
 Quick uses 5 epochs and no train/eval caps. Smoke uses 1 epoch, batch size 2,
 and tiny caps.
 
-## 8. Missing-modality pipeline
+## 10. Missing-modality pipelines
 
-Canonical missing-modality pipeline:
+Canonical missing-modality pipelines:
 
 ```text
 configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
+configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_stable_context_w5_tav.yaml
 ```
 
 Before running, fill:
@@ -197,7 +241,7 @@ run_control:
 Missing-modality evaluation is test-time zeroing. It reuses the completed TAV
 checkpoint and does not retrain a new model.
 
-## 9. Multi-run analysis templates
+## 11. Multi-run analysis templates
 
 Canonical templates:
 
@@ -205,6 +249,8 @@ Canonical templates:
 configs/analysis/multidag_cl/iemocap/context_compare.yaml
 configs/analysis/multidag_cl/iemocap/modality_compare.yaml
 configs/analysis/multidag_cl/iemocap/core_results_compare.yaml
+configs/analysis/multidag_cl/iemocap/stabilization_20260709_compare.yaml
+configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
 ```
 
 Each template keeps `runs: []` until real run ids exist.
@@ -212,7 +258,7 @@ Each template keeps `runs: []` until real run ids exist.
 `core_results_compare.yaml` currently compares normal evaluation metrics only.
 Missing-modality summary figures are generated by the missing-modality pipeline.
 
-## 10. Figure-generation guarantee
+## 12. Figure-generation guarantee
 
 Every canonical formal pipeline enables the full single-run analysis chain:
 
@@ -230,7 +276,7 @@ missing_modalities.enabled: true
 missing_modalities.make_figures: true
 ```
 
-## 11. Recommended run order
+## 13. Recommended run order
 
 Recommended order for July 8, 2026:
 
@@ -245,48 +291,65 @@ Recommended order for July 8, 2026:
 `context_w1_tav` can be filled later unless a denser context curve is needed
 immediately.
 
-## 12. Checks performed
+For the post-stabilization H-R route, compare the stable-candidate context set
+after the w5 stable candidate has been reviewed:
+
+```text
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+```
+
+## 14. Checks performed
 
 YAML validation passed for:
 
 ```text
 12 formal training YAMLs
 3 debug training YAMLs
+10 stabilize training YAMLs
 12 formal pipeline YAMLs
 3 debug pipeline YAMLs
-3 analysis templates
+10 stabilize pipeline YAMLs
+5 MultiDAG+CL analysis templates
 ```
 
 The validation checked that formal training YAMLs use the expected graph
 settings, active modalities, 30 epochs, validation Weighted-F1 checkpoint
-selection, and no train/validation caps. It also checked that formal pipelines
-reference existing training YAMLs, evaluate `val` and `test`, enable
+selection, and no train/validation caps. It also checked that formal/stabilize
+pipelines reference existing training YAMLs, evaluate `val` and `test`, enable
 analysis-table and single-run figure stages, and have no formal `full` naming
-or `context_mode: full` usage.
+or `context_mode: full` usage. Stable-candidate configs were checked for the
+expected encoder, graph depth, dropout, LR, weight decay, grad clipping, and
+context settings.
 
 Syntax check passed:
 
 ```bash
-PYTHONPYCACHEPREFIX=tmp/py_compile_cache python -m py_compile \
-  scripts/run_experiment_pipeline.py \
+python -m py_compile scripts/run_experiment_pipeline.py \
   scripts/baselines/train_multidag_cl.py \
   scripts/baselines/evaluate_multidag_cl_checkpoint.py \
-  scripts/experiments/evaluate_missing_modalities.py \
-  scripts/analyze/plot_missing_modality_summary.py
+  scripts/analyze/plot_multidag_cl_stabilization_compare.py \
+  scripts/dev/validate_config_tree.py
 ```
 
-The first Windows sandbox attempt hit the known `.pyc` atomic-rename permission
-issue. The same command passed after rerunning with the required sandbox
-escalation.
+The reusable config-tree check passed:
 
-## 13. Remaining limitations
+```bash
+python scripts/dev/validate_config_tree.py
+```
+
+## 15. Remaining limitations
 
 The new configs were not used to run formal training locally. Formal 30-epoch
 training should run on the remote V100/data machine after review, commit, and
 push.
 
-The repository still retains old root-level compatibility YAMLs. Use the new
-nested paths for formal run commands.
+The repository intentionally still keeps non-MultiDAG+CL root/generic YAMLs
+such as MMGCN training configs, generic analysis templates, and fake-data smoke
+configs. Use the nested MultiDAG+CL paths for current formal/stabilization run
+commands.
 
 Direct answers:
 

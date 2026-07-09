@@ -14,10 +14,10 @@ modality dropout.
 
 - `scripts/baselines/train_multidag_cl.py`
 - `scripts/baselines/evaluate_multidag_cl_checkpoint.py`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_causal_smoke.yaml`
-- `configs/baselines/multidag_cl/iemocap_multidag_cl_full_smoke.yaml`
-- `configs/pipeline/iemocap_multidag_cl_causal_smoke_pipeline.yaml`
-- `configs/pipeline/iemocap_multidag_cl_full_smoke_pipeline.yaml`
+- `configs/baselines/multidag_cl/iemocap/debug/context_w5_tav_smoke.yaml`
+- `configs/baselines/multidag_cl/iemocap/debug/context_past_all_causal_tav_smoke.yaml`
+- `configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_smoke.yaml`
+- `configs/pipeline/multidag_cl/iemocap/debug/context_past_all_causal_tav_smoke.yaml`
 - `docs/baselines/multidag_cl_pipeline_integration_notes.md`
 
 ## 3. Files modified
@@ -41,7 +41,7 @@ were not touched in this task.
 New command:
 
 ```bash
-python scripts/baselines/train_multidag_cl.py --config configs/baselines/multidag_cl/iemocap_multidag_cl_causal_smoke.yaml
+python scripts/baselines/train_multidag_cl.py --config configs/baselines/multidag_cl/iemocap/debug/context_w5_tav_smoke.yaml
 ```
 
 The entry supports IEMOCAP official MMGCN-style feature pkl batches and builds
@@ -134,8 +134,8 @@ the desired completed run IDs, matching the existing MMGCN workflow.
 
 Added:
 
-- `configs/pipeline/iemocap_multidag_cl_causal_smoke_pipeline.yaml`
-- `configs/pipeline/iemocap_multidag_cl_full_smoke_pipeline.yaml`
+- `configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_smoke.yaml`
+- `configs/pipeline/multidag_cl/iemocap/debug/context_past_all_causal_tav_smoke.yaml`
 
 `scripts/run_experiment_pipeline.py` now registers:
 
@@ -172,9 +172,9 @@ created in this task.
 `graph.context_mode: causal` uses directed past context with the configured
 `window_past`.
 
-`graph.context_mode: full` is currently implemented as `past_all_causal`: a
-large effective `window_past` lets each utterance read all previous utterances
-and itself, but it does not read future utterances. This is not true offline
+The removed legacy `full` smoke config was implemented as `past_all_causal`: a
+large effective `window_past` let each utterance read all previous utterances
+and itself, but it did not read future utterances. This was not true offline
 bidirectional/full context.
 
 Formal IEMOCAP runs should be executed on the remote/data machine after this
@@ -182,9 +182,9 @@ code is committed and pushed.
 
 ## 11. Recommendation for next task
 
-Next task: add the IEMOCAP causal/full/missing-modality experiment YAML matrix
-after running the causal and full smoke pipelines on a machine with the official
-IEMOCAP feature pkl.
+Next task from this historical note was superseded by the canonical nested
+IEMOCAP formal/debug/missing YAML matrix under
+`configs/pipeline/multidag_cl/iemocap/`.
 
 Required answers:
 
@@ -203,7 +203,7 @@ Required answers:
 7. Pipeline YAML can call the workflow: yes, through the two new pipeline YAMLs.
 8. `scripts/train_mmgcn.py` / `scripts/evaluate_checkpoint.py` were modified:
    no, not in this task.
-9. The full config is not true offline full; it is `past_all_causal`.
-10. The project can proceed to the IEMOCAP causal/full/missing-modality YAML
-    matrix task after smoke pipeline execution on a machine with the IEMOCAP
-    feature pkl.
+9. The removed legacy full smoke config was not true offline full; it was
+   `past_all_causal`.
+10. The project proceeded to the canonical IEMOCAP formal/debug/missing YAML
+    matrix under `configs/pipeline/multidag_cl/iemocap/`.

@@ -80,6 +80,16 @@ The set isolates one likely cause at a time:
   dropout `0.2`, one graph layer, causal GRU, LR `0.0005`, weight decay
   `0.0001`, and grad clipping `1.0`.
 
+The post-analysis stable-candidate context set extends that conservative
+combination across the H-R context windows:
+
+```text
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+```
+
 All stabilize runs keep `epochs: 30`, `batch_size: 8`,
 `select_best_by: val_weighted_f1`, and no train/validation/evaluation batch
 caps.
@@ -100,6 +110,21 @@ Recommended first three stabilization experiments:
 Then run `context_w5_tav_linear_encoder.yaml` if the first three do not clearly
 improve the trend, or if the diagnosis points specifically at causal GRU
 instability.
+
+After the `context_w5_tav_stable_candidate.yaml` result is accepted as the
+single-seed candidate baseline, run the stable-candidate context set in this
+order:
+
+1. `configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml`
+2. `configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml`
+3. `configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml`
+4. `configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_stable_context_w5_tav.yaml` after the stable w5 run id is available
+
+Use this template after those runs finish:
+
+```text
+configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
+```
 
 ## 7. How this supports the H-R causal dialogue route
 

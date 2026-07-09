@@ -58,7 +58,7 @@ They define one training run and one checkpoint family under
 
 | Field | Meaning | If increased or broadened | If decreased or narrowed | Common values | Current project reason |
 |---|---|---|---|---|---|
-| `graph.context_mode` | Semantic mode for dialogue context. | `past_all_causal` or legacy `full` broadens context to all previous utterances. | `causal` with a finite window restricts context to recent history. | `causal`, `past_all_causal`, legacy smoke `full`. | Formal context comparison uses causal windows plus a past-all causal condition. |
+| `graph.context_mode` | Semantic mode for dialogue context. | `past_all_causal` broadens context to all previous utterances. | `causal` with a finite window restricts context to recent history. | `causal`, `past_all_causal`. | Formal context comparison uses causal windows plus a past-all causal condition. |
 | `graph.window_past` | Number of previous valid utterances visible to each utterance in causal mode. | Larger windows use more history and cost more graph work. | Smaller windows focus on local context and are cheaper. | `0`, `1`, `3`, `5`, `null`. | The experiment matrix compares `0/1/3/5/null` to study causal history length. |
 
 Special cases:
@@ -69,8 +69,9 @@ Special cases:
 - `window_past: null` with `context_mode: past_all_causal` maps to an internal
   large effective window, so each utterance sees itself and all previous valid
   utterances.
-- `context_mode: full` is only a legacy smoke name in this integration. It maps
-  to past-all causal behavior, not true offline bidirectional full context.
+- Removed legacy smoke configs used `context_mode: full` as a past-all causal
+  alias. Canonical configs use `past_all_causal` directly and do not claim true
+  offline bidirectional full context.
 
 ### Training
 
@@ -122,7 +123,7 @@ logs, but it does not call the plotting scripts.
 | `single_run_analysis.final_analysis` | Calls `plot_single_run_final_analysis.py`. | Writes `figures/final_analysis/`. | `true`. | Uses `logs/evaluations/test_best_model/`. |
 | `missing_modalities.enabled` | Enables test-time missing-modality stage. | Calls the missing-modality evaluator when true. | `false` in context pipelines, `true` in missing-modality pipeline. | Keeps robustness evaluation separate from training. |
 | `multi_run_training_curves.enabled` | Enables cross-run training-curve plots. | Requires a multi-run analysis YAML with completed run ids. | `false` until formal runs exist. | Avoids hard-coding run ids before they are created. |
-| `multi_run_training_curves.config_path` | Config for cross-run training plots. | Used only when the stage is enabled. | `configs/analysis/multidag_cl_iemocap_context_compare.yaml`. | Template is ready but `runs` is empty. |
+| `multi_run_training_curves.config_path` | Config for cross-run training plots. | Used only when the stage is enabled. | `configs/analysis/multidag_cl/iemocap/context_compare.yaml`. | Template is ready but `runs` is empty. |
 | `multi_run_final_analysis.enabled` | Enables cross-run final-metric plots. | Requires completed run ids and test evaluations. | `false` until formal runs exist. | Keeps context and modality comparisons separate. |
 | `multi_run_final_analysis.config_path` | Config for cross-run final plots. | Used only when the stage is enabled. | Context or modality comparison YAML. | Lets report figures be built after formal runs finish. |
 

@@ -79,7 +79,7 @@ Run once per dataset/config:
 
 ```bash
 python scripts/analyze/diagnose_iemocap_splits.py \
-  --config configs/baselines/multidag_cl/iemocap_multidag_cl_causal_w5.yaml \
+  --config configs/baselines/multidag_cl/iemocap/formal/context_w5_tav.yaml \
   --output-dir outputs/paper_artifacts/split_diagnostics/iemocap
 ```
 

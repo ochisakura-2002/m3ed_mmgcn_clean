@@ -359,6 +359,27 @@ def current_learning_rate(optimizer: torch.optim.Optimizer) -> float:
     return float(optimizer.param_groups[0].get("lr", 0.0))
 
 
+def compute_gradient_norm(parameters: Iterable[torch.nn.Parameter]) -> float:
+    total_norm_sq = 0.0
+    for parameter in parameters:
+        if parameter.grad is None:
+            continue
+        parameter_norm = parameter.grad.detach().data.norm(2)
+        total_norm_sq += float(parameter_norm.item()) ** 2
+    return total_norm_sq ** 0.5
+
+
+def collect_metric_labels(
+    batch: Dict[str, Any],
+    logits: torch.Tensor,
+) -> Tuple[List[int], List[int]]:
+    predictions = torch.argmax(logits, dim=-1)
+    mask = valid_mask(batch)
+    y_true = [int(x) for x in batch["labels"][mask].detach().cpu().tolist()]
+    y_pred = [int(x) for x in predictions[mask].detach().cpu().tolist()]
+    return y_true, y_pred
+
+
 def collect_predictions(
     batch: Dict[str, Any],
     logits: torch.Tensor,
@@ -459,12 +480,17 @@ def train_one_epoch(
     device: torch.device,
     grad_clip: float,
     max_train_batches: Optional[int],
+    num_classes: int,
     epoch: int,
     total_epochs: int,
-) -> float:
+) -> Tuple[float, Dict[str, float], float]:
     model.train()
     total_loss = 0.0
     total_items = 0
+    total_grad_norm = 0.0
+    grad_steps = 0
+    all_true: List[int] = []
+    all_pred: List[int] = []
 
     progress = tqdm(
         limited_batches(loader, max_train_batches),
@@ -482,7 +508,12 @@ def train_one_epoch(
         loss.backward()
 
         if float(grad_clip) > 0.0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip))
+            grad_norm = float(
+                torch.nn.utils.clip_grad_norm_(model.parameters(), float(grad_clip)).item()
+            )
+        else:
+            grad_norm = compute_gradient_norm(model.parameters())
+
         optimizer.step()
 
         valid_items = valid_count(batch)
@@ -490,15 +521,23 @@ def train_one_epoch(
         batch_loss = float(loss.item())
         total_loss += batch_loss * float(item_count)
         total_items += item_count
+        total_grad_norm += float(grad_norm)
+        grad_steps += 1
+        y_true, y_pred = collect_metric_labels(batch=batch, logits=output["logits"])
+        all_true.extend(y_true)
+        all_pred.extend(y_pred)
         running_avg = total_loss / float(max(total_items, 1))
         progress.set_postfix(
             loss=f"{batch_loss:.4f}",
             avg=f"{running_avg:.4f}",
             lr=f"{current_learning_rate(optimizer):.3g}",
+            grad=f"{grad_norm:.3g}",
             valid=valid_items,
         )
 
-    return total_loss / float(max(total_items, 1))
+    train_metrics = compute_metrics(all_true, all_pred, int(num_classes))
+    avg_grad_norm = total_grad_norm / float(max(grad_steps, 1))
+    return total_loss / float(max(total_items, 1)), train_metrics, avg_grad_norm
 
 
 @torch.no_grad()
@@ -734,13 +773,14 @@ def main() -> None:
         print(f"Epoch {epoch}/{total_epochs}")
         print("=" * 100)
 
-        train_loss = train_one_epoch(
+        train_loss, train_metrics, grad_norm = train_one_epoch(
             model=model,
             loader=train_loader,
             optimizer=optimizer,
             device=device,
             grad_clip=grad_clip,
             max_train_batches=max_train_batches,
+            num_classes=num_classes,
             epoch=epoch,
             total_epochs=total_epochs,
         )
@@ -762,6 +802,12 @@ def main() -> None:
             "val_weighted_f1": float(val_metrics["weighted_f1"]),
             "val_macro_f1": float(val_metrics["macro_f1"]),
             "val_uar": float(val_metrics["uar"]),
+            "train_acc": float(train_metrics["acc"]),
+            "train_weighted_f1": float(train_metrics["weighted_f1"]),
+            "train_macro_f1": float(train_metrics["macro_f1"]),
+            "train_uar": float(train_metrics["uar"]),
+            "lr": float(current_learning_rate(optimizer)),
+            "grad_norm": float(grad_norm),
         }
         epoch_rows.append(row)
         save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
@@ -783,11 +829,15 @@ def main() -> None:
         print(
             f"Epoch {epoch:02d}/{total_epochs:02d} | "
             f"train_loss={train_loss:.6f} | "
+            f"train_acc={train_metrics['acc']:.6f} | "
+            f"train_weighted_f1={train_metrics['weighted_f1']:.6f} | "
             f"val_loss={val_loss:.6f} | "
             f"val_acc={val_metrics['acc']:.6f} | "
             f"val_weighted_f1={val_metrics['weighted_f1']:.6f} | "
             f"val_macro_f1={val_metrics['macro_f1']:.6f} | "
-            f"val_uar={val_metrics['uar']:.6f}",
+            f"val_uar={val_metrics['uar']:.6f} | "
+            f"lr={row['lr']:.6g} | "
+            f"grad_norm={grad_norm:.6f}",
             flush=True,
         )
 

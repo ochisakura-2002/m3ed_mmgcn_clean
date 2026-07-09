@@ -417,3 +417,43 @@ git status --short
 
 Do not manually recreate remote YAML files. Let Git restore the reviewed local
 tree.
+
+## 12. MMGCN config restoration
+
+After the cleanup, the MMGCN training and pipeline YAMLs were rechecked because
+they were reported as missing from the cleaned config tree. Git history and the
+current checkout were checked for the original MMGCN paths before making any
+config changes.
+
+Required MMGCN training YAMLs confirmed at their original paths:
+
+- `configs/train_mmgcn_iemocap_official.yaml`
+- `configs/train_mmgcn_m3ed.yaml`
+- `configs/train_mmgcn_m3ed_causal.yaml`
+
+Required MMGCN pipeline YAMLs confirmed at their original paths:
+
+- `configs/pipeline/mmgcn_pipeline.yaml`
+- `configs/pipeline/mmgcn_pipeline_analyze.yaml`
+- `configs/pipeline/mmgcn_pipeline_m3ed.yaml`
+
+Required MMGCN smoke and modality-ablation YAMLs confirmed at their original
+paths:
+
+- `configs/smoke/train_mmgcn_smoke.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_A.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_AV.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_T.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_TA.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_TAV.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_TV.yaml`
+- `configs/modality_ablation/m3ed/mmgcn/train_mmgcn_m3ed_V.yaml`
+- `configs/modality_ablation/train_mmgcn_iemocap_official_TA_smoke.yaml`
+
+No MMGCN YAML path migration was performed. The original root-level training
+paths and `configs/pipeline/mmgcn_pipeline*.yaml` paths were preserved so
+existing scripts and docs continue to resolve them.
+
+The MultiDAG+CL canonical config tree was not modified in this follow-up. No
+model code, dataset code, training logic, evaluation logic, or pipeline logic was
+modified.

@@ -1,0 +1,52 @@
+analysis_name: multidag_cl_iemocap_stabilization_20260709
+output_dir: outputs/analysis/multidag_cl/iemocap/stabilization_20260709
+
+baseline_run_id: 20260709_101233_iemocap_multidag_cl_causal_w5
+
+runs:
+  - run_id: 20260709_101233_iemocap_multidag_cl_causal_w5
+    display_name: original_w5
+    group: baseline
+    changed_factor: original
+  - run_id: 20260709_112443_iemocap_multidag_cl_context_w5_tav_lr5e4
+    display_name: lr5e4
+    group: stabilize
+    changed_factor: lower_lr
+  - run_id: 20260709_120010_iemocap_multidag_cl_context_w5_tav_lr3e4
+    display_name: lr3e4
+    group: stabilize
+    changed_factor: lower_lr
+  - run_id: 20260709_120524_iemocap_multidag_cl_context_w5_tav_stable_candidate
+    display_name: stable_candidate
+    group: stabilize
+    changed_factor: combined
+  - run_id: 20260709_121312_iemocap_multidag_cl_context_w5_tav_linear_encoder
+    display_name: linear_encoder
+    group: stabilize
+    changed_factor: encoder
+  - run_id: 20260709_122412_iemocap_multidag_cl_context_w5_tav_graph1
+    display_name: graph1
+    group: stabilize
+    changed_factor: graph_depth
+  - run_id: 20260709_122904_iemocap_multidag_cl_context_w5_tav_dropout02
+    display_name: dropout02
+    group: stabilize
+    changed_factor: dropout
+  - run_id: 20260709_123332_iemocap_multidag_cl_context_w5_tav_dropout01
+    display_name: dropout01
+    group: stabilize
+    changed_factor: dropout
+
+metrics:
+  primary: test_weighted_f1
+  secondary:
+    - test_acc
+    - test_macro_f1
+    - test_uar
+    - best_val_weighted_f1
+    - best_val_acc
+    - final_val_loss
+
+plots:
+  save_png: true
+  save_pdf: true

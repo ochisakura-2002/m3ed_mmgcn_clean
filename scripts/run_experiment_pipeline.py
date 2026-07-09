@@ -10,8 +10,9 @@ Pipeline stages:
     3. Build analysis master tables
     4. Single-run training curve analysis
     5. Single-run final analysis
-    6. Multi-run training curve analysis
-    7. Multi-run final analysis
+    6. Single-run paper artifact export
+    7. Multi-run training curve analysis
+    8. Multi-run final analysis
 
 Typical usage:
     python scripts/run_experiment_pipeline.py \
@@ -58,6 +59,7 @@ PLOT_MULTI_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_multi_run_training
 PLOT_MULTI_RUN_FINAL_ANALYSIS_SCRIPT = "scripts/analyze/plot_multi_run_final_analysis.py"
 EVALUATE_MISSING_MODALITIES_SCRIPT = "scripts/experiments/evaluate_missing_modalities.py"
 PLOT_MISSING_MODALITY_SUMMARY_SCRIPT = "scripts/analyze/plot_missing_modality_summary.py"
+EXPORT_PAPER_ARTIFACTS_SCRIPT = "scripts/analyze/export_paper_artifacts.py"
 
 
 def parse_args() -> argparse.Namespace:
@@ -313,9 +315,10 @@ def get_existing_run_info(run_id: str) -> Dict[str, str]:
 def pipeline_needs_current_run(config: Dict[str, Any]) -> bool:
     evaluation_enabled = get_bool(config, ["evaluation", "enabled"], False)
     single_enabled = get_bool(config, ["single_run_analysis", "enabled"], False)
+    paper_enabled = get_bool(config, ["paper_artifacts", "enabled"], False)
     missing_enabled = get_bool(config, ["missing_modalities", "enabled"], False)
 
-    return bool(evaluation_enabled or single_enabled or missing_enabled)
+    return bool(evaluation_enabled or single_enabled or paper_enabled or missing_enabled)
 
 
 def resolve_current_run_info(
@@ -396,6 +399,7 @@ def print_pipeline_header(
     print("Evaluation enabled:", get_bool(config, ["evaluation", "enabled"], False))
     print("Analysis tables enabled:", get_bool(config, ["analysis_tables", "enabled"], True))
     print("Single-run analysis enabled:", get_bool(config, ["single_run_analysis", "enabled"], False))
+    print("Paper artifacts enabled:", get_bool(config, ["paper_artifacts", "enabled"], False))
     print("Missing modalities enabled:", get_bool(config, ["missing_modalities", "enabled"], False))
     print("Multi-run training curves enabled:", get_bool(config, ["multi_run_training_curves", "enabled"], False))
     print("Multi-run final analysis enabled:", get_bool(config, ["multi_run_final_analysis", "enabled"], False))
@@ -430,6 +434,12 @@ def print_pipeline_summary(
         print("\nSingle-run outputs:")
         print("  Training curves:", run_dir / "figures" / "training_curves")
         print("  Final analysis:", run_dir / "figures" / "final_analysis")
+
+        if get_bool(config, ["paper_artifacts", "enabled"], False):
+            output_subdir = str(
+                safe_get(config, ["paper_artifacts", "output_subdir"], "paper_artifacts")
+            )
+            print("  Paper artifacts:", run_dir / output_subdir)
 
         if get_bool(config, ["missing_modalities", "enabled"], False):
             output_subdir = str(
@@ -615,6 +625,45 @@ def run_single_run_analysis_stage(
             ],
             dry_run=dry_run,
         )
+
+
+def run_paper_artifacts_stage(
+    config: Dict[str, Any],
+    run_info: Optional[Dict[str, str]],
+    dry_run: bool,
+) -> None:
+    paper_enabled = get_bool(config, ["paper_artifacts", "enabled"], False)
+
+    if not paper_enabled:
+        return
+
+    if run_info is None:
+        raise RuntimeError("paper_artifacts.enabled=true but no target run is available.")
+
+    run_dir = Path(run_info["run_dir"])
+    split = str(safe_get(config, ["paper_artifacts", "split"], "test"))
+    output_subdir = str(
+        safe_get(config, ["paper_artifacts", "output_subdir"], "paper_artifacts")
+    )
+    also_val = get_bool(config, ["paper_artifacts", "also_val"], False)
+
+    script_args = [
+        "--run-dir",
+        path_to_command_arg(run_dir),
+        "--split",
+        split,
+        "--output-subdir",
+        output_subdir,
+    ]
+
+    if also_val:
+        script_args.append("--also-val")
+
+    run_project_script(
+        script_relative_path=EXPORT_PAPER_ARTIFACTS_SCRIPT,
+        script_args=script_args,
+        dry_run=dry_run,
+    )
 
 
 
@@ -845,6 +894,12 @@ def main() -> None:
     )
 
     run_single_run_analysis_stage(
+        config=config,
+        run_info=run_info,
+        dry_run=dry_run,
+    )
+
+    run_paper_artifacts_stage(
         config=config,
         run_info=run_info,
         dry_run=dry_run,

@@ -24,6 +24,12 @@ single_run_analysis:
   training_curves: true
   final_analysis: true
 
+paper_artifacts:
+  enabled: false
+  split: test
+  also_val: true
+  output_subdir: paper_artifacts
+
 multi_run_training_curves:
   enabled: false
   config_path: configs/analysis/multidag_cl_iemocap_context_compare.yaml

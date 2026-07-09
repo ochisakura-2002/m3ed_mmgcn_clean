@@ -75,6 +75,15 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Run ID under outputs/runs/.",
     )
+    parser.add_argument(
+        "--eval-name",
+        type=str,
+        default=EVAL_NAME,
+        help=(
+            "Evaluation folder under logs/evaluations/. "
+            "Examples: test_best_model, val_best_model."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -101,6 +110,31 @@ def metric_display_name(metric: str) -> str:
     }
 
     return mapping.get(metric, metric.replace("_", " ").title())
+
+
+def split_display_name(split: str) -> str:
+    split = str(split).strip().lower()
+    mapping = {
+        "val": "Validation",
+        "valid": "Validation",
+        "validation": "Validation",
+        "test": "Test",
+        "train": "Train",
+    }
+    return mapping.get(split, split.title())
+
+
+def infer_split_from_eval_name(eval_name: str) -> str:
+    eval_name = str(eval_name).strip()
+    if "_" in eval_name:
+        return eval_name.split("_", 1)[0]
+    return eval_name
+
+
+def infer_split(metrics_row: pd.Series, eval_name: str) -> str:
+    if "split" in metrics_row.index and not pd.isna(metrics_row["split"]):
+        return str(metrics_row["split"])
+    return infer_split_from_eval_name(eval_name)
 
 
 def clean_label_name(name: str) -> str:
@@ -216,6 +250,7 @@ def plot_overall_metrics(
     metrics_row: pd.Series,
     output_dir: Path,
     run_id: str,
+    eval_name: str,
 ) -> None:
     """
     Plot all overall metrics in one figure.
@@ -247,8 +282,13 @@ def plot_overall_metrics(
     plt.figure(figsize=(8, 5))
     plt.bar(labels, values)
 
+    split_name = split_display_name(infer_split(metrics_row, eval_name))
+
     plt.ylabel("Metric Value")
-    plt.title(f"{run_id}: Overall Test Metrics")
+    plt.title(
+        f"{run_id}: Overall {split_name} Metrics "
+        "of Validation-Best Checkpoint"
+    )
 
     for index, value in enumerate(values):
         plt.text(
@@ -403,7 +443,8 @@ def main() -> None:
             f"Run directory not found: {run_dir}"
         )
 
-    eval_dir = run_dir / "logs" / "evaluations" / EVAL_NAME
+    eval_name = str(args.eval_name)
+    eval_dir = run_dir / "logs" / "evaluations" / eval_name
 
     if not eval_dir.exists():
         raise FileNotFoundError(
@@ -472,6 +513,7 @@ def main() -> None:
         metrics_row=overall_row,
         output_dir=output_dir,
         run_id=run_id,
+        eval_name=eval_name,
     )
 
     print("\nPlot per-class metrics:")

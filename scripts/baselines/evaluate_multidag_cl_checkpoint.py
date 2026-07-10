@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix, recall_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -29,6 +30,7 @@ IGNORE_INDEX = -100
 DEFAULT_PAST_ALL_WINDOW = 1_000_000
 METRIC_KEYS = ("acc", "uar", "macro_f1", "weighted_f1")
 FULL_MODALITIES = ("text", "audio", "visual")
+CLASS_WEIGHT_MODES = {"none", "balanced"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,6 +110,14 @@ def resolve_path(path_text: str) -> Path:
     return PROJECT_ROOT / path
 
 
+def dict_config(value: Any, name: str) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TypeError(f"training.{name} must be a mapping.")
+    return dict(value)
+
+
 def get_training_config(config: Dict[str, Any]) -> Dict[str, Any]:
     training = dict(config.get("training", {}))
     legacy_train = dict(config.get("train", {}))
@@ -117,6 +127,22 @@ def get_training_config(config: Dict[str, Any]) -> Dict[str, Any]:
         training["num_workers"] = legacy_train["num_workers"]
     training.setdefault("batch_size", 2)
     training.setdefault("num_workers", 0)
+
+    loss_config = dict_config(training.get("loss"), "loss")
+    loss_config["label_smoothing"] = float(loss_config.get("label_smoothing", 0.0))
+    class_weights = loss_config.get("class_weights", "none")
+    if class_weights is None:
+        class_weights = "none"
+    loss_config["class_weights"] = str(class_weights).strip().lower()
+    if loss_config["class_weights"] not in CLASS_WEIGHT_MODES:
+        supported = ", ".join(sorted(CLASS_WEIGHT_MODES))
+        raise ValueError(
+            f"training.loss.class_weights must be one of {supported}; "
+            f"got {loss_config['class_weights']!r}."
+        )
+    if loss_config["label_smoothing"] < 0.0 or loss_config["label_smoothing"] >= 1.0:
+        raise ValueError("training.loss.label_smoothing must be in [0.0, 1.0).")
+    training["loss"] = loss_config
     return training
 
 
@@ -276,6 +302,103 @@ def valid_mask(batch: Dict[str, Any]) -> torch.Tensor:
     return batch["attention_mask"].to(dtype=torch.bool) & (batch["labels"] != IGNORE_INDEX)
 
 
+def masked_cross_entropy(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    attention_mask: torch.Tensor,
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
+) -> torch.Tensor:
+    labels = labels.to(device=logits.device, dtype=torch.long)
+    valid = attention_mask.to(device=logits.device, dtype=torch.bool) & (labels >= 0)
+    if not valid.any():
+        return logits.sum() * 0.0
+    weight = None if class_weights is None else class_weights.to(device=logits.device)
+    return F.cross_entropy(
+        logits[valid],
+        labels[valid],
+        weight=weight,
+        label_smoothing=float(label_smoothing),
+    )
+
+
+def resolve_batch_loss(
+    output: Dict[str, Any],
+    batch: Dict[str, Any],
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
+) -> torch.Tensor:
+    use_script_loss = float(label_smoothing) > 0.0 or class_weights is not None
+    if use_script_loss:
+        return masked_cross_entropy(
+            logits=output["logits"],
+            labels=batch["labels"],
+            attention_mask=batch["attention_mask"],
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
+        )
+    loss = output["loss"]
+    if loss is None:
+        raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
+    return loss
+
+
+def compute_balanced_class_weights(
+    config: Dict[str, Any],
+    batch_size: int,
+    num_classes: int,
+    device: torch.device,
+) -> torch.Tensor:
+    train_loader = build_dataloader(config=config, split="train", batch_size=batch_size)
+    counts = torch.zeros(int(num_classes), dtype=torch.float64)
+    progress = tqdm(train_loader, desc="Compute class weights", ncols=100)
+    for batch in progress:
+        labels = batch["labels"]
+        mask = valid_mask(batch)
+        valid_labels = labels[mask].to(dtype=torch.long).view(-1)
+        valid_labels = valid_labels[
+            (valid_labels >= 0) & (valid_labels < int(num_classes))
+        ]
+        if valid_labels.numel() == 0:
+            continue
+        counts += torch.bincount(
+            valid_labels.cpu(),
+            minlength=int(num_classes),
+        ).to(dtype=torch.float64)
+
+    total = float(counts.sum().item())
+    if total <= 0.0:
+        weights = torch.ones(int(num_classes), dtype=torch.float64)
+    else:
+        safe_counts = counts.clamp_min(1.0)
+        weights = total / (float(num_classes) * safe_counts)
+        weights = torch.where(counts > 0.0, weights, torch.zeros_like(weights))
+        positive = weights[counts > 0.0]
+        if positive.numel() > 0:
+            weights = weights / positive.mean().clamp_min(1.0e-12)
+    return weights.to(device=device, dtype=torch.float32)
+
+
+def build_class_weights(
+    config: Dict[str, Any],
+    batch_size: int,
+    num_classes: int,
+    device: torch.device,
+) -> Optional[torch.Tensor]:
+    training = get_training_config(config)
+    mode = str(training.get("loss", {}).get("class_weights", "none"))
+    if mode == "none":
+        return None
+    if mode != "balanced":
+        raise ValueError(f"Unsupported class_weights mode: {mode!r}")
+    return compute_balanced_class_weights(
+        config=config,
+        batch_size=int(batch_size),
+        num_classes=int(num_classes),
+        device=device,
+    )
+
+
 def collect_predictions(
     batch: Dict[str, Any],
     logits: torch.Tensor,
@@ -382,6 +505,8 @@ def evaluate(
     split: str,
     max_batches: Optional[int],
     active_modalities: Optional[Tuple[str, ...]],
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
 ) -> Tuple[float, Dict[str, float], List[dict], List[int], List[int]]:
     model.eval()
     total_loss = 0.0
@@ -397,9 +522,12 @@ def evaluate(
         batch = move_tensor_batch(batch, device)
         batch = apply_test_time_modalities(batch, active_modalities)
         output = forward_batch(model, batch)
-        loss = output["loss"]
-        if loss is None:
-            raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
+        loss = resolve_batch_loss(
+            output=output,
+            batch=batch,
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
+        )
 
         item_count = max(int(valid_mask(batch).sum().item()), 1)
         total_loss += float(loss.item()) * float(item_count)
@@ -493,6 +621,8 @@ def main() -> None:
     label_list = get_label_list(config)
     num_classes = int(config["dataset"]["num_classes"])
     eval_active_modalities = normalize_modalities(args.active_modalities)
+    training = get_training_config(config)
+    label_smoothing = float(training.get("loss", {}).get("label_smoothing", 0.0))
 
     print("=" * 100)
     print("Evaluate MultiDAG+CL checkpoint")
@@ -504,11 +634,18 @@ def main() -> None:
     print("Split:", args.split)
     print("Batch size:", batch_size)
     print("Device:", device)
+    print("Loss config:", training.get("loss", {}))
     if eval_active_modalities is not None:
         print("Test-time active modalities:", list(eval_active_modalities))
     print("=" * 100)
 
     loader = build_dataloader(config=config, split=args.split, batch_size=batch_size)
+    class_weights = build_class_weights(
+        config=config,
+        batch_size=batch_size,
+        num_classes=num_classes,
+        device=device,
+    )
     model = build_model(config).to(device)
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
 
@@ -521,6 +658,8 @@ def main() -> None:
         split=args.split,
         max_batches=args.max_batches,
         active_modalities=eval_active_modalities,
+        label_smoothing=label_smoothing,
+        class_weights=class_weights,
     )
 
     run_dir = get_run_dir_from_checkpoint(checkpoint_path)

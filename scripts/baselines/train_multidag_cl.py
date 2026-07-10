@@ -10,12 +10,14 @@ import argparse
 import copy
 from datetime import datetime
 from itertools import islice
+import json
 from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 import torch
+import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix, recall_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -35,6 +37,16 @@ from utils.seed import set_seed  # noqa: E402
 IGNORE_INDEX = -100
 DEFAULT_PAST_ALL_WINDOW = 1_000_000
 METRIC_KEYS = ("acc", "uar", "macro_f1", "weighted_f1")
+MONITOR_MODES = {
+    "val_loss": "min",
+    "val_acc": "max",
+    "val_uar": "max",
+    "val_macro_f1": "max",
+    "val_weighted_f1": "max",
+}
+SCHEDULER_MONITORS = {"val_loss", "val_weighted_f1"}
+SCHEDULER_TYPES = {"none", "reduce_on_plateau", "cosine", "step"}
+CLASS_WEIGHT_MODES = {"none", "balanced"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,6 +81,30 @@ def optional_int(value: Any) -> Optional[int]:
     return int(value)
 
 
+def parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    return bool(value)
+
+
+def dict_config(value: Any, name: str) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str) and name == "scheduler":
+        return {"type": value}
+    if not isinstance(value, dict):
+        raise TypeError(f"training.{name} must be a mapping.")
+    return dict(value)
+
+
 def get_training_config(config: Dict[str, Any]) -> Dict[str, Any]:
     training = dict(config.get("training", {}))
     legacy_train = dict(config.get("train", {}))
@@ -91,7 +127,140 @@ def get_training_config(config: Dict[str, Any]) -> Dict[str, Any]:
     training.setdefault("grad_clip", 0.0)
     training.setdefault("select_best_by", "val_weighted_f1")
     training.setdefault("num_workers", 0)
+
+    loss_config = dict_config(training.get("loss"), "loss")
+    loss_config["label_smoothing"] = float(loss_config.get("label_smoothing", 0.0))
+    class_weights = loss_config.get("class_weights", "none")
+    if class_weights is None:
+        class_weights = "none"
+    loss_config["class_weights"] = str(class_weights).strip().lower()
+    training["loss"] = loss_config
+
+    optimizer_config = dict_config(training.get("optimizer"), "optimizer")
+    optimizer_config["type"] = str(optimizer_config.get("type", "adamw")).strip().lower()
+    betas = optimizer_config.get("betas", [0.9, 0.999])
+    if not isinstance(betas, (list, tuple)) or len(betas) != 2:
+        raise ValueError("training.optimizer.betas must be a two-value list.")
+    optimizer_config["betas"] = [float(betas[0]), float(betas[1])]
+    optimizer_config["eps"] = float(optimizer_config.get("eps", 1.0e-8))
+    training["optimizer"] = optimizer_config
+
+    scheduler_config = dict_config(training.get("scheduler"), "scheduler")
+    scheduler_type = str(scheduler_config.get("type", "none")).strip().lower()
+    scheduler_config["type"] = scheduler_type
+    if scheduler_type == "reduce_on_plateau":
+        scheduler_config.setdefault("monitor", "val_loss")
+        scheduler_config.setdefault(
+            "mode",
+            MONITOR_MODES.get(str(scheduler_config["monitor"]), "min"),
+        )
+        scheduler_config.setdefault("factor", 0.5)
+        scheduler_config.setdefault("patience", 3)
+        scheduler_config.setdefault("min_lr", 0.0)
+    elif scheduler_type == "cosine":
+        scheduler_config.setdefault("t_max", int(training["epochs"]))
+        scheduler_config.setdefault("eta_min", 0.0)
+    elif scheduler_type == "step":
+        scheduler_config.setdefault("step_size", 10)
+        scheduler_config.setdefault("gamma", 0.5)
+    training["scheduler"] = scheduler_config
+
+    early_config = dict_config(training.get("early_stopping"), "early_stopping")
+    early_config["enabled"] = parse_bool(early_config.get("enabled", False), False)
+    early_config.setdefault("monitor", "val_loss")
+    early_config.setdefault("mode", MONITOR_MODES.get(str(early_config["monitor"]), "min"))
+    early_config.setdefault("patience", 8)
+    early_config.setdefault("min_delta", 0.0)
+    training["early_stopping"] = early_config
     return training
+
+
+def validate_monitor(name: str, value: Any) -> None:
+    metric = str(value)
+    if metric not in MONITOR_MODES:
+        supported = ", ".join(sorted(MONITOR_MODES))
+        raise ValueError(f"{name} must be one of {supported}; got {metric!r}.")
+
+
+def validate_training_controls(training: Dict[str, Any]) -> None:
+    validate_monitor("training.select_best_by", training.get("select_best_by"))
+
+    loss_config = training.get("loss", {})
+    label_smoothing = float(loss_config.get("label_smoothing", 0.0))
+    if label_smoothing < 0.0 or label_smoothing >= 1.0:
+        raise ValueError("training.loss.label_smoothing must be in [0.0, 1.0).")
+    class_weights = str(loss_config.get("class_weights", "none"))
+    if class_weights not in CLASS_WEIGHT_MODES:
+        supported = ", ".join(sorted(CLASS_WEIGHT_MODES))
+        raise ValueError(
+            f"training.loss.class_weights must be one of {supported}; "
+            f"got {class_weights!r}."
+        )
+
+    optimizer_config = training.get("optimizer", {})
+    if str(optimizer_config.get("type", "adamw")) != "adamw":
+        raise ValueError("training.optimizer.type currently supports only adamw.")
+    betas = optimizer_config.get("betas", [0.9, 0.999])
+    if any(beta < 0.0 or beta >= 1.0 for beta in betas):
+        raise ValueError("training.optimizer.betas values must be in [0.0, 1.0).")
+    if float(optimizer_config.get("eps", 1.0e-8)) <= 0.0:
+        raise ValueError("training.optimizer.eps must be positive.")
+
+    scheduler_config = training.get("scheduler", {})
+    scheduler_type = str(scheduler_config.get("type", "none"))
+    if scheduler_type not in SCHEDULER_TYPES:
+        supported = ", ".join(sorted(SCHEDULER_TYPES))
+        raise ValueError(
+            f"training.scheduler.type must be one of {supported}; "
+            f"got {scheduler_type!r}."
+        )
+    if scheduler_type == "reduce_on_plateau":
+        monitor = str(scheduler_config.get("monitor", "val_loss"))
+        if monitor not in SCHEDULER_MONITORS:
+            supported = ", ".join(sorted(SCHEDULER_MONITORS))
+            raise ValueError(
+                f"training.scheduler.monitor must be one of {supported}; "
+                f"got {monitor!r}."
+            )
+        expected_mode = MONITOR_MODES[monitor]
+        mode = str(scheduler_config.get("mode", expected_mode))
+        if mode != expected_mode:
+            raise ValueError(
+                f"training.scheduler.mode must be {expected_mode!r} for "
+                f"monitor={monitor!r}; got {mode!r}."
+            )
+        if not (0.0 < float(scheduler_config.get("factor", 0.5)) < 1.0):
+            raise ValueError("training.scheduler.factor must be in (0.0, 1.0).")
+        if int(scheduler_config.get("patience", 3)) < 0:
+            raise ValueError("training.scheduler.patience must be non-negative.")
+        if float(scheduler_config.get("min_lr", 0.0)) < 0.0:
+            raise ValueError("training.scheduler.min_lr must be non-negative.")
+    elif scheduler_type == "cosine":
+        if int(scheduler_config.get("t_max", 0)) <= 0:
+            raise ValueError("training.scheduler.t_max must be positive.")
+        if float(scheduler_config.get("eta_min", 0.0)) < 0.0:
+            raise ValueError("training.scheduler.eta_min must be non-negative.")
+    elif scheduler_type == "step":
+        if int(scheduler_config.get("step_size", 0)) <= 0:
+            raise ValueError("training.scheduler.step_size must be positive.")
+        if float(scheduler_config.get("gamma", 0.5)) <= 0.0:
+            raise ValueError("training.scheduler.gamma must be positive.")
+
+    early_config = training.get("early_stopping", {})
+    if parse_bool(early_config.get("enabled", False), False):
+        monitor = str(early_config.get("monitor", "val_loss"))
+        validate_monitor("training.early_stopping.monitor", monitor)
+        expected_mode = MONITOR_MODES[monitor]
+        mode = str(early_config.get("mode", expected_mode))
+        if mode != expected_mode:
+            raise ValueError(
+                f"training.early_stopping.mode must be {expected_mode!r} for "
+                f"monitor={monitor!r}; got {mode!r}."
+            )
+        if int(early_config.get("patience", 8)) <= 0:
+            raise ValueError("training.early_stopping.patience must be positive.")
+        if float(early_config.get("min_delta", 0.0)) < 0.0:
+            raise ValueError("training.early_stopping.min_delta must be non-negative.")
 
 
 def validate_config(config: Dict[str, Any]) -> None:
@@ -113,11 +282,7 @@ def validate_config(config: Dict[str, Any]) -> None:
         raise ValueError(f"model.name must be MultiDAGCL, got {model_name!r}.")
 
     training = get_training_config(config)
-    if str(training.get("select_best_by")) != "val_weighted_f1":
-        raise ValueError(
-            "MultiDAG+CL checkpoint selection is restricted to "
-            "training.select_best_by=val_weighted_f1 for this integration."
-        )
+    validate_training_controls(training)
 
     dataset_classes = int(config["dataset"]["num_classes"])
     model_classes = int(config["model"].get("num_classes", dataset_classes))
@@ -162,7 +327,7 @@ def normalized_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     runtime = run_config.setdefault("runtime", {})
     runtime["train_script"] = "scripts/baselines/train_multidag_cl.py"
-    runtime["checkpoint_selection"] = "validation_weighted_f1"
+    runtime["checkpoint_selection"] = f"validation_{training['select_best_by']}"
     runtime["test_split_used_for_selection"] = False
     return run_config
 
@@ -326,6 +491,123 @@ def valid_count(batch: Dict[str, Any]) -> int:
     return int(valid_mask(batch).sum().item())
 
 
+def masked_cross_entropy(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    attention_mask: torch.Tensor,
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
+) -> torch.Tensor:
+    labels = labels.to(device=logits.device, dtype=torch.long)
+    valid = attention_mask.to(device=logits.device, dtype=torch.bool) & (labels >= 0)
+    if not valid.any():
+        return logits.sum() * 0.0
+    weight = None if class_weights is None else class_weights.to(device=logits.device)
+    return F.cross_entropy(
+        logits[valid],
+        labels[valid],
+        weight=weight,
+        label_smoothing=float(label_smoothing),
+    )
+
+
+def resolve_batch_loss(
+    output: Dict[str, Any],
+    batch: Dict[str, Any],
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
+) -> torch.Tensor:
+    use_script_loss = float(label_smoothing) > 0.0 or class_weights is not None
+    if use_script_loss:
+        return masked_cross_entropy(
+            logits=output["logits"],
+            labels=batch["labels"],
+            attention_mask=batch["attention_mask"],
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
+        )
+
+    loss = output["loss"]
+    if loss is None:
+        raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
+    return loss
+
+
+def compute_balanced_class_weights(
+    loader: DataLoader,
+    num_classes: int,
+    label_list: List[str],
+    logs_dir: Path,
+) -> torch.Tensor:
+    counts = torch.zeros(int(num_classes), dtype=torch.float64)
+    progress = tqdm(loader, desc="Compute class weights", ncols=100)
+    for batch in progress:
+        labels = batch["labels"]
+        mask = valid_mask(batch)
+        valid_labels = labels[mask].to(dtype=torch.long).view(-1)
+        valid_labels = valid_labels[
+            (valid_labels >= 0) & (valid_labels < int(num_classes))
+        ]
+        if valid_labels.numel() == 0:
+            continue
+        counts += torch.bincount(
+            valid_labels.cpu(),
+            minlength=int(num_classes),
+        ).to(dtype=torch.float64)
+
+    total = float(counts.sum().item())
+    if total <= 0.0:
+        weights = torch.ones(int(num_classes), dtype=torch.float64)
+    else:
+        safe_counts = counts.clamp_min(1.0)
+        weights = total / (float(num_classes) * safe_counts)
+        weights = torch.where(counts > 0.0, weights, torch.zeros_like(weights))
+        positive = weights[counts > 0.0]
+        if positive.numel() > 0:
+            weights = weights / positive.mean().clamp_min(1.0e-12)
+
+    info = {
+        "mode": "balanced",
+        "normalization": "positive-class mean approx 1.0",
+        "label_counts": {
+            str(label_list[index]): int(counts[index].item())
+            for index in range(int(num_classes))
+        },
+        "weights": {
+            str(label_list[index]): float(weights[index].item())
+            for index in range(int(num_classes))
+        },
+    }
+    ensure_dir(logs_dir)
+    with (logs_dir / "class_weights.json").open("w", encoding="utf-8") as file:
+        json.dump(info, file, indent=2)
+        file.write("\n")
+
+    return weights.to(dtype=torch.float32)
+
+
+def build_class_weights(
+    training: Dict[str, Any],
+    train_loader: DataLoader,
+    num_classes: int,
+    label_list: List[str],
+    logs_dir: Path,
+    device: torch.device,
+) -> Optional[torch.Tensor]:
+    mode = str(training.get("loss", {}).get("class_weights", "none"))
+    if mode == "none":
+        return None
+    if mode != "balanced":
+        raise ValueError(f"Unsupported class_weights mode: {mode!r}")
+    weights = compute_balanced_class_weights(
+        loader=train_loader,
+        num_classes=int(num_classes),
+        label_list=label_list,
+        logs_dir=logs_dir,
+    )
+    return weights.to(device=device)
+
+
 def limited_batches(
     loader: DataLoader,
     max_batches: Optional[int],
@@ -357,6 +639,136 @@ def current_learning_rate(optimizer: torch.optim.Optimizer) -> float:
     if not optimizer.param_groups:
         return 0.0
     return float(optimizer.param_groups[0].get("lr", 0.0))
+
+
+def get_monitor_value(
+    monitor_metric: str,
+    val_loss: float,
+    val_metrics: Dict[str, float],
+) -> float:
+    metric = str(monitor_metric)
+    if metric == "val_loss":
+        return float(val_loss)
+    if metric.startswith("val_"):
+        metric = metric[len("val_") :]
+    if metric not in val_metrics:
+        supported = ", ".join(sorted(MONITOR_MODES))
+        raise KeyError(
+            f"monitor_metric={monitor_metric!r} is not available. "
+            f"Supported monitors: {supported}."
+        )
+    return float(val_metrics[metric])
+
+
+def is_better_monitor_value(
+    monitor_metric: str,
+    current_value: float,
+    best_value: float,
+    min_delta: float = 0.0,
+) -> bool:
+    mode = MONITOR_MODES[str(monitor_metric)]
+    if mode == "min":
+        return current_value < best_value - float(min_delta)
+    return current_value > best_value + float(min_delta)
+
+
+def initial_best_value(monitor_metric: str) -> float:
+    if MONITOR_MODES[str(monitor_metric)] == "min":
+        return float("inf")
+    return -float("inf")
+
+
+def build_optimizer(
+    model: MultiDAGCLBaseline,
+    training: Dict[str, Any],
+) -> torch.optim.Optimizer:
+    optimizer_config = training.get("optimizer", {})
+    optimizer_type = str(optimizer_config.get("type", "adamw"))
+    if optimizer_type != "adamw":
+        raise ValueError(f"Unsupported optimizer type: {optimizer_type!r}")
+    betas = optimizer_config.get("betas", [0.9, 0.999])
+    return torch.optim.AdamW(
+        model.parameters(),
+        lr=float(training["lr"]),
+        weight_decay=float(training.get("weight_decay", 0.0)),
+        betas=(float(betas[0]), float(betas[1])),
+        eps=float(optimizer_config.get("eps", 1.0e-8)),
+    )
+
+
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    training: Dict[str, Any],
+) -> Optional[Any]:
+    scheduler_config = training.get("scheduler", {})
+    scheduler_type = str(scheduler_config.get("type", "none"))
+    if scheduler_type == "none":
+        return None
+    if scheduler_type == "reduce_on_plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode=str(scheduler_config.get("mode", "min")),
+            factor=float(scheduler_config.get("factor", 0.5)),
+            patience=int(scheduler_config.get("patience", 3)),
+            min_lr=float(scheduler_config.get("min_lr", 0.0)),
+        )
+    if scheduler_type == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=int(scheduler_config.get("t_max", training["epochs"])),
+            eta_min=float(scheduler_config.get("eta_min", 0.0)),
+        )
+    if scheduler_type == "step":
+        return torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=int(scheduler_config.get("step_size", 10)),
+            gamma=float(scheduler_config.get("gamma", 0.5)),
+        )
+    raise ValueError(f"Unsupported scheduler type: {scheduler_type!r}")
+
+
+def step_scheduler(
+    scheduler: Optional[Any],
+    training: Dict[str, Any],
+    val_loss: float,
+    val_metrics: Dict[str, float],
+) -> Optional[float]:
+    if scheduler is None:
+        return None
+    scheduler_config = training.get("scheduler", {})
+    scheduler_type = str(scheduler_config.get("type", "none"))
+    if scheduler_type == "reduce_on_plateau":
+        monitor = str(scheduler_config.get("monitor", "val_loss"))
+        monitor_value = get_monitor_value(
+            monitor_metric=monitor,
+            val_loss=val_loss,
+            val_metrics=val_metrics,
+        )
+        scheduler.step(monitor_value)
+        return float(monitor_value)
+    scheduler.step()
+    return None
+
+
+def update_early_stopping(
+    early_config: Dict[str, Any],
+    current_value: float,
+    best_value: Optional[float],
+    bad_epochs: int,
+) -> Tuple[float, int, bool]:
+    monitor = str(early_config.get("monitor", "val_loss"))
+    min_delta = float(early_config.get("min_delta", 0.0))
+    if best_value is None or is_better_monitor_value(
+        monitor_metric=monitor,
+        current_value=current_value,
+        best_value=float(best_value),
+        min_delta=min_delta,
+    ):
+        return float(current_value), 0, False
+
+    bad_epochs += 1
+    should_stop = bad_epochs >= int(early_config.get("patience", 8))
+    return float(best_value), int(bad_epochs), bool(should_stop)
 
 
 def compute_gradient_norm(parameters: Iterable[torch.nn.Parameter]) -> float:
@@ -481,6 +893,8 @@ def train_one_epoch(
     grad_clip: float,
     max_train_batches: Optional[int],
     num_classes: int,
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
     epoch: int,
     total_epochs: int,
 ) -> Tuple[float, Dict[str, float], float]:
@@ -502,9 +916,12 @@ def train_one_epoch(
         batch = move_tensor_batch(batch, device)
         optimizer.zero_grad(set_to_none=True)
         output = forward_batch(model, batch)
-        loss = output["loss"]
-        if loss is None:
-            raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
+        loss = resolve_batch_loss(
+            output=output,
+            batch=batch,
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
+        )
         loss.backward()
 
         if float(grad_clip) > 0.0:
@@ -549,6 +966,8 @@ def evaluate(
     label_list: List[str],
     split: str,
     max_eval_batches: Optional[int],
+    label_smoothing: float,
+    class_weights: Optional[torch.Tensor],
 ) -> Tuple[float, Dict[str, float], List[dict], List[int], List[int]]:
     model.eval()
     total_loss = 0.0
@@ -566,9 +985,12 @@ def evaluate(
     for batch_index, batch in enumerate(progress, start=1):
         batch = move_tensor_batch(batch, device)
         output = forward_batch(model, batch)
-        loss = output["loss"]
-        if loss is None:
-            raise RuntimeError("MultiDAGCLBaseline returned no loss for a labeled batch.")
+        loss = resolve_batch_loss(
+            output=output,
+            batch=batch,
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
+        )
 
         valid_items = valid_count(batch)
         item_count = max(valid_items, 1)
@@ -606,6 +1028,7 @@ def save_checkpoint(
     train_loss: float,
     val_loss: float,
     val_metrics: Dict[str, float],
+    monitor_metric: str,
     monitor_value: float,
 ) -> None:
     ensure_dir(path.parent)
@@ -619,9 +1042,9 @@ def save_checkpoint(
             "train_loss": float(train_loss),
             "val_loss": float(val_loss),
             "val_metrics": val_metrics,
-            "monitor_metric": "val_weighted_f1",
+            "monitor_metric": str(monitor_metric),
             "monitor_value": float(monitor_value),
-            "checkpoint_selection": "validation_weighted_f1",
+            "checkpoint_selection": f"validation_{monitor_metric}",
         },
         path,
     )
@@ -723,12 +1146,16 @@ def print_config_summary(config: Dict[str, Any], run_paths: Dict[str, Path]) -> 
     print("Epochs:", training["epochs"])
     print("Max train batches:", training.get("max_train_batches"))
     print("Max val batches:", training.get("max_val_batches"))
-    print("Monitor metric: val_weighted_f1")
+    print("Monitor metric:", training["select_best_by"])
+    print("Optimizer:", training["optimizer"])
+    print("Loss config:", training["loss"])
+    print("Scheduler:", training["scheduler"])
+    print("Early stopping:", training["early_stopping"])
     print("Graph context_mode:", graph.get("context_mode", "causal"))
     print("Graph effective_context_semantics:", graph.get("effective_context_semantics"))
     print("Graph effective_window_past:", graph.get("effective_window_past"))
     print("Active modalities:", config["model"].get("active_modalities", ["text", "audio", "visual"]))
-    print("Checkpoint selection: validation Weighted-F1 only; test split is not used.")
+    print("Checkpoint selection:", f"validation {training['select_best_by']}; test split is not used.")
     print("=" * 100)
 
 
@@ -751,21 +1178,31 @@ def main() -> None:
     val_loader = build_dataloader(config, split="val", shuffle=False)
     model = build_model(config).to(device)
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=float(training["lr"]),
-        weight_decay=float(training.get("weight_decay", 0.0)),
-    )
-
     label_list = get_label_list(config)
     num_classes = int(config["dataset"]["num_classes"])
+    optimizer = build_optimizer(model=model, training=training)
+    scheduler = build_scheduler(optimizer=optimizer, training=training)
+    label_smoothing = float(training.get("loss", {}).get("label_smoothing", 0.0))
+    class_weights = build_class_weights(
+        training=training,
+        train_loader=train_loader,
+        num_classes=num_classes,
+        label_list=label_list,
+        logs_dir=run_paths["logs_dir"],
+        device=device,
+    )
     max_train_batches = optional_int(training.get("max_train_batches"))
     max_val_batches = optional_int(training.get("max_val_batches"))
     grad_clip = float(training.get("grad_clip", 0.0))
     total_epochs = int(training["epochs"])
+    select_best_by = str(training.get("select_best_by", "val_weighted_f1"))
 
-    best_value = -float("inf")
+    best_value = initial_best_value(select_best_by)
     best_epoch = -1
+    early_config = training.get("early_stopping", {})
+    early_enabled = parse_bool(early_config.get("enabled", False), False)
+    early_best_value: Optional[float] = None
+    early_bad_epochs = 0
     epoch_rows: List[Dict[str, Any]] = []
 
     for epoch in range(1, total_epochs + 1):
@@ -781,6 +1218,8 @@ def main() -> None:
             grad_clip=grad_clip,
             max_train_batches=max_train_batches,
             num_classes=num_classes,
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
             epoch=epoch,
             total_epochs=total_epochs,
         )
@@ -792,6 +1231,8 @@ def main() -> None:
             label_list=label_list,
             split="val",
             max_eval_batches=max_val_batches,
+            label_smoothing=label_smoothing,
+            class_weights=class_weights,
         )
 
         row = {
@@ -807,12 +1248,22 @@ def main() -> None:
             "train_macro_f1": float(train_metrics["macro_f1"]),
             "train_uar": float(train_metrics["uar"]),
             "lr": float(current_learning_rate(optimizer)),
+            "lr_after_scheduler": float(current_learning_rate(optimizer)),
             "grad_norm": float(grad_norm),
+            "scheduler_type": str(training.get("scheduler", {}).get("type", "none")),
+            "scheduler_monitor": str(training.get("scheduler", {}).get("monitor", "")),
+            "scheduler_monitor_value": "",
+            "stopped_early": False,
+            "early_stop_epoch": "",
+            "early_stop_monitor": "",
+            "early_stop_monitor_value": "",
         }
-        epoch_rows.append(row)
-        save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
 
-        monitor_value = float(row["val_weighted_f1"])
+        monitor_value = get_monitor_value(
+            monitor_metric=select_best_by,
+            val_loss=val_loss,
+            val_metrics=val_metrics,
+        )
         last_checkpoint = run_paths["checkpoints_dir"] / "last_model.pt"
         save_checkpoint(
             path=last_checkpoint,
@@ -823,6 +1274,7 @@ def main() -> None:
             train_loss=train_loss,
             val_loss=val_loss,
             val_metrics=val_metrics,
+            monitor_metric=select_best_by,
             monitor_value=monitor_value,
         )
 
@@ -841,7 +1293,11 @@ def main() -> None:
             flush=True,
         )
 
-        if monitor_value > best_value:
+        if is_better_monitor_value(
+            monitor_metric=select_best_by,
+            current_value=monitor_value,
+            best_value=best_value,
+        ):
             best_value = monitor_value
             best_epoch = epoch
             best_checkpoint = run_paths["checkpoints_dir"] / "best_model.pt"
@@ -854,6 +1310,7 @@ def main() -> None:
                 train_loss=train_loss,
                 val_loss=val_loss,
                 val_metrics=val_metrics,
+                monitor_metric=select_best_by,
                 monitor_value=monitor_value,
             )
             save_best_validation_outputs(
@@ -867,9 +1324,52 @@ def main() -> None:
                 label_list=label_list,
             )
             print(
-                f"[BEST] epoch={best_epoch:02d} val_weighted_f1={best_value:.6f}",
+                f"[BEST] epoch={best_epoch:02d} {select_best_by}={best_value:.6f}",
                 flush=True,
             )
+
+        scheduler_monitor_value = step_scheduler(
+            scheduler=scheduler,
+            training=training,
+            val_loss=val_loss,
+            val_metrics=val_metrics,
+        )
+        row["scheduler_monitor_value"] = (
+            "" if scheduler_monitor_value is None else float(scheduler_monitor_value)
+        )
+        row["lr_after_scheduler"] = float(current_learning_rate(optimizer))
+
+        should_stop = False
+        if early_enabled:
+            early_monitor = str(early_config.get("monitor", "val_loss"))
+            early_value = get_monitor_value(
+                monitor_metric=early_monitor,
+                val_loss=val_loss,
+                val_metrics=val_metrics,
+            )
+            early_best_value, early_bad_epochs, should_stop = update_early_stopping(
+                early_config=early_config,
+                current_value=early_value,
+                best_value=early_best_value,
+                bad_epochs=early_bad_epochs,
+            )
+            row["early_stop_monitor_value"] = float(early_value)
+            if should_stop:
+                row["stopped_early"] = True
+                row["early_stop_epoch"] = int(epoch)
+                row["early_stop_monitor"] = early_monitor
+                print(
+                    "[EARLY STOP] "
+                    f"epoch={epoch:02d} monitor={early_monitor} "
+                    f"value={early_value:.6f} patience={early_config['patience']}",
+                    flush=True,
+                )
+
+        epoch_rows.append(row)
+        save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
+
+        if should_stop:
+            break
 
     save_epoch_metrics(run_paths["logs_dir"], epoch_rows)
 
@@ -881,7 +1381,7 @@ def main() -> None:
     print("=" * 100)
     print("Run dir:", run_paths["run_dir"])
     print("Best epoch:", best_epoch)
-    print("Best val_weighted_f1:", best_value)
+    print(f"Best {select_best_by}:", best_value)
     print("Epoch metrics:", run_paths["logs_dir"] / "epoch_metrics.csv")
     print("Best checkpoint:", run_paths["checkpoints_dir"] / "best_model.pt")
     print("Last checkpoint:", run_paths["checkpoints_dir"] / "last_model.pt")

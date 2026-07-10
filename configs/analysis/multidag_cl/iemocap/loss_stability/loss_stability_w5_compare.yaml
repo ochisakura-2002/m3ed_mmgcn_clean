@@ -1,0 +1,22 @@
+analysis_name: multidag_cl_iemocap_loss_stability_w5
+output_dir: outputs/analysis/multidag_cl/iemocap/loss_stability_w5
+
+runs:
+  - run_id: ""
+    display_name: stable_candidate
+    config_path: configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+  - run_id: ""
+    display_name: lr3e4_plateau_valloss
+    config_path: configs/pipeline/multidag_cl/iemocap/loss_stability/context_w5_tav_stable_lr3e4_plateau_valloss.yaml
+  - run_id: ""
+    display_name: lr5e4_plateau_valloss
+    config_path: configs/pipeline/multidag_cl/iemocap/loss_stability/context_w5_tav_stable_lr5e4_plateau_valloss.yaml
+  - run_id: ""
+    display_name: lr3e4_cosine
+    config_path: configs/pipeline/multidag_cl/iemocap/loss_stability/context_w5_tav_stable_lr3e4_cosine.yaml
+  - run_id: ""
+    display_name: lr3e4_label_smoothing005
+    config_path: configs/pipeline/multidag_cl/iemocap/loss_stability/context_w5_tav_stable_lr3e4_label_smoothing005.yaml
+  - run_id: ""
+    display_name: lr3e4_earlystop_valloss
+    config_path: configs/pipeline/multidag_cl/iemocap/loss_stability/context_w5_tav_stable_lr3e4_earlystop_valloss.yaml

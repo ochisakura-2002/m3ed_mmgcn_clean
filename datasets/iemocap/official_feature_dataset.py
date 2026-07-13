@@ -43,6 +43,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from .split_utils import (
+    IEMOCAP_TEST_SESSION_ID,
+    IEMOCAP_TRAIN_SESSION_IDS,
+    parse_iemocap_session_id,
+)
+
 
 IGNORE_INDEX = -100
 
@@ -60,6 +66,16 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
 
         test:
             official testVid.
+
+    Validation strategies:
+        official_prefix:
+            Preserve the official prefix sampler behavior.
+        random:
+            Seeded dialogue-level split of official trainVid.
+        session_holdout:
+            Hold out all trainVid dialogues from ``val_session_id`` and keep
+            the other three training sessions for train. Official testVid is
+            never changed.
 
     By default, the split follows the official loader's valid sampler logic:
         val   = trainVid[:int(valid_ratio * len(trainVid))]
@@ -86,6 +102,7 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         split: str,
         valid_ratio: float = 0.1,
         val_split_strategy: str = "official_prefix",
+        val_session_id: Optional[str] = None,
         seed: int = 42,
     ) -> None:
         super().__init__()
@@ -94,6 +111,9 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         self.split = self._normalize_split(split)
         self.valid_ratio = float(valid_ratio)
         self.val_split_strategy = str(val_split_strategy)
+        self.val_session_id = (
+            None if val_session_id is None else str(val_session_id).strip()
+        )
         self.seed = int(seed)
 
         if not self.feature_pkl_path.exists():
@@ -161,6 +181,53 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         train_vid = list(self.trainVid)
         test_vid = list(self.testVid)
 
+        strategy = self.val_split_strategy.lower()
+
+        if strategy == "session_holdout":
+            if self.val_session_id not in IEMOCAP_TRAIN_SESSION_IDS:
+                supported = ", ".join(IEMOCAP_TRAIN_SESSION_IDS)
+                raise ValueError(
+                    "val_session_id must be one of "
+                    f"{supported} for session_holdout; got {self.val_session_id!r}."
+                )
+
+            train_ids: List[str] = []
+            val_ids: List[str] = []
+            for dialogue_id in train_vid:
+                session_id = parse_iemocap_session_id(dialogue_id)
+                if session_id not in IEMOCAP_TRAIN_SESSION_IDS:
+                    raise ValueError(
+                        "Official trainVid contains a dialogue outside Ses01-Ses04: "
+                        f"{dialogue_id!r} ({session_id})."
+                    )
+                if session_id == self.val_session_id:
+                    val_ids.append(dialogue_id)
+                else:
+                    train_ids.append(dialogue_id)
+
+            for dialogue_id in test_vid:
+                session_id = parse_iemocap_session_id(dialogue_id)
+                if session_id != IEMOCAP_TEST_SESSION_ID:
+                    raise ValueError(
+                        "Official testVid contains a dialogue outside Ses05: "
+                        f"{dialogue_id!r} ({session_id})."
+                    )
+
+            overlap = set(train_vid) & set(test_vid)
+            if overlap:
+                raise ValueError(
+                    "Official trainVid/testVid dialogue IDs overlap: "
+                    f"{sorted(overlap)}"
+                )
+
+            if not train_ids or not val_ids:
+                raise ValueError(
+                    "session_holdout produced an empty train or validation split: "
+                    f"val_session_id={self.val_session_id!r}, "
+                    f"train={len(train_ids)}, val={len(val_ids)}."
+                )
+            return train_ids, val_ids, test_vid
+
         if self.valid_ratio <= 0:
             return train_vid, [], test_vid
 
@@ -171,8 +238,6 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
 
         if n_val <= 0:
             return train_vid, [], test_vid
-
-        strategy = self.val_split_strategy.lower()
 
         if strategy == "official_prefix":
             # Matches official get_train_valid_sampler:
@@ -190,7 +255,8 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         else:
             raise ValueError(
                 "Unsupported val_split_strategy: "
-                f"{self.val_split_strategy}. Use official_prefix or random."
+                f"{self.val_split_strategy}. Use official_prefix, random, or "
+                "session_holdout."
             )
 
         return train_ids, val_ids, test_vid
@@ -407,6 +473,7 @@ def build_iemocap_dataloader(
     batch_size: int,
     valid_ratio: float = 0.1,
     val_split_strategy: str = "official_prefix",
+    val_session_id: Optional[str] = None,
     seed: int = 42,
     shuffle: Optional[bool] = None,
     num_workers: int = 0,
@@ -417,6 +484,7 @@ def build_iemocap_dataloader(
         split=split,
         valid_ratio=valid_ratio,
         val_split_strategy=val_split_strategy,
+        val_session_id=val_session_id,
         seed=seed,
     )
 

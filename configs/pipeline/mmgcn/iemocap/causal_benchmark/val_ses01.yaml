@@ -1,0 +1,48 @@
+causal: true
+causal_contract_version: '1.0'
+
+project:
+  pipeline_name: mmgcn_iemocap_causal_benchmark_val_ses01
+
+dataset:
+  name: IEMOCAP
+  feature_pkl_path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+
+model:
+  name: MMGCN
+
+execution:
+  dry_run: false
+
+run_control:
+  skip_train_use_run_id: ''
+
+train:
+  enabled: true
+  train_config_path: configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses01.yaml
+
+evaluation:
+  enabled: true
+  checkpoint_name: best_model.pt
+  splits: [val, test]
+  max_batches: null
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+
+missing_modalities:
+  enabled: false
+
+multi_run_training_curves:
+  enabled: false
+  config_path: ''
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: ''

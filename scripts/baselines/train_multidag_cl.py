@@ -31,6 +31,7 @@ from datasets.iemocap import build_iemocap_dataloader  # noqa: E402
 from models.baselines.multidag_cl import MultiDAGCLBaseline  # noqa: E402
 from utils.io import ensure_dir, load_yaml, sanitize_name, save_yaml  # noqa: E402
 from utils.metrics import compute_classification_metrics  # noqa: E402
+from utils.run_metadata import write_run_metadata  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
 
 
@@ -395,6 +396,11 @@ def prepare_run_environment(config: Dict[str, Any], config_path: Path) -> Dict[s
         ensure_dir(path)
 
     save_yaml(config, logs_dir / "experiment_config.yaml")
+    write_run_metadata(
+        config=config,
+        output_path=run_dir / "run_metadata.json",
+        project_root=PROJECT_ROOT,
+    )
 
     latest_path = run_root.parent / "latest_run.txt"
     ensure_dir(latest_path.parent)
@@ -431,6 +437,7 @@ def build_dataloader(
         batch_size=effective_batch_size,
         valid_ratio=float(dataset_config.get("valid_ratio", 0.1)),
         val_split_strategy=str(dataset_config.get("val_split_strategy", "official_prefix")),
+        val_session_id=dataset_config.get("val_session_id"),
         seed=int(config.get("system", {}).get("seed", 42)),
         shuffle=bool(shuffle),
         num_workers=int(training.get("num_workers", 0)),

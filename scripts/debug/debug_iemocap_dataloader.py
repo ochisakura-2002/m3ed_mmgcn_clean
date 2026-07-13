@@ -16,6 +16,7 @@ from pathlib import Path
 import argparse
 import sys
 from collections import Counter
+from typing import Optional
 
 import torch
 
@@ -59,8 +60,15 @@ def parse_args() -> argparse.Namespace:
         "--val-split-strategy",
         type=str,
         default="official_prefix",
-        choices=["official_prefix", "random"],
+        choices=["official_prefix", "random", "session_holdout"],
         help="How to split official trainVid into train/val.",
+    )
+    parser.add_argument(
+        "--val-session-id",
+        type=str,
+        default=None,
+        choices=["Ses01", "Ses02", "Ses03", "Ses04"],
+        help="Whole validation session required by session_holdout.",
     )
     parser.add_argument(
         "--seed",
@@ -78,12 +86,14 @@ def describe_dataset(
     valid_ratio: float,
     val_split_strategy: str,
     seed: int,
+    val_session_id: Optional[str] = None,
 ) -> IEMOCAPOfficialFeatureDataset:
     dataset = IEMOCAPOfficialFeatureDataset(
         feature_pkl_path=feature_pkl_path,
         split=split,
         valid_ratio=valid_ratio,
         val_split_strategy=val_split_strategy,
+        val_session_id=val_session_id,
         seed=seed,
     )
 
@@ -129,6 +139,7 @@ def describe_batch(
     valid_ratio: float,
     val_split_strategy: str,
     seed: int,
+    val_session_id: Optional[str] = None,
 ) -> None:
     loader = build_iemocap_dataloader(
         feature_pkl_path=feature_pkl_path,
@@ -136,6 +147,7 @@ def describe_batch(
         batch_size=batch_size,
         valid_ratio=valid_ratio,
         val_split_strategy=val_split_strategy,
+        val_session_id=val_session_id,
         seed=seed,
         shuffle=False,
         num_workers=0,
@@ -177,6 +189,7 @@ def main() -> None:
     print("Batch size:", args.batch_size)
     print("Valid ratio:", args.valid_ratio)
     print("Val split strategy:", args.val_split_strategy)
+    print("Val session ID:", args.val_session_id)
     print("Seed:", args.seed)
 
     for split in ["train", "val", "test"]:
@@ -185,6 +198,7 @@ def main() -> None:
             split=split,
             valid_ratio=args.valid_ratio,
             val_split_strategy=args.val_split_strategy,
+            val_session_id=args.val_session_id,
             seed=args.seed,
         )
         describe_batch(
@@ -193,6 +207,7 @@ def main() -> None:
             batch_size=args.batch_size,
             valid_ratio=args.valid_ratio,
             val_split_strategy=args.val_split_strategy,
+            val_session_id=args.val_session_id,
             seed=args.seed,
         )
 

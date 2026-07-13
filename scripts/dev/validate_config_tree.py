@@ -1,4 +1,4 @@
-"""Validate canonical MultiDAG+CL config wiring without running experiments."""
+"""Validate canonical baseline config wiring without running experiments."""
 
 from __future__ import annotations
 
@@ -16,6 +16,27 @@ LOSS_STABILITY_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "i
 FORMAL_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "formal"
 STABILIZE_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "stabilize"
 LOSS_STABILITY_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "loss_stability"
+
+CAUSAL_BENCHMARK_TRAIN_DIRS = {
+    "mmgcn": ROOT / "configs" / "baselines" / "mmgcn" / "iemocap" / "causal_benchmark",
+    "multidag_cl": ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "causal_benchmark",
+}
+CAUSAL_BENCHMARK_PIPELINE_DIRS = {
+    "mmgcn": ROOT / "configs" / "pipeline" / "mmgcn" / "iemocap" / "causal_benchmark",
+    "multidag_cl": ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "causal_benchmark",
+}
+
+CAUSAL_CONTRACT_VERSION = "1.0"
+IEMOCAP_FEATURE_PKL = "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+IEMOCAP_FEATURE_SHA256 = "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+IEMOCAP_LABELS = ["Happy", "Sad", "Neutral", "Angry", "Excited", "Frustrated"]
+CAUSAL_BENCHMARK_VARIANTS = {
+    "official_prefix.yaml": ("official_prefix", None),
+    "val_ses01.yaml": ("session_holdout", "Ses01"),
+    "val_ses02.yaml": ("session_holdout", "Ses02"),
+    "val_ses03.yaml": ("session_holdout", "Ses03"),
+    "val_ses04.yaml": ("session_holdout", "Ses04"),
+}
 
 STABLE_CONTEXTS = {
     "context_w0_tav_stable_candidate.yaml": ("causal", 0),
@@ -291,8 +312,233 @@ def validate_training(path: Path, errors: list[str]) -> None:
         validate_loss_stability_training(path, config, errors)
 
 
+def values_for_key(value: Any, wanted_key: str) -> list[Any]:
+    matches: list[Any] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key) == wanted_key:
+                matches.append(child)
+            matches.extend(values_for_key(child, wanted_key))
+    elif isinstance(value, list):
+        for child in value:
+            matches.extend(values_for_key(child, wanted_key))
+    return matches
+
+
+def test_monitor_paths(value: Any, prefix: str = "") -> list[str]:
+    paths: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            child_path = f"{prefix}.{key_text}" if prefix else key_text
+            is_selection_field = (
+                "monitor" in key_text.lower()
+                or key_text in {"select_best_by", "checkpoint_selection_metric"}
+            )
+            if is_selection_field and "test" in str(child).lower():
+                paths.append(child_path)
+            paths.extend(test_monitor_paths(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            paths.extend(test_monitor_paths(child, f"{prefix}[{index}]"))
+    return paths
+
+
+def validate_causal_benchmark_common(
+    path: Path,
+    config: dict[str, Any],
+    errors: list[str],
+) -> None:
+    dataset = config.get("dataset", {})
+    require(config.get("causal") is True, f"{rel(path)} must set top-level causal: true", errors)
+    require(
+        str(config.get("causal_contract_version", "")) == CAUSAL_CONTRACT_VERSION,
+        f"{rel(path)} causal_contract_version mismatch",
+        errors,
+    )
+    require(dataset.get("name") == "IEMOCAP", f"{rel(path)} must use IEMOCAP", errors)
+    require(
+        dataset.get("feature_pkl_path") == IEMOCAP_FEATURE_PKL,
+        f"{rel(path)} feature_pkl_path mismatch",
+        errors,
+    )
+    require(
+        dataset.get("feature_sha256") == IEMOCAP_FEATURE_SHA256,
+        f"{rel(path)} feature_sha256 mismatch",
+        errors,
+    )
+    require(
+        not any(bool(value) for value in values_for_key(config, "bidirectional")),
+        f"{rel(path)} enables a bidirectional encoder",
+        errors,
+    )
+    monitor_paths = test_monitor_paths(config)
+    require(
+        not monitor_paths,
+        f"{rel(path)} uses test for monitoring/selection at {monitor_paths}",
+        errors,
+    )
+
+
+def validate_causal_benchmark_training(
+    path: Path,
+    family: str,
+    errors: list[str],
+) -> None:
+    config = load_yaml(path)
+    validate_causal_benchmark_common(path, config, errors)
+
+    expected_split = CAUSAL_BENCHMARK_VARIANTS.get(path.name)
+    if expected_split is None:
+        errors.append(f"unexpected causal benchmark training YAML {rel(path)}")
+        return
+
+    expected_strategy, expected_session = expected_split
+    dataset = config.get("dataset", {})
+    model = config.get("model", {})
+    graph = config.get("graph", {})
+
+    require(dataset.get("label_list") == IEMOCAP_LABELS, f"{rel(path)} label mapping mismatch", errors)
+    require(dataset.get("num_classes") == 6, f"{rel(path)} num_classes mismatch", errors)
+    require(
+        dataset.get("val_split_strategy") == expected_strategy,
+        f"{rel(path)} val_split_strategy does not match filename",
+        errors,
+    )
+    require(
+        dataset.get("val_session_id") == expected_session,
+        f"{rel(path)} val_session_id does not match filename",
+        errors,
+    )
+
+    if family == "mmgcn":
+        train = config.get("train", {})
+        logging = config.get("logging", {})
+        require(model.get("name") == "MMGCN", f"{rel(path)} model.name mismatch", errors)
+        require(model.get("hidden_dim") == 256, f"{rel(path)} MMGCN hidden_dim mismatch", errors)
+        require(model.get("dropout") == 0.5, f"{rel(path)} MMGCN dropout mismatch", errors)
+        require(graph.get("context_mode") == "causal", f"{rel(path)} MMGCN graph is not causal", errors)
+        require(graph.get("window_future") == 0, f"{rel(path)} MMGCN window_future must be 0", errors)
+        require(graph.get("num_layers") == 4, f"{rel(path)} MMGCN num_layers mismatch", errors)
+        require(train.get("max_epochs") == 30, f"{rel(path)} MMGCN epochs mismatch", errors)
+        require(train.get("batch_size") == 8, f"{rel(path)} MMGCN batch_size mismatch", errors)
+        require(train.get("learning_rate") == 0.0001, f"{rel(path)} MMGCN learning_rate mismatch", errors)
+        require(train.get("weight_decay") == 0.0001, f"{rel(path)} MMGCN weight_decay mismatch", errors)
+        require(train.get("max_train_batches") is None, f"{rel(path)} caps max_train_batches", errors)
+        require(train.get("max_val_batches") is None, f"{rel(path)} caps max_val_batches", errors)
+        require(
+            logging.get("monitor_metric") == "val_weighted_f1",
+            f"{rel(path)} MMGCN must select by val_weighted_f1",
+            errors,
+        )
+        return
+
+    if family == "multidag_cl":
+        training = config.get("training", {})
+        validate_training_control_fields(path, training, errors)
+        require(model.get("name") == "MultiDAGCL", f"{rel(path)} model.name mismatch", errors)
+        require(model.get("hidden_dim") == 128, f"{rel(path)} MultiDAG hidden_dim mismatch", errors)
+        require(model.get("dropout") == 0.2, f"{rel(path)} MultiDAG dropout mismatch", errors)
+        require(model.get("num_graph_layers") == 1, f"{rel(path)} MultiDAG graph layer mismatch", errors)
+        require(
+            model.get("active_modalities") == ["text", "audio", "visual"],
+            f"{rel(path)} MultiDAG modalities mismatch",
+            errors,
+        )
+        require(
+            model.get("modality_encoder_type") == "causal_gru",
+            f"{rel(path)} MultiDAG encoder must be causal_gru",
+            errors,
+        )
+        require(graph.get("context_mode") == "causal", f"{rel(path)} MultiDAG graph is not causal", errors)
+        require(graph.get("window_past") == 5, f"{rel(path)} MultiDAG window_past mismatch", errors)
+        require(training.get("epochs") == 30, f"{rel(path)} MultiDAG epochs mismatch", errors)
+        require(training.get("batch_size") == 8, f"{rel(path)} MultiDAG batch_size mismatch", errors)
+        require(training.get("lr") == 0.0005, f"{rel(path)} MultiDAG lr mismatch", errors)
+        require(training.get("weight_decay") == 0.0001, f"{rel(path)} MultiDAG weight_decay mismatch", errors)
+        require(training.get("grad_clip") == 1.0, f"{rel(path)} MultiDAG grad_clip mismatch", errors)
+        require(
+            training.get("select_best_by") == "val_weighted_f1",
+            f"{rel(path)} MultiDAG must select by val_weighted_f1",
+            errors,
+        )
+        require(training.get("max_train_batches") is None, f"{rel(path)} caps max_train_batches", errors)
+        require(training.get("max_val_batches") is None, f"{rel(path)} caps max_val_batches", errors)
+        return
+
+    errors.append(f"unsupported causal benchmark family {family}")
+
+
+def validate_causal_benchmark_pipeline(
+    path: Path,
+    family: str,
+    errors: list[str],
+) -> None:
+    config = load_yaml(path)
+    validate_causal_benchmark_common(path, config, errors)
+
+    expected_train_path = CAUSAL_BENCHMARK_TRAIN_DIRS[family] / path.name
+    train_path_text = str(config.get("train", {}).get("train_config_path", ""))
+    train_path = ROOT / train_path_text
+    expected_model_name = "MMGCN" if family == "mmgcn" else "MultiDAGCL"
+    evaluation = config.get("evaluation", {})
+
+    require(path.name in CAUSAL_BENCHMARK_VARIANTS, f"unexpected causal benchmark pipeline YAML {rel(path)}", errors)
+    require(config.get("model", {}).get("name") == expected_model_name, f"{rel(path)} model.name mismatch", errors)
+    require(bool_at(config, "train", "enabled"), f"{rel(path)} must enable training", errors)
+    require(train_path.exists(), f"{rel(path)} points to missing {train_path_text}", errors)
+    require(
+        train_path.resolve() == expected_train_path.resolve(),
+        f"{rel(path)} must point to matching causal benchmark training YAML",
+        errors,
+    )
+    require(bool_at(config, "evaluation", "enabled"), f"{rel(path)} must enable evaluation", errors)
+    require(evaluation.get("checkpoint_name") == "best_model.pt", f"{rel(path)} checkpoint mismatch", errors)
+    require(evaluation.get("splits") == ["val", "test"], f"{rel(path)} must evaluate full val/test", errors)
+    require(evaluation.get("max_batches") is None, f"{rel(path)} caps evaluation batches", errors)
+    require(bool_at(config, "analysis_tables", "enabled"), f"{rel(path)} must enable analysis_tables", errors)
+    require(bool_at(config, "single_run_analysis", "enabled"), f"{rel(path)} must enable single_run_analysis", errors)
+    require(
+        bool_at(config, "single_run_analysis", "training_curves"),
+        f"{rel(path)} must enable training_curves",
+        errors,
+    )
+    require(
+        bool_at(config, "single_run_analysis", "final_analysis"),
+        f"{rel(path)} must enable final_analysis",
+        errors,
+    )
+
+
+def validate_causal_benchmark_tree(errors: list[str]) -> None:
+    expected_names = set(CAUSAL_BENCHMARK_VARIANTS)
+    for family, train_dir in CAUSAL_BENCHMARK_TRAIN_DIRS.items():
+        pipeline_dir = CAUSAL_BENCHMARK_PIPELINE_DIRS[family]
+        train_names = {path.name for path in train_dir.glob("*.yaml")}
+        pipeline_names = {path.name for path in pipeline_dir.glob("*.yaml")}
+        require(
+            train_names == expected_names,
+            f"{rel(train_dir)} must contain exactly {sorted(expected_names)}; got {sorted(train_names)}",
+            errors,
+        )
+        require(
+            pipeline_names == expected_names,
+            f"{rel(pipeline_dir)} must contain exactly {sorted(expected_names)}; got {sorted(pipeline_names)}",
+            errors,
+        )
+        for name in sorted(expected_names):
+            train_path = train_dir / name
+            pipeline_path = pipeline_dir / name
+            if train_path.exists():
+                validate_causal_benchmark_training(train_path, family, errors)
+            if pipeline_path.exists():
+                validate_causal_benchmark_pipeline(pipeline_path, family, errors)
+
+
 def main() -> None:
     errors: list[str] = []
+
+    validate_causal_benchmark_tree(errors)
 
     for path in sorted(FORMAL_PIPELINE_DIR.glob("*.yaml")):
         validate_pipeline(path, errors)

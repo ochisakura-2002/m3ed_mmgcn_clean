@@ -198,6 +198,7 @@ def _build_iemocap_loader(
         val_split_strategy=str(
             dataset_config.get("val_split_strategy", "official_prefix")
         ),
+        val_session_id=dataset_config.get("val_session_id"),
         seed=int(config.get("system", {}).get("seed", 42)),
         shuffle=False,
         num_workers=_num_workers(config),

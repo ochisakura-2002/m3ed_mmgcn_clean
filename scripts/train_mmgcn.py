@@ -52,6 +52,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 from utils.seed import set_seed  # noqa: E402
+from utils.run_metadata import write_run_metadata  # noqa: E402
 from datasets.m3ed.torch_dataset import M3EDTorchDataset  # noqa: E402
 from datasets.collators.m3ed_collate import m3ed_dialogue_collate_fn  # noqa: E402
 from datasets.iemocap import build_iemocap_dataloader  # noqa: E402
@@ -183,6 +184,11 @@ def prepare_run_environment(config: dict, config_path: Path) -> Dict[str, Path]:
         config=config,
         output_path=logs_dir / "experiment_config.yaml",
     )
+    write_run_metadata(
+        config=config,
+        output_path=run_dir / "run_metadata.json",
+        project_root=PROJECT_ROOT,
+    )
 
     latest_run_path = output_dir / "latest_run.txt"
     latest_run_path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,6 +284,7 @@ def build_dataloader(
             val_split_strategy=str(
                 dataset_config.get("val_split_strategy", "official_prefix")
             ),
+            val_session_id=dataset_config.get("val_session_id"),
             seed=int(config.get("system", {}).get("seed", 42)),
             shuffle=bool(shuffle),
             num_workers=int(train_config.get("num_workers", 0)),

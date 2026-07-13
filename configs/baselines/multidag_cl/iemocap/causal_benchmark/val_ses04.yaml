@@ -1,0 +1,55 @@
+causal: true
+causal_contract_version: '1.0'
+
+project:
+  name: m3ed_mmgcn_clean
+  experiment_name: multidag_cl_iemocap_causal_benchmark_val_ses04
+
+system:
+  seed: 42
+  device: cuda
+  output_dir: outputs
+
+dataset:
+  name: IEMOCAP
+  feature_pkl_path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+  num_classes: 6
+  valid_ratio: 0.1
+  val_split_strategy: session_holdout
+  val_session_id: Ses04
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  sample_unit: dialogue
+
+model:
+  name: MultiDAGCL
+  text_feature_dim: 100
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  hidden_dim: 128
+  num_classes: 6
+  num_speakers: 2
+  dropout: 0.2
+  active_modalities: [text, audio, visual]
+  num_graph_layers: 1
+  modality_encoder_type: causal_gru
+  modality_encoder_layers: 1
+
+graph:
+  context_mode: causal
+  window_past: 5
+
+training:
+  epochs: 30
+  batch_size: 8
+  lr: 0.0005
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  select_best_by: val_weighted_f1
+  max_train_batches: null
+  max_val_batches: null
+  num_workers: 0
+
+output:
+  run_root: outputs/runs
+  experiment_name: multidag_cl_iemocap_causal_benchmark_val_ses04

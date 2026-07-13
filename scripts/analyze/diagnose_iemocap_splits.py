@@ -38,6 +38,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from datasets.iemocap import parse_iemocap_session_id  # noqa: E402
+
 SPLITS = ["train", "val", "test"]
 SPLIT_PAIRS = [("train", "val"), ("train", "test"), ("val", "test")]
 DEFAULT_LABEL_LIST = [
@@ -48,7 +50,6 @@ DEFAULT_LABEL_LIST = [
     "Excited",
     "Frustrated",
 ]
-SESSION_ID_PATTERN = re.compile(r"^(Ses0[1-5])[FM]_", re.IGNORECASE)
 UTTERANCE_SPEAKER_PATTERN = re.compile(r"_([FM])\d{3}$", re.IGNORECASE)
 DIALOGUE_MANIFEST_COLUMNS = [
     "split",
@@ -101,11 +102,11 @@ def decode_text(value: Any) -> str:
 
 
 def parse_session_id(dialogue_id: Any) -> Optional[str]:
-    """Parse a conventional IEMOCAP session prefix without guessing."""
-    match = SESSION_ID_PATTERN.match(decode_text(dialogue_id))
-    if match is None:
+    """Use the shared strict parser while retaining diagnostic issue reporting."""
+    try:
+        return parse_iemocap_session_id(decode_text(dialogue_id))
+    except ValueError:
         return None
-    return f"Ses{match.group(1)[3:]}"
 
 
 def parse_speaker_ids(
@@ -207,6 +208,7 @@ def build_dataset(config: Dict[str, Any], split: str) -> IEMOCAPOfficialFeatureD
         val_split_strategy=str(
             dataset_config.get("val_split_strategy", "official_prefix")
         ),
+        val_session_id=dataset_config.get("val_session_id"),
         seed=int(safe_get(config, ["system", "seed"], 42)),
     )
 
@@ -948,12 +950,14 @@ def save_protocol_report(
     dataset_config = config["dataset"]
     valid_ratio = float(dataset_config.get("valid_ratio", 0.1))
     strategy = str(dataset_config.get("val_split_strategy", "official_prefix"))
+    normalized_strategy = strategy.lower()
+    val_session_id = dataset_config.get("val_session_id")
     configured_seed = int(safe_get(config, ["system", "seed"], 42))
     official_train_count = int(parse_summaries["train"]["official_train_dialogues"])
     official_test_count = int(parse_summaries["train"]["official_test_dialogues"])
     n_val = int(valid_ratio * official_train_count)
 
-    if strategy.lower() == "official_prefix":
+    if normalized_strategy == "official_prefix":
         construction = (
             f"`n_val = int({valid_ratio} * {official_train_count}) = {n_val}`; "
             "`val_ids = trainVid[:n_val]`; `train_ids = trainVid[n_val:]`."
@@ -967,7 +971,7 @@ def save_protocol_report(
             "ordered dialogue-prefix split in the pickle's `trainVid` order; not random and "
             "not session-aware"
         )
-    else:
+    elif normalized_strategy == "random":
         construction = (
             f"`n_val = int({valid_ratio} * {official_train_count}) = {n_val}`; copy "
             "`trainVid`, shuffle it with `random.Random(seed)`, use the first `n_val` IDs "
@@ -977,6 +981,41 @@ def save_protocol_report(
             f"The validation shuffle uses configured seed `{configured_seed}`."
         )
         strategy_description = "seeded random dialogue split; not session-aware"
+    elif normalized_strategy == "session_holdout":
+        construction = (
+            f"Iterate through the official `trainVid` in its stored order; assign every "
+            f"dialogue whose strict session ID is `{val_session_id}` to validation and "
+            "assign the remaining Ses01-Ses04 dialogues to training. Keep the official "
+            "`testVid` unchanged as the Ses05 test split."
+        )
+        seed_effect = (
+            f"The configured seed is `{configured_seed}`, but `session_holdout` performs "
+            "no shuffle and does not use the seed for split membership."
+        )
+        strategy_description = (
+            f"whole-session validation holdout `{val_session_id}` from the official "
+            "training pool; order-preserving and session-aware"
+        )
+    else:
+        raise ValueError(f"Unsupported val_split_strategy: {strategy}")
+
+    val_session_text = (
+        f", `val_session_id={val_session_id}`"
+        if normalized_strategy == "session_holdout"
+        else ""
+    )
+    if normalized_strategy == "session_holdout":
+        protocol_recommendations = f"""1. Keep this declared `{val_session_id}` holdout and its results as a fully documented baseline; do not choose a different validation session after seeing test performance.
+2. Keep the official Ses05 `testVid` untouched and use validation metrics only for checkpoint selection.
+3. For broader coverage, predeclare rotations across Ses01-Ses04 and aggregate checkpoint-selected results across folds or seeds.
+4. Report Weighted-F1, Macro-F1, UAR, and Accuracy together with session/speaker manifests, per-class metrics, and the number of dialogue-level batches.
+5. Never use test metrics to select epochs, checkpoints, validation sessions, or seeds."""
+    else:
+        protocol_recommendations = """1. Keep the current split and its results as a fully documented baseline; do not reinterpret or silently replace it.
+2. For the next protocol, keep the official test session untouched and construct validation by whole session (or whole speaker pair) from the official training pool, so checkpoint selection and final testing both measure transfer to unseen identities.
+3. Rotate the validation session across the available training sessions and aggregate checkpoint-selected test results across the predeclared folds or seeds. Do not choose the validation fold after seeing test performance.
+4. Report Weighted-F1, Macro-F1, UAR, and Accuracy together with session/speaker manifests, per-class metrics, and the number of dialogue-level batches.
+5. Never use test metrics to select epochs, checkpoints, validation sessions, or seeds."""
 
     coverage_rows: List[Dict[str, Any]] = []
     for split in SPLITS:
@@ -1024,7 +1063,7 @@ def save_protocol_report(
 - Feature pickle: `{dataset_config['feature_pkl_path']}`
 - Official ID source: the `trainVid` and `testVid` objects stored as the last two entries of the 9-item feature pickle; IDs are not inferred from filenames.
 - Official dialogue counts read from the pickle: train pool={official_train_count}, test={official_test_count}.
-- `valid_ratio={valid_ratio}`, `val_split_strategy={strategy}`, configured `system.seed={configured_seed}`.
+- `valid_ratio={valid_ratio}`, `val_split_strategy={strategy}`{val_session_text}, configured `system.seed={configured_seed}`.
 - Active strategy classification: {strategy_description}.
 
 ## 2. Exact validation construction
@@ -1033,7 +1072,7 @@ def save_protocol_report(
 
 {seed_effect}
 
-The training entry point and this diagnostic both pass the same feature path, validation ratio, strategy, and system seed to `IEMOCAPOfficialFeatureDataset`. This report inspects the resulting IDs and does not change them.
+The training entry point and this diagnostic both pass the same feature path, validation ratio, strategy, validation session ID, and system seed to `IEMOCAPOfficialFeatureDataset`. This report inspects the resulting IDs and does not change them.
 
 ## 3. Dialogue overlap
 
@@ -1103,11 +1142,7 @@ The level assesses the risk that the current validation score is an optimistic o
 
 ## 9. Recommended next experiment protocol
 
-1. Keep the current split and its results as a fully documented baseline; do not reinterpret or silently replace it.
-2. For the next protocol, keep the official test session untouched and construct validation by whole session (or whole speaker pair) from the official training pool, so checkpoint selection and final testing both measure transfer to unseen identities.
-3. Rotate the validation session across the available training sessions and aggregate checkpoint-selected test results across the predeclared folds or seeds. Do not choose the validation fold after seeing test performance.
-4. Report Weighted-F1, Macro-F1, UAR, and Accuracy together with session/speaker manifests, per-class metrics, and the number of dialogue-level batches.
-5. Never use test metrics to select epochs, checkpoints, validation sessions, or seeds.
+{protocol_recommendations}
 """
 
     report_path = output_dir / "split_protocol_report.md"

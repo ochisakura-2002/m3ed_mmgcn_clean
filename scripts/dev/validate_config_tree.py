@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -20,10 +21,14 @@ LOSS_STABILITY_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iem
 CAUSAL_BENCHMARK_TRAIN_DIRS = {
     "mmgcn": ROOT / "configs" / "baselines" / "mmgcn" / "iemocap" / "causal_benchmark",
     "multidag_cl": ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "causal_benchmark",
+    "gsmcc": ROOT / "configs" / "baselines" / "gsmcc" / "iemocap" / "causal_benchmark",
+    "dialoguegcn": ROOT / "configs" / "baselines" / "dialoguegcn" / "iemocap" / "causal_benchmark",
 }
 CAUSAL_BENCHMARK_PIPELINE_DIRS = {
     "mmgcn": ROOT / "configs" / "pipeline" / "mmgcn" / "iemocap" / "causal_benchmark",
     "multidag_cl": ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "causal_benchmark",
+    "gsmcc": ROOT / "configs" / "pipeline" / "gsmcc" / "iemocap" / "causal_benchmark",
+    "dialoguegcn": ROOT / "configs" / "pipeline" / "dialoguegcn" / "iemocap" / "causal_benchmark",
 }
 
 CAUSAL_CONTRACT_VERSION = "1.0"
@@ -466,6 +471,71 @@ def validate_causal_benchmark_training(
         require(training.get("max_val_batches") is None, f"{rel(path)} caps max_val_batches", errors)
         return
 
+    if family in {"gsmcc", "dialoguegcn"}:
+        training = config.get("training", {})
+        optimizer = config.get("optimizer", {})
+        scheduler = config.get("scheduler", {})
+        expected_name = (
+            "causal_gsmcc_inspired" if family == "gsmcc" else "causal_dialoguegcn"
+        )
+        require(model.get("name") == expected_name, f"{rel(path)} model.name mismatch", errors)
+        require(model.get("text_dim") == 100, f"{rel(path)} text_dim mismatch", errors)
+        require(model.get("audio_dim") == 1582, f"{rel(path)} audio_dim mismatch", errors)
+        require(model.get("visual_dim") == 342, f"{rel(path)} visual_dim mismatch", errors)
+        require(model.get("hidden_dim") == 128, f"{rel(path)} hidden_dim mismatch", errors)
+        require(model.get("num_classes") == 6, f"{rel(path)} model num_classes mismatch", errors)
+        require(model.get("dropout") == 0.2, f"{rel(path)} dropout mismatch", errors)
+        require(model.get("num_graph_layers") == 1, f"{rel(path)} graph layer mismatch", errors)
+        require(graph.get("context_mode") == "causal", f"{rel(path)} graph is not causal", errors)
+        require(graph.get("window_past") == 5, f"{rel(path)} window_past mismatch", errors)
+        require(graph.get("window_future") == 0, f"{rel(path)} window_future must be 0", errors)
+        require(training.get("epochs") == 30, f"{rel(path)} epochs mismatch", errors)
+        require(training.get("batch_size") == 8, f"{rel(path)} batch_size mismatch", errors)
+        require(training.get("seed") == 42, f"{rel(path)} training seed mismatch", errors)
+        require(training.get("grad_clip") == 1.0, f"{rel(path)} grad_clip mismatch", errors)
+        require(
+            training.get("select_best_by") == "val_weighted_f1",
+            f"{rel(path)} must select by val_weighted_f1",
+            errors,
+        )
+        for cap_name in (
+            "train_batch_cap",
+            "val_batch_cap",
+            "test_batch_cap",
+            "max_train_batches",
+            "max_val_batches",
+            "max_test_batches",
+        ):
+            require(cap_name not in training, f"{rel(path)} contains forbidden {cap_name}", errors)
+        require(str(optimizer.get("name", "")).lower() == "adamw", f"{rel(path)} optimizer mismatch", errors)
+        require(optimizer.get("learning_rate") == 0.0005, f"{rel(path)} learning_rate mismatch", errors)
+        require(optimizer.get("weight_decay") == 0.0001, f"{rel(path)} weight_decay mismatch", errors)
+        require(str(scheduler.get("name", "")).lower() == "none", f"{rel(path)} scheduler mismatch", errors)
+        require(dataset.get("text_feature_dim") == 100, f"{rel(path)} dataset text dim mismatch", errors)
+        require(dataset.get("audio_feature_dim") == 1582, f"{rel(path)} dataset audio dim mismatch", errors)
+        require(dataset.get("visual_feature_dim") == 342, f"{rel(path)} dataset visual dim mismatch", errors)
+        if family == "gsmcc":
+            loss = config.get("loss", {})
+            require(model.get("modality_encoder_type") == "linear", f"{rel(path)} GS-MCC encoder mismatch", errors)
+            require(model.get("fusion_type") == "concat", f"{rel(path)} GS-MCC fusion mismatch", errors)
+            require(model.get("num_filter_steps") == 2, f"{rel(path)} filter step mismatch", errors)
+            require(loss.get("classification_weight") == 1.0, f"{rel(path)} classification weight mismatch", errors)
+            require(loss.get("consistency_weight") == 0.0, f"{rel(path)} consistency loss must be disabled", errors)
+            require(loss.get("complementarity_weight") == 0.0, f"{rel(path)} complementarity loss must be disabled", errors)
+            require(
+                config.get("official_fgo_reproduced") is not True,
+                f"{rel(path)} incorrectly claims official FGO reproduction",
+                errors,
+            )
+        else:
+            require(model.get("context_hidden_dim") == 128, f"{rel(path)} context hidden mismatch", errors)
+            require(model.get("graph_hidden_dim") == 128, f"{rel(path)} graph hidden mismatch", errors)
+            require(model.get("context_encoder_type") == "causal_gru", f"{rel(path)} context encoder mismatch", errors)
+            require(model.get("num_speakers") == 2, f"{rel(path)} num_speakers mismatch", errors)
+            require(model.get("nodal_attention") == "none", f"{rel(path)} full nodal attention is forbidden", errors)
+            require(config.get("loss", {}).get("class_weight_mode") == "none", f"{rel(path)} class weights must be disabled", errors)
+        return
+
     errors.append(f"unsupported causal benchmark family {family}")
 
 
@@ -480,7 +550,13 @@ def validate_causal_benchmark_pipeline(
     expected_train_path = CAUSAL_BENCHMARK_TRAIN_DIRS[family] / path.name
     train_path_text = str(config.get("train", {}).get("train_config_path", ""))
     train_path = ROOT / train_path_text
-    expected_model_name = "MMGCN" if family == "mmgcn" else "MultiDAGCL"
+    expected_model_names = {
+        "mmgcn": "MMGCN",
+        "multidag_cl": "MultiDAGCL",
+        "gsmcc": "causal_gsmcc_inspired",
+        "dialoguegcn": "causal_dialoguegcn",
+    }
+    expected_model_name = expected_model_names[family]
     evaluation = config.get("evaluation", {})
 
     require(path.name in CAUSAL_BENCHMARK_VARIANTS, f"unexpected causal benchmark pipeline YAML {rel(path)}", errors)
@@ -533,6 +609,19 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
                 validate_causal_benchmark_training(train_path, family, errors)
             if pipeline_path.exists():
                 validate_causal_benchmark_pipeline(pipeline_path, family, errors)
+
+        if family in {"gsmcc", "dialoguegcn"}:
+            normalized_folds = []
+            for name in ("val_ses01.yaml", "val_ses02.yaml", "val_ses03.yaml", "val_ses04.yaml"):
+                fold = copy.deepcopy(load_yaml(train_dir / name))
+                fold.pop("run_name", None)
+                fold.get("dataset", {}).pop("val_session_id", None)
+                normalized_folds.append(fold)
+            require(
+                all(fold == normalized_folds[0] for fold in normalized_folds[1:]),
+                f"{rel(train_dir)} session-holdout folds differ beyond run_name/val_session_id",
+                errors,
+            )
 
 
 def main() -> None:

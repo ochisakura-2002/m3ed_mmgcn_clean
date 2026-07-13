@@ -1,0 +1,65 @@
+causal: true
+causal_contract_version: '1.0'
+run_name: causal_dialoguegcn_synthetic_end_to_end
+
+system:
+  seed: 3203
+  device: cpu
+
+dataset:
+  name: SYNTHETIC
+  num_classes: 4
+  label_list: [Happy, Sad, Neutral, Angry]
+  text_feature_dim: 8
+  audio_feature_dim: 6
+  visual_feature_dim: 4
+
+model:
+  name: causal_dialoguegcn
+  text_dim: 8
+  audio_dim: 6
+  visual_dim: 4
+  hidden_dim: 8
+  context_hidden_dim: 8
+  graph_hidden_dim: 8
+  num_classes: 4
+  dropout: 0.0
+  fusion_type: concat
+  context_encoder_type: causal_gru
+  num_graph_layers: 1
+  num_speakers: 2
+  nodal_attention: none
+
+graph:
+  context_mode: causal
+  window_past: 3
+  window_future: 0
+
+loss:
+  class_weight_mode: none
+
+training:
+  epochs: 2
+  batch_size: 2
+  seed: 3203
+  select_best_by: val_weighted_f1
+  grad_clip: 1.0
+  num_workers: 0
+
+optimizer:
+  name: AdamW
+  learning_rate: 0.001
+  weight_decay: 0.0
+
+scheduler:
+  name: none
+
+synthetic:
+  sequence_length: 5
+  split_sizes:
+    train: 6
+    val: 4
+    test: 4
+
+output:
+  run_root: outputs/dev

@@ -1,0 +1,20 @@
+models:
+  mmgcn:
+    config: configs/baselines/mmgcn/iemocap/causal_benchmark/official_prefix.yaml
+  multidag:
+    config: configs/baselines/multidag_cl/iemocap/causal_benchmark/official_prefix.yaml
+  gsmcc:
+    config: configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml
+  dialoguegcn:
+    config: configs/baselines/dialoguegcn/iemocap/causal_benchmark/official_prefix.yaml
+
+audit:
+  mode: real_batch
+  device: cpu
+  real_split: val
+  tolerance: 1.0e-6
+  target_policy: auto_multiple
+  gradient_target: history_squared_logit_sum
+  perturbation_seeds: [42, 43, 44]
+
+output_dir: outputs/analysis/four_model_causal_audit

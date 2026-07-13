@@ -1,0 +1,27 @@
+seed: 947
+
+model:
+  name: CausalDialogueGCNBaseline
+  text_dim: 100
+  audio_dim: 1582
+  visual_dim: 342
+  hidden_dim: 16
+  context_hidden_dim: 16
+  graph_hidden_dim: 16
+  num_classes: 6
+  dropout: 0.0
+  window_past: 3
+  context_encoder_type: causal_gru
+  num_graph_layers: 2
+  num_speakers: 2
+  context_mode: causal
+  fusion_type: concat
+  window_future: 0
+  bidirectional: false
+  nodal_attention: none
+
+synthetic:
+  batch_size: 2
+  seq_len: 6
+  lengths: [6, 5]
+  device: cpu

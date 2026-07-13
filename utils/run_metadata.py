@@ -13,6 +13,14 @@ FEATURE_CAUSALITY_STATUS = (
     "utterance_level_but_extractor_not_fully_verified"
 )
 DEFAULT_CAUSAL_CONTRACT_VERSION = "1.0"
+NEW_GSMCC_NAMES = {
+    "causal_gsmcc_inspired",
+    "causalgsmccinspiredbaseline",
+}
+NEW_DIALOGUEGCN_NAMES = {
+    "causal_dialoguegcn",
+    "causaldialoguegcnbaseline",
+}
 
 
 def compute_file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -105,6 +113,12 @@ def infer_model_causality(
             return False, True
         return None, None
 
+    if name in NEW_GSMCC_NAMES | NEW_DIALOGUEGCN_NAMES:
+        window_future = _normalized_optional_window(graph.get("window_future", 0))
+        bidirectional = bool(config.get("model", {}).get("bidirectional", False))
+        causal = context_mode == "causal" and window_future == 0 and not bidirectional
+        return causal, not causal
+
     return None, None
 
 
@@ -124,6 +138,10 @@ def _model_family_and_variant(
         family = "MMGCN"
     elif normalized_name in {"multidagcl", "multidag", "multidag-inspired"}:
         family = "MultiDAG"
+    elif normalized_name in NEW_GSMCC_NAMES:
+        family = "GS-MCC"
+    elif normalized_name in NEW_DIALOGUEGCN_NAMES:
+        family = "DialogueGCN"
     else:
         family = name or "unknown"
 
@@ -143,6 +161,10 @@ def _model_family_and_variant(
             )
         ).strip().lower()
         variant = f"project_multidag_inspired_{encoder_type}"
+    elif normalized_name in NEW_GSMCC_NAMES:
+        variant = "project_causal_gsmcc_inspired"
+    elif normalized_name in NEW_DIALOGUEGCN_NAMES:
+        variant = "project_causal_dialoguegcn"
     else:
         variant = name or "unknown"
     return family, variant
@@ -204,7 +226,7 @@ def build_run_metadata(
     if contract_version is None:
         contract_version = DEFAULT_CAUSAL_CONTRACT_VERSION
 
-    return {
+    metadata = {
         "model_family": model_family,
         "model_variant": model_variant,
         "causal_mode": causal_mode,
@@ -222,11 +244,46 @@ def build_run_metadata(
             config, model_family
         ),
         "seed": int(config.get("system", {}).get("seed", 42)),
-        "text_dim": _optional_int(model.get("text_feature_dim")),
-        "audio_dim": _optional_int(model.get("audio_feature_dim")),
-        "visual_dim": _optional_int(model.get("visual_feature_dim")),
+        "text_dim": _optional_int(model.get("text_feature_dim", model.get("text_dim"))),
+        "audio_dim": _optional_int(model.get("audio_feature_dim", model.get("audio_dim"))),
+        "visual_dim": _optional_int(model.get("visual_feature_dim", model.get("visual_dim"))),
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
     }
+    normalized_name = _model_name(config).lower()
+    if normalized_name in NEW_GSMCC_NAMES | NEW_DIALOGUEGCN_NAMES:
+        graph = config.get("graph", {})
+        metadata.update(
+            {
+                "window_past": _normalized_optional_window(graph.get("window_past")),
+                "window_future": _normalized_optional_window(graph.get("window_future", 0)),
+                "context_encoder_type": _optional_text(
+                    model.get("context_encoder_type", model.get("modality_encoder_type"))
+                ),
+                "num_graph_layers": _optional_int(model.get("num_graph_layers")),
+            }
+        )
+    if normalized_name in NEW_GSMCC_NAMES:
+        loss = config.get("loss", {})
+        metadata.update(
+            {
+                "spectral_operator_type": "causal_directed_polynomial_filter",
+                "official_fgo_reproduced": False,
+                "auxiliary_losses_enabled": bool(
+                    float(loss.get("consistency_weight", 0.0)) > 0
+                    or float(loss.get("complementarity_weight", 0.0)) > 0
+                ),
+            }
+        )
+    if normalized_name in NEW_DIALOGUEGCN_NAMES:
+        metadata.update(
+            {
+                "relation_definition": "source_speaker_x_target_speaker",
+                "num_relations": 4,
+                "future_temporal_relations": False,
+                "full_nodal_attention": False,
+            }
+        )
+    return metadata
 
 
 def write_run_metadata(

@@ -42,6 +42,8 @@ TRAIN_SCRIPT_REGISTRY = {
     "SimpleMLP": "scripts/train_simple_mlp.py",
     "GS_MCC": "scripts/train_gsmcc.py",
     "MultiDAGCL": "scripts/baselines/train_multidag_cl.py",
+    "causal_gsmcc_inspired": "scripts/baselines/train_new_causal_graph_baseline.py",
+    "causal_dialoguegcn": "scripts/baselines/train_new_causal_graph_baseline.py",
 }
 
 
@@ -50,6 +52,8 @@ EVALUATE_SCRIPT_REGISTRY = {
     "MMGCN": EVALUATE_SCRIPT,
     "SimpleMLP": EVALUATE_SCRIPT,
     "MultiDAGCL": "scripts/baselines/evaluate_multidag_cl_checkpoint.py",
+    "causal_gsmcc_inspired": "scripts/baselines/evaluate_new_causal_graph_checkpoint.py",
+    "causal_dialoguegcn": "scripts/baselines/evaluate_new_causal_graph_checkpoint.py",
 }
 
 BUILD_ANALYSIS_TABLES_SCRIPT = "scripts/analyze/build_analysis_tables.py"
@@ -857,7 +861,7 @@ def run_multi_run_final_analysis_stage(
     )
 
 
-def main() -> None:
+def main() -> Optional[str]:
     args = parse_args()
 
     config_path = resolve_path(args.config)
@@ -880,7 +884,7 @@ def main() -> None:
 
     if dry_run and train_was_executed:
         print_pipeline_summary(run_info=None, config=config)
-        return
+        return None
 
     run_evaluation_stage(
         config=config,
@@ -925,6 +929,7 @@ def main() -> None:
         run_info=run_info,
         config=config,
     )
+    return None if run_info is None else str(run_info["run_id"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+runs_root: outputs/runs
+report_path: docs/baselines/causal_benchmark_8run_review.md
+output_dir: outputs/analysis/causal_benchmark_8run_review
+
+selection_metric: val_weighted_f1
+std_ddof: 1
+expected_val_split_strategy: session_holdout
+expected_checkpoint_metric: val_weighted_f1
+expected_feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+
+mmgcn:
+  Ses01: 20260713_123505_mmgcn_iemocap_causal_benchmark_val_ses01
+  Ses02: 20260713_131707_mmgcn_iemocap_causal_benchmark_val_ses02
+  Ses03: 20260713_135411_mmgcn_iemocap_causal_benchmark_val_ses03
+  Ses04: 20260713_142852_mmgcn_iemocap_causal_benchmark_val_ses04
+
+multidag:
+  Ses01: 20260713_131023_multidag_cl_iemocap_causal_benchmark_val_ses01
+  Ses02: 20260713_150509_multidag_cl_iemocap_causal_benchmark_val_ses02
+  Ses03: 20260713_150746_multidag_cl_iemocap_causal_benchmark_val_ses03
+  Ses04: 20260713_151032_multidag_cl_iemocap_causal_benchmark_val_ses04
+
+duplicate_runs:
+  multidag_ses01_earlier:
+    run_id: 20260713_122745_multidag_cl_iemocap_causal_benchmark_val_ses01
+    compare_with: 20260713_131023_multidag_cl_iemocap_causal_benchmark_val_ses01

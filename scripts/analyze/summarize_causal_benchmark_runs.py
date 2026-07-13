@@ -1639,9 +1639,10 @@ def write_csv_outputs(
     for filename, frame in frames.items():
         write_dataframe(frame, output_dir / filename)
     unique_sources = sorted({project_relative(path) for path in source_files})
-    (output_dir / "source_files.txt").write_text(
-        "\n".join(unique_sources) + "\n", encoding="utf-8", newline="\n"
-    )
+    source_files_path = output_dir / "source_files.txt"
+    source_files_path.parent.mkdir(parents=True, exist_ok=True)
+    with source_files_path.open("w", encoding="utf-8", newline="\n") as file:
+        file.write("\n".join(unique_sources) + "\n")
 
 
 def format_cell(value: Any) -> str:
@@ -1989,7 +1990,8 @@ def write_markdown_report(
         ]
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    with report_path.open("w", encoding="utf-8", newline="\n") as file:
+        file.write("\n".join(lines))
 
 
 def strict_failures(

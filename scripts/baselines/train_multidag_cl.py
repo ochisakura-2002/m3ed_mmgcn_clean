@@ -32,6 +32,8 @@ from models.baselines.multidag_cl import MultiDAGCLBaseline  # noqa: E402
 from utils.io import ensure_dir, load_yaml, sanitize_name, save_yaml  # noqa: E402
 from utils.metrics import compute_classification_metrics  # noqa: E402
 from utils.run_metadata import write_run_metadata  # noqa: E402
+from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
+from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
 
 
@@ -271,6 +273,7 @@ def validate_config(config: Dict[str, Any]) -> None:
             "scripts/baselines/train_multidag_cl.py currently supports "
             f"dataset.name=IEMOCAP, got {dataset_name!r}."
         )
+    validate_iemocap_feature_config(config, PROJECT_ROOT)
     feature_path = resolve_path(str(config["dataset"].get("feature_pkl_path", "")))
     if not feature_path.exists():
         raise FileNotFoundError(
@@ -816,6 +819,10 @@ def collect_predictions(
     rows: List[dict] = []
     batch_size = int(batch["labels"].shape[0])
     dialogue_ids = batch.get("dialogue_ids", [f"dialogue_{i}" for i in range(batch_size)])
+    utterance_ids = batch.get(
+        "utterance_ids",
+        [[f"{dialogue_ids[i]}_utt_{j}" for j in range(int(batch["lengths"][i].item()))] for i in range(batch_size)],
+    )
     lengths = batch.get("lengths", mask.to(dtype=torch.long).sum(dim=1))
 
     for batch_index in range(batch_size):
@@ -827,16 +834,19 @@ def collect_predictions(
                 continue
             pred_label = int(predictions[batch_index, time_index].item())
             rows.append(
-                {
-                    "split": split,
-                    "dialogue_id": dialogue_id,
-                    "utterance_index": int(time_index),
-                    "true_label_id": true_label,
-                    "pred_label_id": pred_label,
-                    "true_label_name": label_list[true_label],
-                    "pred_label_name": label_list[pred_label],
-                    "confidence": float(confidences[batch_index, time_index].item()),
-                }
+                build_prediction_row(
+                    split=split,
+                    dialogue_id=dialogue_id,
+                    utterance_id=utterance_ids[batch_index][time_index],
+                    utterance_index=time_index,
+                    true_label_id=true_label,
+                    predicted_label_id=pred_label,
+                    probabilities=probabilities[batch_index, time_index]
+                    .detach()
+                    .cpu()
+                    .tolist(),
+                    label_list=label_list,
+                )
             )
 
     return rows, y_true, y_pred
@@ -1022,6 +1032,15 @@ def evaluate(
         all_pred.extend(y_pred)
 
     metrics = compute_metrics(all_true, all_pred, int(num_classes))
+    metrics.update(
+        compute_calibration_metrics(
+            all_true,
+            [
+                [row[f"probability_{class_id}"] for class_id in range(int(num_classes))]
+                for row in prediction_rows
+            ],
+        )
+    )
     loss = total_loss / float(max(total_items, 1))
     return loss, metrics, prediction_rows, all_true, all_pred
 
@@ -1052,6 +1071,7 @@ def save_checkpoint(
             "monitor_metric": str(monitor_metric),
             "monitor_value": float(monitor_value),
             "checkpoint_selection": f"validation_{monitor_metric}",
+            "test_split_used_for_selection": False,
         },
         path,
     )
@@ -1078,6 +1098,12 @@ def save_evaluation_outputs(
         "uar": float(metrics["uar"]),
         "macro_f1": float(metrics["macro_f1"]),
         "weighted_f1": float(metrics["weighted_f1"]),
+        "ece_10": float(metrics["ece_10"]),
+        "nll": float(metrics["nll"]),
+        "brier_score": float(metrics["brier_score"]),
+        "mean_confidence": float(metrics["mean_confidence"]),
+        "mean_confidence_correct": float(metrics["mean_confidence_correct"]),
+        "mean_confidence_incorrect": float(metrics["mean_confidence_incorrect"]),
     }
     pd.DataFrame([metrics_row]).to_csv(eval_dir / "metrics.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(prediction_rows).to_csv(eval_dir / "predictions.csv", index=False, encoding="utf-8-sig")
@@ -1178,6 +1204,16 @@ def main() -> None:
     device = get_device(config)
 
     run_paths = prepare_run_environment(config, config_path)
+    print(
+        "CODEX_RUN_INFO_JSON="
+        + json.dumps(
+            {
+                "run_id": str(run_paths["run_id"]),
+                "run_dir": str(run_paths["run_dir"].resolve()),
+            }
+        ),
+        flush=True,
+    )
     print_config_summary(config, run_paths)
 
     training = get_training_config(config)

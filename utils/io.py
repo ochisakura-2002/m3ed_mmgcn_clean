@@ -19,6 +19,8 @@ import re
 
 import yaml
 
+from utils.run_metadata import write_run_metadata
+
 
 # 当前文件路径是：
 #   m3ed_mmgcn_clean/utils/io.py
@@ -239,6 +241,11 @@ def prepare_run_environment(config: Dict[str, Any]) -> Dict[str, Path]:
 
     config_save_path = run_info["logs_dir"] / "experiment_config.yaml"
     save_yaml(config, config_save_path)
+    write_run_metadata(
+        config=config,
+        output_path=run_info["run_dir"] / "run_metadata.json",
+        project_root=PROJECT_ROOT,
+    )
 
     write_latest_run(
         run_id=run_info["run_id"],

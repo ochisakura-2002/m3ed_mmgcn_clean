@@ -25,6 +25,10 @@ Thumbs.db
 
 # Data files
 data/
+!/configs/data/
+!/configs/data/**
+!/docs/data/
+!/docs/data/**
 *.pkl
 *.pickle
 *.npz

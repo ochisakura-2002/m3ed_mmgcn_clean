@@ -23,7 +23,7 @@ Official feature names:
     videoVisual -> visual_features
 
 Project batch format:
-    text_features:    [B, T, 100]
+    text_features:    [B, T, D_text]  # legacy=100, clean RoBERTa v1=768
     audio_features:   [B, T, 1582]
     visual_features:  [B, T, 342]
     labels:           [B, T]

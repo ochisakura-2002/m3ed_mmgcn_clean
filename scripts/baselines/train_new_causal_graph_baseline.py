@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -188,6 +189,16 @@ def run_training(
     set_seed(seed)
     device = get_device(config)
     paths = prepare_run_environment(config, resolved_config_path)
+    print(
+        "CODEX_RUN_INFO_JSON="
+        + json.dumps(
+            {
+                "run_id": str(paths["run_id"]),
+                "run_dir": str(paths["run_dir"].resolve()),
+            }
+        ),
+        flush=True,
+    )
     train_loader = build_dataloader(config, "train", shuffle=True)
     val_loader = build_dataloader(config, "val", shuffle=False)
     model = build_new_causal_baseline(config).to(device)

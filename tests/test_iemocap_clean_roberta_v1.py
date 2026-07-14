@@ -1,0 +1,435 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+from pathlib import Path
+import pickle
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pytest
+import torch
+import yaml
+
+from models.baselines.causal_baseline_registry import build_new_causal_baseline
+from scripts.analyze.audit_iemocap_feature_pkl import (
+    audit_feature_pkls,
+    write_audit_outputs,
+)
+from scripts.analyze.probe_iemocap_text_features import run_probes
+from scripts.baselines.train_multidag_cl import build_model as build_multidag
+from scripts.features.build_iemocap_clean_text_features import (
+    FEATURE_SET_NAME,
+    TEXT_FEATURE_DIM,
+    build_clean_feature_pkl,
+    mean_pool_without_padding_or_special,
+    verify_sha256,
+)
+from scripts.run_experiment_pipeline import (
+    PipelineLock,
+    resolve_current_run_info,
+)
+from scripts.train_mmgcn import build_model as build_mmgcn
+from utils.evaluation import build_prediction_row, compute_calibration_metrics
+from utils.iemocap_features import (
+    UNPINNED_SHA256,
+    validate_iemocap_feature_config,
+)
+from utils.run_metadata import compute_file_sha256
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CLEAN_CONFIGS = (
+    ROOT / "configs/baselines/mmgcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+    ROOT / "configs/baselines/multidag_cl/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+    ROOT / "configs/baselines/gsmcc/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+    ROOT / "configs/baselines/dialoguegcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+)
+
+
+def fake_nine_item_pkl() -> list[object]:
+    dialogue_ids = ["Ses01F_impro01", "Ses05M_script01"]
+    video_ids = {
+        dialogue_ids[0]: ["Ses01F_impro01_F000", "Ses01F_impro01_F001"],
+        dialogue_ids[1]: ["Ses05M_script01_M000"],
+    }
+    speakers = {dialogue_ids[0]: ["F", "F"], dialogue_ids[1]: ["M"]}
+    labels = {dialogue_ids[0]: [0, 1], dialogue_ids[1]: [2]}
+    text = {
+        dialogue_ids[0]: np.arange(8, dtype=np.float32).reshape(2, 4),
+        dialogue_ids[1]: np.arange(4, dtype=np.float32).reshape(1, 4),
+    }
+    audio = {
+        dialogue_ids[0]: np.arange(6, dtype=np.float64).reshape(2, 3),
+        dialogue_ids[1]: np.arange(3, dtype=np.float64).reshape(1, 3),
+    }
+    visual = {
+        dialogue_ids[0]: np.arange(4, dtype=np.float32).reshape(2, 2),
+        dialogue_ids[1]: np.arange(2, dtype=np.float32).reshape(1, 2),
+    }
+    sentences = {
+        dialogue_ids[0]: ["hello there", "   "],
+        dialogue_ids[1]: ["one two three four five six"],
+    }
+    return [
+        video_ids,
+        speakers,
+        labels,
+        text,
+        audio,
+        visual,
+        sentences,
+        [dialogue_ids[0]],
+        [dialogue_ids[1]],
+    ]
+
+
+def dump_pickle(path: Path, value: object) -> str:
+    with path.open("wb") as file:
+        pickle.dump(value, file, protocol=pickle.HIGHEST_PROTOCOL)
+    return compute_file_sha256(path)
+
+
+class FakeTokenizer:
+    unk_token = "[UNK]"
+    pad_token_id = 0
+
+    def __call__(
+        self,
+        texts,
+        *,
+        add_special_tokens=True,
+        truncation=False,
+        padding=False,
+        max_length=None,
+        return_special_tokens_mask=False,
+        return_tensors=None,
+    ):
+        rows = []
+        masks = []
+        for text in texts:
+            body = [10 + index for index, _ in enumerate(str(text).split())]
+            ids = ([101] + body + [102]) if add_special_tokens else body
+            if truncation and max_length is not None and len(ids) > max_length:
+                ids = ids[:max_length]
+                ids[-1] = 102
+            special = [0] * len(ids)
+            if add_special_tokens:
+                special[0] = 1
+                special[-1] = 1
+            rows.append(ids)
+            masks.append(special)
+        if return_tensors is None:
+            return {"input_ids": rows}
+        width = max(len(row) for row in rows)
+        padded_ids = []
+        attention = []
+        padded_special = []
+        for ids, special in zip(rows, masks):
+            pad = width - len(ids)
+            padded_ids.append(ids + [0] * pad)
+            attention.append([1] * len(ids) + [0] * pad)
+            padded_special.append(special + [1] * pad)
+        result = {
+            "input_ids": torch.tensor(padded_ids, dtype=torch.long),
+            "attention_mask": torch.tensor(attention, dtype=torch.long),
+        }
+        if return_special_tokens_mask:
+            result["special_tokens_mask"] = torch.tensor(
+                padded_special, dtype=torch.long
+            )
+        return result
+
+
+class FakeModel(torch.nn.Module):
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        offsets = torch.arange(TEXT_FEATURE_DIM, device=input_ids.device).float() / 1000.0
+        hidden = input_ids.float().unsqueeze(-1) + offsets
+        return SimpleNamespace(last_hidden_state=hidden)
+
+
+def test_mean_pool_excludes_padding_and_special_tokens() -> None:
+    hidden = torch.tensor([[[100.0], [2.0], [4.0], [999.0], [777.0]]])
+    attention = torch.tensor([[1, 1, 1, 1, 0]])
+    special = torch.tensor([[1, 0, 0, 1, 1]])
+    pooled = mean_pool_without_padding_or_special(hidden, attention, special)
+    torch.testing.assert_close(pooled, torch.tensor([[3.0]]))
+
+    with pytest.raises(ValueError, match="zero valid tokens"):
+        mean_pool_without_padding_or_special(
+            hidden[:, :2], torch.ones(1, 2), torch.ones(1, 2)
+        )
+
+
+def test_offline_builder_preserves_non_text_items_and_writes_metadata(
+    tmp_path: Path,
+) -> None:
+    legacy_path = tmp_path / "legacy.pkl"
+    legacy = fake_nine_item_pkl()
+    legacy_sha = dump_pickle(legacy_path, legacy)
+    output_path = tmp_path / "clean.pkl"
+    metadata_path = tmp_path / "clean.metadata.json"
+    sha_path = tmp_path / "clean.sha256"
+
+    metadata = build_clean_feature_pkl(
+        input_pkl=legacy_path,
+        expected_input_sha256=legacy_sha,
+        output_pkl=output_path,
+        tokenizer=FakeTokenizer(),
+        model=FakeModel(),
+        model_local_path=tmp_path / "local_roberta",
+        batch_size=2,
+        max_length=5,
+        device="cpu",
+        seed=17,
+        metadata_output=metadata_path,
+        sha256_output=sha_path,
+        transformers_version="fake",
+    )
+
+    with output_path.open("rb") as file:
+        candidate = pickle.load(file)
+    for index in (0, 1, 2, 4, 5, 6, 7, 8):
+        if index in (4, 5):
+            for dialogue_id in legacy[index]:
+                np.testing.assert_array_equal(
+                    candidate[index][dialogue_id], legacy[index][dialogue_id]
+                )
+                assert candidate[index][dialogue_id].dtype == legacy[index][dialogue_id].dtype
+        else:
+            assert candidate[index] == legacy[index]
+    for value in candidate[3].values():
+        assert value.dtype == np.float32
+        assert value.shape[1] == 768
+        assert np.isfinite(value).all()
+
+    required = {
+        "schema_version",
+        "feature_set_name",
+        "created_at",
+        "source_pkl_path",
+        "source_pkl_sha256",
+        "output_pkl_sha256",
+        "model_id",
+        "model_revision",
+        "model_local_path",
+        "transformers_version",
+        "torch_version",
+        "python_version",
+        "pooling",
+        "max_length",
+        "batch_size",
+        "dtype",
+        "text_feature_dim",
+        "audio_feature_dim",
+        "visual_feature_dim",
+        "dialogue_count",
+        "utterance_count",
+        "empty_sentence_count",
+        "truncated_sentence_count",
+        "device_used",
+        "seed",
+        "causality_scope",
+        "label_usage",
+    }
+    assert required <= set(metadata)
+    assert metadata["feature_set_name"] == FEATURE_SET_NAME
+    assert metadata["empty_sentence_count"] == 1
+    assert metadata["truncated_sentence_count"] == 1
+    assert json.loads(metadata_path.read_text(encoding="utf-8")) == metadata
+    assert sha_path.read_text(encoding="utf-8").split()[0] == compute_file_sha256(
+        output_path
+    )
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        build_clean_feature_pkl(
+            input_pkl=legacy_path,
+            expected_input_sha256=legacy_sha,
+            output_pkl=output_path,
+            tokenizer=FakeTokenizer(),
+            model=FakeModel(),
+            model_local_path=tmp_path,
+            device="cpu",
+        )
+
+
+def test_builder_rejects_legacy_sha_mismatch(tmp_path: Path) -> None:
+    path = tmp_path / "legacy.pkl"
+    dump_pickle(path, fake_nine_item_pkl())
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        verify_sha256(path, "0" * 64)
+
+
+def test_strict_audit_detects_nan_and_writes_all_outputs(tmp_path: Path) -> None:
+    legacy_path = tmp_path / "legacy.pkl"
+    candidate_path = tmp_path / "candidate.pkl"
+    legacy = fake_nine_item_pkl()
+    legacy_sha = dump_pickle(legacy_path, legacy)
+    candidate = copy.deepcopy(legacy)
+    candidate[3] = {
+        key: np.ones((len(value), 768), dtype=np.float32)
+        for key, value in legacy[0].items()
+    }
+    dump_pickle(candidate_path, candidate)
+    summary, dialogue_rows, statistics_rows = audit_feature_pkls(
+        legacy_path,
+        candidate_path,
+        expected_legacy_sha256=legacy_sha,
+        expected_text_dim=768,
+    )
+    assert summary["passed"] is True
+    assert summary["checks"]["only_videoText_changed"] is True
+    assert summary["checks"]["videoAudio_values_identical"] is True
+    assert summary["checks"]["videoVisual_values_identical"] is True
+
+    candidate[3]["Ses01F_impro01"][0, 0] = np.nan
+    dump_pickle(candidate_path, candidate)
+    failed, dialogue_rows, statistics_rows = audit_feature_pkls(
+        legacy_path,
+        candidate_path,
+        expected_legacy_sha256=legacy_sha,
+        expected_text_dim=768,
+    )
+    assert failed["passed"] is False
+    assert failed["checks"]["candidate_videoText_all_finite"] is False
+    output_dir = tmp_path / "audit"
+    write_audit_outputs(output_dir, failed, dialogue_rows, statistics_rows)
+    assert {path.name for path in output_dir.iterdir()} == {
+        "feature_audit_report.md",
+        "feature_audit_summary.json",
+        "dialogue_shape_audit.csv",
+        "feature_statistics.csv",
+    }
+
+
+def load_yaml(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as file:
+        return yaml.safe_load(file)
+
+
+def test_four_clean_configs_parse_accept_768_and_pin_rules() -> None:
+    configs = [load_yaml(path) for path in CLEAN_CONFIGS]
+    for config in configs:
+        assert config["dataset"]["feature_sha256"] == UNPINNED_SHA256
+        assert config["dataset"]["allow_unpinned_feature_for_smoke"] is True
+        validate_iemocap_feature_config(config, ROOT, require_file=False)
+
+    mmgcn = build_mmgcn(configs[0])
+    multidag = build_multidag(configs[1])
+    gsmcc = build_new_causal_baseline(configs[2])
+    dialoguegcn = build_new_causal_baseline(configs[3])
+    assert mmgcn.text_fc.in_features == 768
+    assert multidag.text_dim == 768
+    assert gsmcc.config.text_dim == 768
+    assert dialoguegcn.config.text_dim == 768
+
+    formal = copy.deepcopy(configs[0])
+    formal["dataset"].pop("allow_unpinned_feature_for_smoke")
+    with pytest.raises(ValueError, match="Refusing unpinned"):
+        validate_iemocap_feature_config(formal, ROOT, require_file=False)
+
+
+def test_pipeline_lock_is_atomic_cleans_up_and_force_unlocks(tmp_path: Path) -> None:
+    path = tmp_path / "benchmark.lock"
+    first = PipelineLock(path, Path("batch.yaml"))
+    second = PipelineLock(path, Path("batch.yaml"))
+    first.acquire()
+    assert path.is_file()
+    with pytest.raises(RuntimeError, match="already locked"):
+        second.acquire()
+    second.acquire(force_unlock=True)
+    second.release()
+    assert not path.exists()
+    first.release()
+
+
+def test_pipeline_uses_exact_subprocess_run_info(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "run-a"
+    run_dir.mkdir(parents=True)
+    info = resolve_current_run_info(
+        {},
+        train_was_executed=True,
+        dry_run=False,
+        training_run_info={"run_id": "run-a", "run_dir": str(run_dir)},
+    )
+    assert info == {"run_id": "run-a", "run_dir": str(run_dir.resolve())}
+
+
+def test_calibration_metrics_and_prediction_schema() -> None:
+    probabilities = [[0.8, 0.2], [0.7, 0.3]]
+    metrics = compute_calibration_metrics([0, 1], probabilities)
+    assert metrics["ece_10"] == pytest.approx(0.45)
+    assert metrics["nll"] == pytest.approx(-np.log([0.8, 0.3]).mean())
+    assert metrics["brier_score"] == pytest.approx(0.53)
+    assert metrics["mean_confidence"] == pytest.approx(0.75)
+    assert metrics["mean_confidence_correct"] == pytest.approx(0.8)
+    assert metrics["mean_confidence_incorrect"] == pytest.approx(0.7)
+
+    row = build_prediction_row(
+        split="test",
+        dialogue_id="Ses05F_impro01",
+        utterance_id="Ses05F_impro01_F000",
+        utterance_index=0,
+        true_label_id=1,
+        predicted_label_id=0,
+        probabilities=probabilities[1],
+        label_list=["Happy", "Sad"],
+    )
+    required = {
+        "confidence",
+        "probability_0",
+        "probability_1",
+        "predicted_label",
+        "true_label",
+        "dialogue_id",
+        "utterance_id",
+        "utterance_index",
+        "session_id",
+        "dialogue_type",
+    }
+    assert required <= set(row)
+    assert row["session_id"] == "Ses05"
+    assert row["dialogue_type"] == "impro"
+
+
+def test_session_probes_use_all_five_held_out_sessions() -> None:
+    rows = []
+    for session_index, session_id in enumerate(
+        ("Ses01", "Ses02", "Ses03", "Ses04", "Ses05"), start=1
+    ):
+        for label_id, dialogue_type in ((0, "impro"), (1, "script")):
+            feature = np.array(
+                [float(label_id), float(session_index), float(label_id + session_index), 1.0],
+                dtype=np.float32,
+            )
+            rows.append(
+                {
+                    "dialogue_id": f"{session_id}F_{dialogue_type}01",
+                    "utterance_id": f"{session_id}_{label_id}",
+                    "utterance_index": 0,
+                    "session_id": session_id,
+                    "dialogue_type": dialogue_type,
+                    "label_id": label_id,
+                    "feature": feature,
+                }
+            )
+    metrics, distribution, duplicates = run_probes(
+        pd.DataFrame(rows), seed=11, max_iter=200
+    )
+    assert set(metrics["held_out_session"]) == {
+        "Ses01",
+        "Ses02",
+        "Ses03",
+        "Ses04",
+        "Ses05",
+    }
+    assert set(metrics["method"]) == {
+        "linear_logistic_regression",
+        "nearest_class_centroid",
+        "cross_session_cosine_1nn",
+    }
+    assert set(metrics["dialogue_type"]) == {"all", "impro", "script"}
+    assert len(distribution) == 10
+    assert len(duplicates) == 5

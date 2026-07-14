@@ -84,6 +84,7 @@ def test_mmgcn_metadata_uses_effective_graph_semantics_and_stream_hash(
         "audio_dim": 3,
         "visual_dim": 2,
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
+        "test_split_used_for_selection": False,
     }
 
 

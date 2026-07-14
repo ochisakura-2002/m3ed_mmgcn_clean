@@ -248,6 +248,7 @@ def build_run_metadata(
         "audio_dim": _optional_int(model.get("audio_feature_dim", model.get("audio_dim"))),
         "visual_dim": _optional_int(model.get("visual_feature_dim", model.get("visual_dim"))),
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
+        "test_split_used_for_selection": False,
     }
     normalized_name = _model_name(config).lower()
     if normalized_name in NEW_GSMCC_NAMES | NEW_DIALOGUEGCN_NAMES:

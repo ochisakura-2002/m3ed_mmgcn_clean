@@ -25,16 +25,20 @@ Design rule:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import argparse
+import hashlib
+import json
 import os
 import subprocess
 import sys
+import time
 
 import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+RUN_INFO_PREFIX = "CODEX_RUN_INFO_JSON="
 
 
 TRAIN_SCRIPT_REGISTRY = {
@@ -77,8 +81,73 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to pipeline YAML config.",
     )
+    parser.add_argument(
+        "--force-unlock",
+        action="store_true",
+        help="Explicitly remove this pipeline config's existing lock before starting.",
+    )
 
     return parser.parse_args()
+
+
+def pipeline_lock_path(config_path: Path) -> Path:
+    resolved = str(Path(config_path).resolve())
+    digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
+    stem = "".join(
+        character if character.isalnum() or character in "-_" else "_"
+        for character in Path(config_path).stem
+    )
+    return PROJECT_ROOT / "tmp" / "pipeline_locks" / f"{stem}-{digest}.lock"
+
+
+class PipelineLock:
+    """Atomic per-pipeline lock with explicit force removal."""
+
+    def __init__(self, path: Path, config_path: Path) -> None:
+        self.path = Path(path)
+        self.config_path = Path(config_path)
+        self.acquired = False
+
+    def acquire(self, *, force_unlock: bool = False) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if force_unlock and self.path.exists():
+            self.path.unlink()
+        payload = json.dumps(
+            {
+                "pid": os.getpid(),
+                "created_at_unix": time.time(),
+                "config_path": str(self.config_path),
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        try:
+            descriptor = os.open(
+                str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+            )
+        except FileExistsError as error:
+            try:
+                owner = self.path.read_text(encoding="utf-8").strip()
+            except OSError:
+                owner = "unreadable"
+            raise RuntimeError(
+                f"Pipeline is already locked: {self.path}. Owner: {owner}. "
+                "Use --force-unlock only after confirming no matching batch is running."
+            ) from error
+        try:
+            os.write(descriptor, payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        self.acquired = True
+
+    def release(self) -> None:
+        if not self.acquired:
+            return
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+        self.acquired = False
 
 
 def resolve_path(path_text: str) -> Path:
@@ -155,7 +224,7 @@ def run_project_script(
     script_relative_path: str,
     script_args: List[str],
     dry_run: bool = False,
-) -> None:
+) -> Dict[str, str]:
     """
     Run a project script without modifying the script itself.
 
@@ -178,7 +247,7 @@ def run_project_script(
 
     if dry_run:
         print("[Dry run] Command not executed.")
-        return
+        return {}
 
     project_root_text = str(PROJECT_ROOT.resolve())
 
@@ -192,6 +261,8 @@ def run_project_script(
     )
 
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUNBUFFERED"] = "1"
     old_pythonpath = env.get("PYTHONPATH", "")
 
     if old_pythonpath:
@@ -199,16 +270,32 @@ def run_project_script(
     else:
         env["PYTHONPATH"] = project_root_text
 
-    subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            bootstrap_code,
-        ],
+    command = [sys.executable, "-c", bootstrap_code]
+    process = subprocess.Popen(
+        command,
         cwd=PROJECT_ROOT,
         env=env,
-        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
     )
+    run_info: Dict[str, str] = {}
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(line, end="", flush=True)
+        stripped = line.strip()
+        if stripped.startswith(RUN_INFO_PREFIX):
+            payload = json.loads(stripped[len(RUN_INFO_PREFIX) :])
+            if not isinstance(payload, dict):
+                raise TypeError("Training run-info marker must contain a JSON object.")
+            run_info = {str(key): str(value) for key, value in payload.items()}
+    return_code = process.wait()
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, command)
+    return run_info
 
 
 def choose_train_script(model_name: str) -> str:
@@ -266,41 +353,6 @@ def validate_train_config(
         )
 
 
-def read_latest_run_info() -> Dict[str, str]:
-    latest_path = PROJECT_ROOT / "outputs" / "latest_run.txt"
-
-    if not latest_path.exists():
-        raise FileNotFoundError(
-            f"latest_run.txt not found: {latest_path}"
-        )
-
-    run_info: Dict[str, str] = {}
-
-    with open(latest_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-
-            if not line or "=" not in line:
-                continue
-
-            key, value = line.split("=", 1)
-            run_info[key] = value
-
-    if "run_id" not in run_info or "run_dir" not in run_info:
-        raise ValueError(
-            f"Invalid latest_run.txt format: {latest_path}"
-        )
-
-    run_dir = Path(run_info["run_dir"])
-
-    if not run_dir.is_absolute():
-        run_dir = PROJECT_ROOT / run_dir
-
-    run_info["run_dir"] = str(run_dir.resolve())
-
-    return run_info
-
-
 def get_existing_run_info(run_id: str) -> Dict[str, str]:
     run_dir = PROJECT_ROOT / "outputs" / "runs" / run_id
 
@@ -329,13 +381,14 @@ def resolve_current_run_info(
     config: Dict[str, Any],
     train_was_executed: bool,
     dry_run: bool,
+    training_run_info: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, str]]:
     """
     Decide which run_id is the target of evaluation and single-run analysis.
 
     Cases:
     1. train.enabled=true:
-       use outputs/latest_run.txt after training finishes.
+       use the machine-readable run info emitted by this exact subprocess.
 
     2. train.enabled=false and run_control.skip_train_use_run_id is set:
        use that existing run.
@@ -354,7 +407,21 @@ def resolve_current_run_info(
         return None
 
     if train_was_executed:
-        return read_latest_run_info()
+        if training_run_info is None:
+            raise RuntimeError(
+                "Training completed without a machine-readable run-info marker; "
+                "refusing to consult shared latest_run.txt."
+            )
+        run_id = str(training_run_info.get("run_id", "")).strip()
+        run_dir_text = str(training_run_info.get("run_dir", "")).strip()
+        if not run_id or not run_dir_text:
+            raise ValueError("Training run-info marker must include run_id and run_dir.")
+        run_dir = Path(run_dir_text)
+        if not run_dir.is_absolute():
+            run_dir = PROJECT_ROOT / run_dir
+        if not run_dir.is_dir():
+            raise FileNotFoundError(f"Training-reported run_dir does not exist: {run_dir}")
+        return {"run_id": run_id, "run_dir": str(run_dir.resolve())}
 
     specified_run_id = str(
         safe_get(config, ["run_control", "skip_train_use_run_id"], "") or ""
@@ -478,38 +545,33 @@ def print_pipeline_summary(
 def run_training_stage(
     config: Dict[str, Any],
     dry_run: bool,
-) -> bool:
+) -> Tuple[bool, Optional[Dict[str, str]]]:
     train_enabled = get_bool(config, ["train", "enabled"], False)
-
     if not train_enabled:
-        return False
+        return False, None
 
     model_name = str(safe_get(config, ["model", "name"], ""))
-
     train_config_text = safe_get(config, ["train", "train_config_path"], "")
-
     if not train_config_text:
         raise ValueError("train.enabled=true but train.train_config_path is empty.")
-
     train_config_path = resolve_path(str(train_config_text))
-
     validate_train_config(
         pipeline_config=config,
         train_config_path=train_config_path,
     )
-
     train_script = choose_train_script(model_name)
-
-    run_project_script(
+    run_info = run_project_script(
         script_relative_path=train_script,
-        script_args=[
-            "--config",
-            path_to_command_arg(train_config_path),
-        ],
+        script_args=["--config", path_to_command_arg(train_config_path)],
         dry_run=dry_run,
     )
-
-    return True
+    if dry_run:
+        return True, None
+    if "run_id" not in run_info or "run_dir" not in run_info:
+        raise RuntimeError(
+            f"Training script {train_script} did not emit {RUN_INFO_PREFIX}<json>."
+        )
+    return True, run_info
 
 
 def run_evaluation_stage(
@@ -866,70 +928,37 @@ def main() -> Optional[str]:
 
     config_path = resolve_path(args.config)
     config = load_yaml(config_path)
-
-    print_pipeline_header(config_path, config)
-
-    dry_run = get_bool(config, ["execution", "dry_run"], False)
-
-    train_was_executed = run_training_stage(
-        config=config,
-        dry_run=dry_run,
-    )
-
-    run_info = resolve_current_run_info(
-        config=config,
-        train_was_executed=train_was_executed,
-        dry_run=dry_run,
-    )
-
-    if dry_run and train_was_executed:
-        print_pipeline_summary(run_info=None, config=config)
-        return None
-
-    run_evaluation_stage(
-        config=config,
-        run_info=run_info,
-        dry_run=dry_run,
-    )
-
-    run_analysis_tables_stage(
-        config=config,
-        dry_run=dry_run,
-    )
-
-    run_single_run_analysis_stage(
-        config=config,
-        run_info=run_info,
-        dry_run=dry_run,
-    )
-
-    run_paper_artifacts_stage(
-        config=config,
-        run_info=run_info,
-        dry_run=dry_run,
-    )
-
-    run_missing_modalities_stage(
-        config=config,
-        run_info=run_info,
-        dry_run=dry_run,
-    )
-
-    run_multi_run_training_curves_stage(
-        config=config,
-        dry_run=dry_run,
-    )
-
-    run_multi_run_final_analysis_stage(
-        config=config,
-        dry_run=dry_run,
-    )
-
-    print_pipeline_summary(
-        run_info=run_info,
-        config=config,
-    )
-    return None if run_info is None else str(run_info["run_id"])
+    lock = PipelineLock(pipeline_lock_path(config_path), config_path)
+    lock.acquire(force_unlock=bool(args.force_unlock))
+    try:
+        print_pipeline_header(config_path, config)
+        dry_run = get_bool(config, ["execution", "dry_run"], False)
+        train_was_executed, training_run_info = run_training_stage(
+            config=config,
+            dry_run=dry_run,
+        )
+        run_info = resolve_current_run_info(
+            config=config,
+            train_was_executed=train_was_executed,
+            dry_run=dry_run,
+            training_run_info=training_run_info,
+        )
+        if dry_run and train_was_executed:
+            print_pipeline_summary(run_info=None, config=config)
+            return None
+        run_evaluation_stage(config=config, run_info=run_info, dry_run=dry_run)
+        run_analysis_tables_stage(config=config, dry_run=dry_run)
+        run_single_run_analysis_stage(
+            config=config, run_info=run_info, dry_run=dry_run
+        )
+        run_paper_artifacts_stage(config=config, run_info=run_info, dry_run=dry_run)
+        run_missing_modalities_stage(config=config, run_info=run_info, dry_run=dry_run)
+        run_multi_run_training_curves_stage(config=config, dry_run=dry_run)
+        run_multi_run_final_analysis_stage(config=config, dry_run=dry_run)
+        print_pipeline_summary(run_info=run_info, config=config)
+        return None if run_info is None else str(run_info["run_id"])
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":

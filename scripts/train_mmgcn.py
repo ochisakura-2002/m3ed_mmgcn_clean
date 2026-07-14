@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import json
 import csv
 import sys
 from datetime import datetime
@@ -53,6 +54,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utils.seed import set_seed  # noqa: E402
 from utils.run_metadata import write_run_metadata  # noqa: E402
+from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
+from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
 from datasets.m3ed.torch_dataset import M3EDTorchDataset  # noqa: E402
 from datasets.collators.m3ed_collate import m3ed_dialogue_collate_fn  # noqa: E402
 from datasets.iemocap import build_iemocap_dataloader  # noqa: E402
@@ -153,7 +156,7 @@ def sanitize_name(name: str) -> str:
     return text
 
 
-def prepare_run_environment(config: dict, config_path: Path) -> Dict[str, Path]:
+def prepare_run_environment(config: dict, config_path: Path) -> Dict[str, Any]:
     """
     创建本次实验目录。
 
@@ -200,6 +203,7 @@ def prepare_run_environment(config: dict, config_path: Path) -> Dict[str, Path]:
         f.write(f"config_path={config_path.resolve()}\n")
 
     return {
+        "run_id": run_id,
         "output_dir": output_dir,
         "run_dir": run_dir,
         "logs_dir": logs_dir,
@@ -563,6 +567,7 @@ def evaluate(
 
     all_true: List[int] = []
     all_pred: List[int] = []
+    all_probabilities: List[List[float]] = []
     prediction_rows: List[dict] = []
 
     for batch in tqdm(loader, desc=f"Evaluate {split}", ncols=100):
@@ -590,6 +595,9 @@ def evaluate(
 
         all_true.extend(y_true.tolist())
         all_pred.extend(y_pred.tolist())
+        all_probabilities.extend(
+            probabilities[valid_mask].detach().cpu().to(torch.float64).tolist()
+        )
 
         if collect_predictions:
             batch_size = batch["labels"].shape[0]
@@ -597,6 +605,13 @@ def evaluate(
             dialogue_ids = batch.get(
                 "dialogue_ids",
                 [f"dialogue_{i}" for i in range(batch_size)],
+            )
+            utterance_ids = batch.get(
+                "utterance_ids",
+                [
+                    [f"{dialogue_ids[i]}_utt_{j}" for j in range(int(batch["lengths"][i].item()))]
+                    for i in range(batch_size)
+                ],
             )
 
             for batch_index in range(batch_size):
@@ -610,26 +625,29 @@ def evaluate(
                         continue
 
                     pred_label = int(predictions[batch_index, time_index].item())
-                    confidence = float(confidences[batch_index, time_index].item())
-
-                    row = {
-                        "split": split,
-                        "dialogue_id": dialogue_id,
-                        "utterance_index": time_index,
-                        "true_label_id": true_label,
-                        "pred_label_id": pred_label,
-                        "true_label_name": label_list[true_label],
-                        "pred_label_name": label_list[pred_label],
-                        "confidence": confidence,
-                    }
-
-                    prediction_rows.append(row)
+                    utterance_id = utterance_ids[batch_index][time_index]
+                    prediction_rows.append(
+                        build_prediction_row(
+                            split=split,
+                            dialogue_id=dialogue_id,
+                            utterance_id=utterance_id,
+                            utterance_index=time_index,
+                            true_label_id=true_label,
+                            predicted_label_id=pred_label,
+                            probabilities=probabilities[batch_index, time_index]
+                            .detach()
+                            .cpu()
+                            .tolist(),
+                            label_list=label_list,
+                        )
+                    )
 
     metrics = compute_metrics(
         y_true=all_true,
         y_pred=all_pred,
         num_classes=num_classes,
     )
+    metrics.update(compute_calibration_metrics(all_true, all_probabilities))
 
     avg_loss = total_loss / max(total_valid_utterances, 1)
 
@@ -703,6 +721,7 @@ def save_checkpoint(
         "val_metrics": val_metrics,
         "monitor_metric": monitor_metric,
         "monitor_value": float(monitor_value),
+        "test_split_used_for_selection": False,
     }
 
     torch.save(checkpoint, path)
@@ -832,6 +851,7 @@ def main() -> None:
         config_path = PROJECT_ROOT / config_path
 
     config = load_yaml_config(config_path)
+    validate_iemocap_feature_config(config, PROJECT_ROOT)
 
     seed = int(config.get("system", {}).get("seed", 42))
     set_seed(seed)
@@ -839,6 +859,16 @@ def main() -> None:
     run_paths = prepare_run_environment(
         config=config,
         config_path=config_path,
+    )
+    print(
+        "CODEX_RUN_INFO_JSON="
+        + json.dumps(
+            {
+                "run_id": str(run_paths["run_id"]),
+                "run_dir": str(run_paths["run_dir"].resolve()),
+            }
+        ),
+        flush=True,
     )
 
     print_config_summary(config, run_paths)

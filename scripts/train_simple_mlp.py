@@ -19,6 +19,7 @@ SimpleMLP 不是最终 MMGCN baseline。
 from pathlib import Path
 import argparse
 import csv
+import json
 import sys
 from typing import Dict, List, Tuple
 
@@ -368,6 +369,7 @@ def save_checkpoint(
         "optimizer_state_dict": optimizer.state_dict(),
         "config": config,
         "metrics": metrics,
+        "test_split_used_for_selection": False,
     }
 
     torch.save(checkpoint, save_path)
@@ -459,6 +461,16 @@ def main() -> None:
     device = get_device(config)
 
     run_info = prepare_run_environment(config)
+    print(
+        "CODEX_RUN_INFO_JSON="
+        + json.dumps(
+            {
+                "run_id": str(run_info["run_id"]),
+                "run_dir": str(Path(run_info["run_dir"]).resolve()),
+            }
+        ),
+        flush=True,
+    )
 
     print_start_summary(
         config=config,

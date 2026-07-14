@@ -36,7 +36,8 @@ from utils.metrics import (  # noqa: E402
     compute_confusion_matrix,
     compute_per_class_recall,
 )
-from utils.run_metadata import compute_file_sha256  # noqa: E402
+from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
+from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
 
 
 IGNORE_INDEX = -100
@@ -140,22 +141,7 @@ def get_label_list(config: Mapping[str, Any]) -> List[str]:
 
 
 def verify_feature_sha256(config: Mapping[str, Any]) -> Optional[str]:
-    dataset = config.get("dataset", {})
-    if str(dataset.get("name", "")).upper() != "IEMOCAP":
-        return None
-    feature_path = resolve_path(str(dataset.get("feature_pkl_path", "")))
-    if not feature_path.is_file():
-        raise FileNotFoundError(f"IEMOCAP feature PKL not found: {feature_path}")
-    actual = compute_file_sha256(feature_path)
-    expected = str(dataset.get("feature_sha256", "")).strip().lower()
-    if not expected:
-        raise ValueError("dataset.feature_sha256 is required for IEMOCAP.")
-    if actual.lower() != expected:
-        raise ValueError(
-            "IEMOCAP feature SHA256 mismatch: "
-            f"configured={expected}, actual={actual}."
-        )
-    return actual
+    return validate_iemocap_feature_config(config, PROJECT_ROOT)
 
 
 class SyntheticDialogueDataset(Dataset):
@@ -321,7 +307,9 @@ def evaluate_model(
     total_count = 0
     y_true: List[int] = []
     y_pred: List[int] = []
+    all_probabilities: List[List[float]] = []
     prediction_rows: List[Dict[str, Any]] = []
+    label_list = get_label_list(config)
     with torch.no_grad():
         for raw_batch in loader:
             batch = move_batch(raw_batch, device)
@@ -331,9 +319,13 @@ def evaluate_model(
             valid_count = int(valid.sum().item())
             total_loss += float(losses["total_loss"].item()) * valid_count
             total_count += valid_count
-            predicted = output["logits"].argmax(dim=-1)
+            probabilities = torch.softmax(output["logits"], dim=-1)
+            predicted = probabilities.argmax(dim=-1)
             y_true.extend(int(value) for value in batch["labels"][valid].cpu().tolist())
             y_pred.extend(int(value) for value in predicted[valid].cpu().tolist())
+            all_probabilities.extend(
+                probabilities[valid].detach().cpu().to(torch.float64).tolist()
+            )
             for batch_index, time_index in valid.nonzero(as_tuple=False).cpu().tolist():
                 utterance_ids = raw_batch.get("utterance_ids", [])
                 utterance_id = (
@@ -341,19 +333,33 @@ def evaluate_model(
                     if batch_index < len(utterance_ids) and time_index < len(utterance_ids[batch_index])
                     else f"utt_{time_index}"
                 )
+                true_label_id = int(batch["labels"][batch_index, time_index].item())
+                predicted_label_id = int(predicted[batch_index, time_index].item())
                 prediction_rows.append(
-                    {
-                        "dialogue_id": str(raw_batch["dialogue_ids"][batch_index]),
-                        "utterance_id": str(utterance_id),
-                        "time_index": int(time_index),
-                        "label_id": int(batch["labels"][batch_index, time_index].item()),
-                        "predicted_id": int(predicted[batch_index, time_index].item()),
-                    }
+                    build_prediction_row(
+                        split=str(getattr(loader.dataset, "split", "unknown")),
+                        dialogue_id=raw_batch["dialogue_ids"][batch_index],
+                        utterance_id=utterance_id,
+                        utterance_index=time_index,
+                        true_label_id=true_label_id,
+                        predicted_label_id=predicted_label_id,
+                        probabilities=probabilities[batch_index, time_index]
+                        .detach()
+                        .cpu()
+                        .tolist(),
+                        label_list=label_list,
+                        extra={
+                            "time_index": int(time_index),
+                            "label_id": true_label_id,
+                            "predicted_id": predicted_label_id,
+                        },
+                    )
                 )
     if total_count == 0:
         raise RuntimeError("Evaluation produced no valid utterances.")
     labels = list(range(int(config["dataset"]["num_classes"])))
     metrics = compute_classification_metrics(y_true, y_pred, labels=labels)
+    metrics.update(compute_calibration_metrics(y_true, all_probabilities))
     return {
         "loss": total_loss / total_count,
         "metrics": metrics,
@@ -385,6 +391,12 @@ def save_evaluation_outputs(
         "weighted_f1": float(metrics["weighted_f1"]),
         "macro_f1": float(metrics["macro_f1"]),
         "uar": float(metrics["uar"]),
+        "ece_10": float(metrics["ece_10"]),
+        "nll": float(metrics["nll"]),
+        "brier_score": float(metrics["brier_score"]),
+        "mean_confidence": float(metrics["mean_confidence"]),
+        "mean_confidence_correct": float(metrics["mean_confidence_correct"]),
+        "mean_confidence_incorrect": float(metrics["mean_confidence_incorrect"]),
     }
     pd.DataFrame([metrics_row]).to_csv(output_dir / "metrics.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(result["prediction_rows"]).to_csv(

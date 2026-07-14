@@ -1,0 +1,13 @@
+legacy_mmgcn_textcnn:
+  feature_set_name: legacy_mmgcn_textcnn
+  path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+  text_dim: 100
+  status: legacy_compatibility_only
+
+clean_roberta_v1:
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  sha256: TO_BE_FILLED_AFTER_GENERATION
+  text_dim: 768
+  status: pending_generation

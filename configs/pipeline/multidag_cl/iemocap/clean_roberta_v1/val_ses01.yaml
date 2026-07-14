@@ -1,0 +1,70 @@
+causal: true
+causal_contract_version: '1.0'
+
+project:
+  pipeline_name: multidag_cl_iemocap_clean_roberta_v1_val_ses01
+
+dataset:
+  name: IEMOCAP
+  feature_pkl_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  val_split_strategy: session_holdout
+  val_session_id: Ses01
+  test_session_id: Ses05
+
+model:
+  name: MultiDAGCL
+  text_feature_dim: 768
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+
+protocol:
+  run_type: formal
+  seed: 42
+  epochs: 30
+  checkpoint_selection_metric: val_weighted_f1
+  test_split_used_for_selection: false
+  future_context_allowed: false
+
+execution:
+  dry_run: false
+
+run_control:
+  skip_train_use_run_id: ''
+
+train:
+  enabled: true
+  train_config_path: configs/baselines/multidag_cl/iemocap/clean_roberta_v1/val_ses01.yaml
+
+evaluation:
+  enabled: true
+  checkpoint_name: best_model.pt
+  checkpoint_selected_by: val_weighted_f1
+  splits: [val, test]
+  test_session_id: Ses05
+  test_split_used_for_selection: false
+  max_batches: null
+
+analysis_tables:
+  enabled: true
+
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+
+missing_modalities:
+  enabled: false
+
+multi_run_training_curves:
+  enabled: false
+  config_path: ''
+
+multi_run_final_analysis:
+  enabled: false
+  config_path: ''
+
+provenance:
+  source_config: configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses01.yaml
+  feature_registry_key: clean_roberta_v1

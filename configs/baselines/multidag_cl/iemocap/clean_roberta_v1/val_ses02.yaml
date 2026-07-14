@@ -1,0 +1,68 @@
+causal: true
+causal_contract_version: '1.0'
+
+project:
+  name: m3ed_mmgcn_clean
+  experiment_name: multidag_cl_iemocap_clean_roberta_v1_val_ses02
+
+system:
+  seed: 42
+  device: cuda
+  output_dir: outputs
+
+dataset:
+  name: IEMOCAP
+  feature_pkl_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  num_classes: 6
+  valid_ratio: 0.1
+  val_split_strategy: session_holdout
+  val_session_id: Ses02
+  test_session_id: Ses05
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  sample_unit: dialogue
+
+model:
+  name: MultiDAGCL
+  text_feature_dim: 768
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  hidden_dim: 128
+  num_classes: 6
+  num_speakers: 2
+  dropout: 0.2
+  active_modalities: [text, audio, visual]
+  num_graph_layers: 1
+  modality_encoder_type: causal_gru
+  modality_encoder_layers: 1
+
+graph:
+  context_mode: causal
+  window_past: 5
+  window_future: 0
+
+training:
+  epochs: 30
+  batch_size: 8
+  lr: 0.0005
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  select_best_by: val_weighted_f1
+  num_workers: 0
+
+output:
+  run_root: outputs/runs
+  experiment_name: multidag_cl_iemocap_clean_roberta_v1_val_ses02
+
+protocol:
+  run_type: formal
+  checkpoint_selection_metric: val_weighted_f1
+  test_split_used_for_selection: false
+  future_context_allowed: false
+
+provenance:
+  source_config: configs/baselines/multidag_cl/iemocap/causal_benchmark/val_ses02.yaml
+  feature_registry_key: clean_roberta_v1
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf

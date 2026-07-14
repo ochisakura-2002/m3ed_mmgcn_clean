@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,14 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
     family: ROOT / "configs" / "baselines" / family / "iemocap" / "clean_roberta_v1"
     for family in ("mmgcn", "multidag_cl", "gsmcc", "dialoguegcn")
 }
+CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
+CLEAN_ROBERTA_V1_PIPELINE_DIRS = {
+    family: ROOT / "configs" / "pipeline" / family / "iemocap" / "clean_roberta_v1"
+    for family in CLEAN_ROBERTA_V1_FORMAL_FAMILIES
+}
+CLEAN_ROBERTA_V1_MANIFEST = (
+    ROOT / "configs" / "experiments" / "iemocap_clean_roberta_v1_8run.yaml"
+)
 
 CAUSAL_CONTRACT_VERSION = "1.0"
 IEMOCAP_FEATURE_PKL = "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
@@ -53,6 +62,23 @@ CAUSAL_BENCHMARK_VARIANTS = {
     "val_ses03.yaml": ("session_holdout", "Ses03"),
     "val_ses04.yaml": ("session_holdout", "Ses04"),
 }
+CLEAN_ROBERTA_V1_FORMAL_VARIANTS = {
+    name: split
+    for name, split in CAUSAL_BENCHMARK_VARIANTS.items()
+    if split[0] == "session_holdout"
+}
+CLEAN_ROBERTA_V1_MODEL_NAMES = {
+    "mmgcn": "MMGCN",
+    "multidag_cl": "MultiDAGCL",
+}
+CLEAN_ROBERTA_V1_FORBIDDEN_CAPS = (
+    "train_batch_cap",
+    "val_batch_cap",
+    "test_batch_cap",
+    "max_train_batches",
+    "max_val_batches",
+    "max_test_batches",
+)
 
 STABLE_CONTEXTS = {
     "context_w0_tav_stable_candidate.yaml": ("causal", 0),
@@ -338,6 +364,19 @@ def values_for_key(value: Any, wanted_key: str) -> list[Any]:
     elif isinstance(value, list):
         for child in value:
             matches.extend(values_for_key(child, wanted_key))
+    return matches
+
+
+def string_values(value: Any) -> list[str]:
+    matches: list[str] = []
+    if isinstance(value, dict):
+        for child in value.values():
+            matches.extend(string_values(child))
+    elif isinstance(value, list):
+        for child in value:
+            matches.extend(string_values(child))
+    elif isinstance(value, str):
+        matches.append(value)
     return matches
 
 
@@ -720,14 +759,407 @@ def validate_clean_roberta_v1_smoke_config(
     require(epochs == 2, f"{rel(path)} must run exactly two smoke epochs", errors)
 
 
+def clean_roberta_v1_training_expected(path: Path, family: str) -> dict[str, Any]:
+    """Derive the only permitted Clean v1 formal config from its legacy template."""
+
+    source_path = CAUSAL_BENCHMARK_TRAIN_DIRS[family] / path.name
+    expected = copy.deepcopy(load_yaml(source_path))
+    session = CLEAN_ROBERTA_V1_FORMAL_VARIANTS[path.name][1]
+    experiment_name = f"{family}_iemocap_clean_roberta_v1_val_{session.lower()}"
+
+    expected["project"]["experiment_name"] = experiment_name
+    expected["dataset"]["feature_pkl_path"] = CLEAN_ROBERTA_V1_PATH
+    expected["dataset"]["feature_set_name"] = CLEAN_ROBERTA_V1_NAME
+    expected["dataset"]["feature_sha256"] = CLEAN_ROBERTA_V1_SHA256
+    expected["dataset"]["test_session_id"] = "Ses05"
+    expected["model"]["text_feature_dim"] = 768
+    if family == "multidag_cl":
+        expected["graph"]["window_future"] = 0
+        expected["training"].pop("max_train_batches", None)
+        expected["training"].pop("max_val_batches", None)
+        expected["output"]["experiment_name"] = experiment_name
+    expected["protocol"] = {
+        "run_type": "formal",
+        "checkpoint_selection_metric": "val_weighted_f1",
+        "test_split_used_for_selection": False,
+        "future_context_allowed": False,
+    }
+    expected["provenance"] = {
+        "source_config": rel(source_path),
+        "feature_registry_key": "clean_roberta_v1",
+        "feature_set_name": CLEAN_ROBERTA_V1_NAME,
+        "feature_sha256": CLEAN_ROBERTA_V1_SHA256,
+    }
+    return expected
+
+
+def clean_roberta_v1_pipeline_expected(path: Path, family: str) -> dict[str, Any]:
+    """Derive the only permitted Clean v1 pipeline config from its legacy template."""
+
+    source_path = CAUSAL_BENCHMARK_PIPELINE_DIRS[family] / path.name
+    expected = copy.deepcopy(load_yaml(source_path))
+    session = CLEAN_ROBERTA_V1_FORMAL_VARIANTS[path.name][1]
+    pipeline_name = f"{family}_iemocap_clean_roberta_v1_val_{session.lower()}"
+    train_path = CLEAN_ROBERTA_V1_TRAIN_DIRS[family] / path.name
+
+    expected["project"]["pipeline_name"] = pipeline_name
+    expected["dataset"]["feature_pkl_path"] = CLEAN_ROBERTA_V1_PATH
+    expected["dataset"]["feature_set_name"] = CLEAN_ROBERTA_V1_NAME
+    expected["dataset"]["feature_sha256"] = CLEAN_ROBERTA_V1_SHA256
+    expected["dataset"]["val_split_strategy"] = "session_holdout"
+    expected["dataset"]["val_session_id"] = session
+    expected["dataset"]["test_session_id"] = "Ses05"
+    expected["model"]["text_feature_dim"] = 768
+    expected["model"]["audio_feature_dim"] = 1582
+    expected["model"]["visual_feature_dim"] = 342
+    expected["protocol"] = {
+        "run_type": "formal",
+        "seed": 42,
+        "epochs": 30,
+        "checkpoint_selection_metric": "val_weighted_f1",
+        "test_split_used_for_selection": False,
+        "future_context_allowed": False,
+    }
+    expected["train"]["train_config_path"] = rel(train_path)
+    expected["evaluation"]["checkpoint_selected_by"] = "val_weighted_f1"
+    expected["evaluation"]["test_session_id"] = "Ses05"
+    expected["evaluation"]["test_split_used_for_selection"] = False
+    expected["provenance"] = {
+        "source_config": rel(source_path),
+        "feature_registry_key": "clean_roberta_v1",
+    }
+    return expected
+
+
+def validate_clean_roberta_v1_formal_common(
+    path: Path,
+    config: dict[str, Any],
+    expected_session: str,
+    errors: list[str],
+) -> None:
+    dataset = config.get("dataset", {})
+    model = config.get("model", {})
+    protocol = config.get("protocol", {})
+
+    require(config.get("causal") is True, f"{rel(path)} must set causal: true", errors)
+    require(
+        config.get("causal_contract_version") == CAUSAL_CONTRACT_VERSION,
+        f"{rel(path)} causal contract mismatch",
+        errors,
+    )
+    require(dataset.get("name") == "IEMOCAP", f"{rel(path)} must use IEMOCAP", errors)
+    require(
+        dataset.get("feature_pkl_path") == CLEAN_ROBERTA_V1_PATH,
+        f"{rel(path)} clean feature path mismatch",
+        errors,
+    )
+    require(
+        dataset.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME,
+        f"{rel(path)} clean feature set mismatch",
+        errors,
+    )
+    require(
+        dataset.get("feature_sha256") == CLEAN_ROBERTA_V1_SHA256,
+        f"{rel(path)} clean feature SHA mismatch",
+        errors,
+    )
+    require(
+        "allow_unpinned_feature_for_smoke" not in dataset,
+        f"{rel(path)} must not allow an unpinned feature",
+        errors,
+    )
+    require(
+        dataset.get("val_split_strategy") == "session_holdout",
+        f"{rel(path)} must use session_holdout validation",
+        errors,
+    )
+    require(
+        dataset.get("val_session_id") == expected_session,
+        f"{rel(path)} validation session does not match filename",
+        errors,
+    )
+    require(dataset.get("test_session_id") == "Ses05", f"{rel(path)} test must be Ses05", errors)
+    require(model.get("text_feature_dim") == 768, f"{rel(path)} text dim mismatch", errors)
+    require(model.get("audio_feature_dim") == 1582, f"{rel(path)} audio dim mismatch", errors)
+    require(model.get("visual_feature_dim") == 342, f"{rel(path)} visual dim mismatch", errors)
+    require(
+        protocol.get("checkpoint_selection_metric") == "val_weighted_f1",
+        f"{rel(path)} must select checkpoints by val_weighted_f1",
+        errors,
+    )
+    test_selection_flags = values_for_key(config, "test_split_used_for_selection")
+    require(
+        bool(test_selection_flags) and all(value is False for value in test_selection_flags),
+        f"{rel(path)} must explicitly exclude test from selection",
+        errors,
+    )
+    require(
+        protocol.get("future_context_allowed") is False,
+        f"{rel(path)} must forbid future context",
+        errors,
+    )
+    require(
+        not any(bool(value) for value in values_for_key(config, "bidirectional")),
+        f"{rel(path)} enables a bidirectional encoder",
+        errors,
+    )
+    require(
+        not test_monitor_paths(config),
+        f"{rel(path)} uses test for checkpoint or epoch selection",
+        errors,
+    )
+    for cap_name in CLEAN_ROBERTA_V1_FORBIDDEN_CAPS:
+        require(
+            not values_for_key(config, cap_name),
+            f"{rel(path)} contains forbidden {cap_name}",
+            errors,
+        )
+    lowered_values = [value.lower() for value in string_values(config)]
+    forbidden_markers = ("placeholder", "to_be_filled", "smoke", "quick", "debug")
+    found_markers = sorted(
+        marker
+        for marker in forbidden_markers
+        if any(marker in value for value in lowered_values)
+    )
+    require(
+        not found_markers,
+        f"{rel(path)} contains forbidden formal-run markers {found_markers}",
+        errors,
+    )
+
+
+def validate_clean_roberta_v1_formal_training(
+    path: Path,
+    family: str,
+    config: dict[str, Any],
+    errors: list[str],
+) -> None:
+    expected_variant = CLEAN_ROBERTA_V1_FORMAL_VARIANTS.get(path.name)
+    if expected_variant is None:
+        errors.append(f"unexpected Clean RoBERTa v1 training YAML {rel(path)}")
+        return
+    expected_session = expected_variant[1]
+    assert expected_session is not None
+    validate_clean_roberta_v1_formal_common(path, config, expected_session, errors)
+
+    graph = config.get("graph", {})
+    require(config.get("system", {}).get("seed") == 42, f"{rel(path)} seed mismatch", errors)
+    require(graph.get("context_mode") == "causal", f"{rel(path)} graph is not causal", errors)
+    require(graph.get("window_future") == 0, f"{rel(path)} window_future must be 0", errors)
+    if family == "mmgcn":
+        require(config.get("train", {}).get("max_epochs") == 30, f"{rel(path)} epochs mismatch", errors)
+        require(
+            config.get("logging", {}).get("monitor_metric") == "val_weighted_f1",
+            f"{rel(path)} MMGCN selection metric mismatch",
+            errors,
+        )
+    else:
+        require(config.get("training", {}).get("epochs") == 30, f"{rel(path)} epochs mismatch", errors)
+        require(
+            config.get("training", {}).get("select_best_by") == "val_weighted_f1",
+            f"{rel(path)} MultiDAG selection metric mismatch",
+            errors,
+        )
+        require(graph.get("window_past") == 5, f"{rel(path)} MultiDAG window_past mismatch", errors)
+
+    expected = clean_roberta_v1_training_expected(path, family)
+    require(
+        config == expected,
+        f"{rel(path)} differs from its legacy formal template beyond allowed fields",
+        errors,
+    )
+
+
+def validate_clean_roberta_v1_formal_pipeline(
+    path: Path,
+    family: str,
+    config: dict[str, Any],
+    errors: list[str],
+) -> None:
+    expected_variant = CLEAN_ROBERTA_V1_FORMAL_VARIANTS.get(path.name)
+    if expected_variant is None:
+        errors.append(f"unexpected Clean RoBERTa v1 pipeline YAML {rel(path)}")
+        return
+    expected_session = expected_variant[1]
+    assert expected_session is not None
+    validate_clean_roberta_v1_formal_common(path, config, expected_session, errors)
+
+    protocol = config.get("protocol", {})
+    evaluation = config.get("evaluation", {})
+    train_path_text = str(config.get("train", {}).get("train_config_path", ""))
+    train_path = ROOT / train_path_text
+    expected_train_path = CLEAN_ROBERTA_V1_TRAIN_DIRS[family] / path.name
+    require(config.get("model", {}).get("name") == CLEAN_ROBERTA_V1_MODEL_NAMES[family], f"{rel(path)} model mismatch", errors)
+    require(protocol.get("seed") == 42, f"{rel(path)} seed mismatch", errors)
+    require(protocol.get("epochs") == 30, f"{rel(path)} epochs mismatch", errors)
+    require(bool_at(config, "train", "enabled"), f"{rel(path)} must enable training", errors)
+    require(train_path.exists(), f"{rel(path)} points to missing {train_path_text}", errors)
+    require(
+        train_path.resolve() == expected_train_path.resolve(),
+        f"{rel(path)} must point to its matching Clean v1 training YAML",
+        errors,
+    )
+    require(bool_at(config, "evaluation", "enabled"), f"{rel(path)} must enable evaluation", errors)
+    require(evaluation.get("checkpoint_name") == "best_model.pt", f"{rel(path)} checkpoint mismatch", errors)
+    require(
+        evaluation.get("checkpoint_selected_by") == "val_weighted_f1",
+        f"{rel(path)} evaluated checkpoint was not validation-selected",
+        errors,
+    )
+    require(evaluation.get("splits") == ["val", "test"], f"{rel(path)} must evaluate val/test", errors)
+    require(evaluation.get("test_session_id") == "Ses05", f"{rel(path)} test must be Ses05", errors)
+    require(evaluation.get("max_batches") is None, f"{rel(path)} caps evaluation batches", errors)
+
+    expected = clean_roberta_v1_pipeline_expected(path, family)
+    require(
+        config == expected,
+        f"{rel(path)} differs from its legacy pipeline template beyond allowed fields",
+        errors,
+    )
+
+
+def validate_clean_roberta_v1_manifest(errors: list[str]) -> None:
+    path = CLEAN_ROBERTA_V1_MANIFEST
+    if not path.exists():
+        errors.append(f"missing {rel(path)}")
+        return
+    manifest = load_yaml(path)
+    feature = manifest.get("feature", {})
+    protocol = manifest.get("protocol", {})
+    execution = manifest.get("execution", {})
+    runs = manifest.get("runs", [])
+
+    require(manifest.get("expected_run_count") == 8, f"{rel(path)} expected run count mismatch", errors)
+    require(execution.get("mode") == "sequential", f"{rel(path)} must execute sequentially", errors)
+    require(execution.get("max_concurrent_runs") == 1, f"{rel(path)} concurrency must be one", errors)
+    require(feature.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME, f"{rel(path)} feature set mismatch", errors)
+    require(feature.get("path") == CLEAN_ROBERTA_V1_PATH, f"{rel(path)} feature path mismatch", errors)
+    require(feature.get("sha256") == CLEAN_ROBERTA_V1_SHA256, f"{rel(path)} feature SHA mismatch", errors)
+    require(feature.get("text_dim") == 768, f"{rel(path)} text dim mismatch", errors)
+    require(feature.get("audio_dim") == 1582, f"{rel(path)} audio dim mismatch", errors)
+    require(feature.get("visual_dim") == 342, f"{rel(path)} visual dim mismatch", errors)
+    require(feature.get("pinned") is True, f"{rel(path)} feature must be pinned", errors)
+    require(protocol.get("seed") == 42, f"{rel(path)} seed mismatch", errors)
+    require(protocol.get("epochs") == 30, f"{rel(path)} epochs mismatch", errors)
+    require(
+        protocol.get("validation_split_strategy") == "session_holdout",
+        f"{rel(path)} validation strategy mismatch",
+        errors,
+    )
+    require(
+        protocol.get("validation_sessions") == ["Ses01", "Ses02", "Ses03", "Ses04"],
+        f"{rel(path)} validation sessions mismatch",
+        errors,
+    )
+    require(
+        protocol.get("checkpoint_selection_metric") == "val_weighted_f1",
+        f"{rel(path)} checkpoint metric mismatch",
+        errors,
+    )
+    require(
+        protocol.get("checkpoint_selection_split") == "validation",
+        f"{rel(path)} checkpoint selection must be validation-only",
+        errors,
+    )
+    require(protocol.get("checkpoint_name_for_test") == "best_model.pt", f"{rel(path)} test checkpoint mismatch", errors)
+    require(protocol.get("test_session") == "Ses05", f"{rel(path)} test session mismatch", errors)
+    require(protocol.get("test_split_used_for_selection") is False, f"{rel(path)} test participates in selection", errors)
+    require(protocol.get("future_context_allowed") is False, f"{rel(path)} allows future context", errors)
+
+    require(isinstance(runs, list), f"{rel(path)} runs must be a list", errors)
+    if not isinstance(runs, list):
+        return
+    require(len(runs) == 8, f"{rel(path)} must list eight runs", errors)
+    require([run.get("order") for run in runs] == list(range(1, 9)), f"{rel(path)} run order mismatch", errors)
+    require(
+        len({run.get("config_path") for run in runs}) == 8,
+        f"{rel(path)} config paths must be unique",
+        errors,
+    )
+    require(
+        len({run.get("train_config_path") for run in runs}) == 8,
+        f"{rel(path)} training config paths must be unique",
+        errors,
+    )
+    model_counts = Counter(run.get("model") for run in runs)
+    require(model_counts == Counter({"MMGCN": 4, "MultiDAGCL": 4}), f"{rel(path)} model counts mismatch", errors)
+    expected_pairs = Counter(
+        (model_name, session)
+        for model_name in ("MMGCN", "MultiDAGCL")
+        for session in ("Ses01", "Ses02", "Ses03", "Ses04")
+    )
+    actual_pairs = Counter((run.get("model"), run.get("validation_session")) for run in runs)
+    require(actual_pairs == expected_pairs, f"{rel(path)} model/session coverage mismatch", errors)
+
+    family_for_model = {"MMGCN": "mmgcn", "MultiDAGCL": "multidag_cl"}
+    for run in runs:
+        model_name = run.get("model")
+        family = family_for_model.get(model_name)
+        session = run.get("validation_session")
+        if family is None or session not in {"Ses01", "Ses02", "Ses03", "Ses04"}:
+            continue
+        file_name = f"val_{session.lower()}.yaml"
+        expected_pipeline_path = CLEAN_ROBERTA_V1_PIPELINE_DIRS[family] / file_name
+        expected_train_path = CLEAN_ROBERTA_V1_TRAIN_DIRS[family] / file_name
+        require(run.get("config_path") == rel(expected_pipeline_path), f"{rel(path)} run config path mismatch", errors)
+        require(run.get("train_config_path") == rel(expected_train_path), f"{rel(path)} run training path mismatch", errors)
+        require(expected_pipeline_path.exists(), f"{rel(path)} references missing {rel(expected_pipeline_path)}", errors)
+        require(expected_train_path.exists(), f"{rel(path)} references missing {rel(expected_train_path)}", errors)
+        require(run.get("seed") == 42, f"{rel(path)} run seed mismatch", errors)
+        require(run.get("epochs") == 30, f"{rel(path)} run epochs mismatch", errors)
+        require(run.get("feature_path") == CLEAN_ROBERTA_V1_PATH, f"{rel(path)} run feature path mismatch", errors)
+        require(run.get("feature_sha256") == CLEAN_ROBERTA_V1_SHA256, f"{rel(path)} run feature SHA mismatch", errors)
+        require(run.get("checkpoint_selection_metric") == "val_weighted_f1", f"{rel(path)} run selection metric mismatch", errors)
+        require(run.get("test_session") == "Ses05", f"{rel(path)} run test session mismatch", errors)
+        require(run.get("test_split_used_for_selection") is False, f"{rel(path)} run uses test for selection", errors)
+
+    for cap_name in CLEAN_ROBERTA_V1_FORBIDDEN_CAPS:
+        require(not values_for_key(manifest, cap_name), f"{rel(path)} contains forbidden {cap_name}", errors)
+    lowered_values = [value.lower() for value in string_values(manifest)]
+    require(
+        not any("placeholder" in value or "to_be_filled" in value for value in lowered_values),
+        f"{rel(path)} contains a placeholder",
+        errors,
+    )
+
+
+def validate_clean_roberta_v1_formal_tree(errors: list[str]) -> None:
+    expected_names = set(CLEAN_ROBERTA_V1_FORMAL_VARIANTS)
+    for family in CLEAN_ROBERTA_V1_FORMAL_FAMILIES:
+        train_dir = CLEAN_ROBERTA_V1_TRAIN_DIRS[family]
+        pipeline_dir = CLEAN_ROBERTA_V1_PIPELINE_DIRS[family]
+        pipeline_names = {path.name for path in pipeline_dir.glob("*.yaml")}
+        require(
+            pipeline_names == expected_names,
+            f"{rel(pipeline_dir)} must contain exactly {sorted(expected_names)}; got {sorted(pipeline_names)}",
+            errors,
+        )
+        for name in sorted(expected_names):
+            train_path = train_dir / name
+            pipeline_path = pipeline_dir / name
+            require(train_path.exists(), f"missing {rel(train_path)}", errors)
+            require(pipeline_path.exists(), f"missing {rel(pipeline_path)}", errors)
+            if train_path.exists():
+                validate_clean_roberta_v1_formal_training(
+                    train_path, family, load_yaml(train_path), errors
+                )
+            if pipeline_path.exists():
+                validate_clean_roberta_v1_formal_pipeline(
+                    pipeline_path, family, load_yaml(pipeline_path), errors
+                )
+    validate_clean_roberta_v1_manifest(errors)
+
+
 def validate_clean_roberta_v1_tree(errors: list[str]) -> None:
     if not IEMOCAP_FEATURE_REGISTRY.exists():
         errors.append(f"missing {rel(IEMOCAP_FEATURE_REGISTRY)}")
     else:
         validate_clean_roberta_v1_registry(load_yaml(IEMOCAP_FEATURE_REGISTRY), errors)
 
-    expected_names = {"smoke_real_2epoch.yaml"}
     for family, directory in CLEAN_ROBERTA_V1_TRAIN_DIRS.items():
+        expected_names = {"smoke_real_2epoch.yaml"}
+        if family in CLEAN_ROBERTA_V1_FORMAL_FAMILIES:
+            expected_names.update(CLEAN_ROBERTA_V1_FORMAL_VARIANTS)
         names = {path.name for path in directory.glob("*.yaml")}
         require(
             names == expected_names,
@@ -738,6 +1170,8 @@ def validate_clean_roberta_v1_tree(errors: list[str]) -> None:
         if not path.exists():
             continue
         validate_clean_roberta_v1_smoke_config(path, family, load_yaml(path), errors)
+
+    validate_clean_roberta_v1_formal_tree(errors)
 
 
 def main() -> None:

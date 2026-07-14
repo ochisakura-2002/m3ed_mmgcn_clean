@@ -1,0 +1,146 @@
+schema_version: '1.0'
+manifest_name: iemocap_clean_roberta_v1_8run
+expected_run_count: 8
+
+execution:
+  mode: sequential
+  max_concurrent_runs: 1
+
+feature:
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  text_dim: 768
+  audio_dim: 1582
+  visual_dim: 342
+  pinned: true
+
+protocol:
+  seed: 42
+  epochs: 30
+  validation_split_strategy: session_holdout
+  validation_sessions: [Ses01, Ses02, Ses03, Ses04]
+  checkpoint_selection_metric: val_weighted_f1
+  checkpoint_selection_split: validation
+  checkpoint_name_for_test: best_model.pt
+  test_session: Ses05
+  test_split_used_for_selection: false
+  future_context_allowed: false
+
+provenance:
+  source_templates:
+    mmgcn: configs/pipeline/mmgcn/iemocap/causal_benchmark/val_sesXX.yaml
+    multidag_cl: configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_sesXX.yaml
+  allowed_differences_from_legacy_formal:
+    - experiment and pipeline names include clean_roberta_v1
+    - feature path and SHA256 use the frozen Clean RoBERTa v1 artifact
+    - feature_set_name and explicit protocol/provenance fields are added
+    - text feature dimension changes from 100 to 768
+    - test session and validation-only checkpoint selection are made explicit
+    - MultiDAG window_future=0 is made explicit and null batch-cap keys are removed
+
+runs:
+  - order: 1
+    run_name: mmgcn_iemocap_clean_roberta_v1_val_ses01
+    model: MMGCN
+    validation_session: Ses01
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/mmgcn/iemocap/clean_roberta_v1/val_ses01.yaml
+    train_config_path: configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses01.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 2
+    run_name: mmgcn_iemocap_clean_roberta_v1_val_ses02
+    model: MMGCN
+    validation_session: Ses02
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/mmgcn/iemocap/clean_roberta_v1/val_ses02.yaml
+    train_config_path: configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses02.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 3
+    run_name: mmgcn_iemocap_clean_roberta_v1_val_ses03
+    model: MMGCN
+    validation_session: Ses03
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/mmgcn/iemocap/clean_roberta_v1/val_ses03.yaml
+    train_config_path: configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses03.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 4
+    run_name: mmgcn_iemocap_clean_roberta_v1_val_ses04
+    model: MMGCN
+    validation_session: Ses04
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/mmgcn/iemocap/clean_roberta_v1/val_ses04.yaml
+    train_config_path: configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses04.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 5
+    run_name: multidag_cl_iemocap_clean_roberta_v1_val_ses01
+    model: MultiDAGCL
+    validation_session: Ses01
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/multidag_cl/iemocap/clean_roberta_v1/val_ses01.yaml
+    train_config_path: configs/baselines/multidag_cl/iemocap/clean_roberta_v1/val_ses01.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 6
+    run_name: multidag_cl_iemocap_clean_roberta_v1_val_ses02
+    model: MultiDAGCL
+    validation_session: Ses02
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/multidag_cl/iemocap/clean_roberta_v1/val_ses02.yaml
+    train_config_path: configs/baselines/multidag_cl/iemocap/clean_roberta_v1/val_ses02.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 7
+    run_name: multidag_cl_iemocap_clean_roberta_v1_val_ses03
+    model: MultiDAGCL
+    validation_session: Ses03
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/multidag_cl/iemocap/clean_roberta_v1/val_ses03.yaml
+    train_config_path: configs/baselines/multidag_cl/iemocap/clean_roberta_v1/val_ses03.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false
+  - order: 8
+    run_name: multidag_cl_iemocap_clean_roberta_v1_val_ses04
+    model: MultiDAGCL
+    validation_session: Ses04
+    seed: 42
+    epochs: 30
+    config_path: configs/pipeline/multidag_cl/iemocap/clean_roberta_v1/val_ses04.yaml
+    train_config_path: configs/baselines/multidag_cl/iemocap/clean_roberta_v1/val_ses04.yaml
+    feature_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+    feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+    checkpoint_selection_metric: val_weighted_f1
+    test_session: Ses05
+    test_split_used_for_selection: false

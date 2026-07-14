@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import copy
 import hashlib
 import json
@@ -25,6 +26,8 @@ from scripts.analyze.audit_iemocap_feature_pkl import (
 from scripts.analyze.probe_iemocap_text_features import run_probes
 from scripts.baselines.train_multidag_cl import build_model as build_multidag
 from scripts.dev.validate_config_tree import (
+    validate_clean_roberta_v1_formal_pipeline,
+    validate_clean_roberta_v1_formal_training,
     validate_clean_roberta_v1_registry,
     validate_clean_roberta_v1_smoke_config,
     validate_clean_roberta_v1_tree,
@@ -62,6 +65,25 @@ CLEAN_CONFIGS = (
     ROOT / "configs/baselines/multidag_cl/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
     ROOT / "configs/baselines/gsmcc/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
     ROOT / "configs/baselines/dialoguegcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+)
+CLEAN_FORMAL_PIPELINE_CONFIGS = tuple(
+    ROOT / f"configs/pipeline/{family}/iemocap/clean_roberta_v1/val_ses0{session}.yaml"
+    for family in ("mmgcn", "multidag_cl")
+    for session in range(1, 5)
+)
+CLEAN_FORMAL_TRAIN_CONFIGS = tuple(
+    ROOT / f"configs/baselines/{family}/iemocap/clean_roberta_v1/val_ses0{session}.yaml"
+    for family in ("mmgcn", "multidag_cl")
+    for session in range(1, 5)
+)
+CLEAN_FORMAL_MANIFEST = ROOT / "configs/experiments/iemocap_clean_roberta_v1_8run.yaml"
+FORBIDDEN_FORMAL_CAPS = (
+    "train_batch_cap",
+    "val_batch_cap",
+    "test_batch_cap",
+    "max_train_batches",
+    "max_val_batches",
+    "max_test_batches",
 )
 
 
@@ -325,7 +347,20 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(file)
 
 
-def test_config_tree_accepts_frozen_registry_and_four_smoke_configs() -> None:
+def nested_values_for_key(value: object, wanted_key: str) -> list[object]:
+    matches: list[object] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == wanted_key:
+                matches.append(child)
+            matches.extend(nested_values_for_key(child, wanted_key))
+    elif isinstance(value, list):
+        for child in value:
+            matches.extend(nested_values_for_key(child, wanted_key))
+    return matches
+
+
+def test_config_tree_accepts_frozen_registry_smoke_and_formal_configs() -> None:
     errors = []
     validate_clean_roberta_v1_tree(errors)
     assert errors == []
@@ -336,6 +371,125 @@ def test_config_tree_accepts_frozen_registry_and_four_smoke_configs() -> None:
         CLEAN_CONFIGS[0], "mmgcn", explicit_false, errors
     )
     assert errors == []
+
+
+def test_eight_formal_configs_and_manifest_lock_the_run_contract() -> None:
+    assert len(CLEAN_FORMAL_PIPELINE_CONFIGS) == 8
+    assert len(set(CLEAN_FORMAL_PIPELINE_CONFIGS)) == 8
+    assert all(path.is_file() for path in CLEAN_FORMAL_PIPELINE_CONFIGS)
+    assert all(path.is_file() for path in CLEAN_FORMAL_TRAIN_CONFIGS)
+
+    model_session_pairs = []
+    for pipeline_path, train_path in zip(
+        CLEAN_FORMAL_PIPELINE_CONFIGS, CLEAN_FORMAL_TRAIN_CONFIGS
+    ):
+        pipeline = load_yaml(pipeline_path)
+        training = load_yaml(train_path)
+        dataset = pipeline["dataset"]
+        model = pipeline["model"]
+        protocol = pipeline["protocol"]
+        expected_session = f"Ses0{int(pipeline_path.stem[-2:])}"
+
+        assert dataset["feature_pkl_path"] == CLEAN_FEATURE_PATH
+        assert dataset["feature_set_name"] == CLEAN_FEATURE_NAME
+        assert dataset["feature_sha256"] == CLEAN_FEATURE_SHA256
+        assert dataset["val_split_strategy"] == "session_holdout"
+        assert dataset["val_session_id"] == expected_session
+        assert dataset["test_session_id"] == "Ses05"
+        assert model["text_feature_dim"] == 768
+        assert model["audio_feature_dim"] == 1582
+        assert model["visual_feature_dim"] == 342
+        assert protocol["seed"] == 42
+        assert protocol["epochs"] == 30
+        assert protocol["checkpoint_selection_metric"] == "val_weighted_f1"
+        assert protocol["test_split_used_for_selection"] is False
+        assert pipeline["evaluation"]["checkpoint_name"] == "best_model.pt"
+        assert pipeline["evaluation"]["checkpoint_selected_by"] == "val_weighted_f1"
+        assert pipeline["evaluation"]["test_split_used_for_selection"] is False
+        assert ROOT / pipeline["train"]["train_config_path"] == train_path
+
+        assert training["system"]["seed"] == 42
+        assert training["dataset"]["val_session_id"] == expected_session
+        assert training["dataset"]["test_session_id"] == "Ses05"
+        assert training["model"]["text_feature_dim"] == 768
+        assert training["graph"]["window_future"] == 0
+        assert training["protocol"]["test_split_used_for_selection"] is False
+        if model["name"] == "MMGCN":
+            assert training["train"]["max_epochs"] == 30
+            assert training["logging"]["monitor_metric"] == "val_weighted_f1"
+        else:
+            assert training["training"]["epochs"] == 30
+            assert training["training"]["select_best_by"] == "val_weighted_f1"
+
+        for config in (pipeline, training):
+            for cap_name in FORBIDDEN_FORMAL_CAPS:
+                assert nested_values_for_key(config, cap_name) == []
+            rendered = yaml.safe_dump(config).lower()
+            assert "placeholder" not in rendered
+            assert "to_be_filled" not in rendered
+            assert "smoke" not in rendered
+            assert "quick" not in rendered
+            assert "debug" not in rendered
+        model_session_pairs.append((model["name"], expected_session))
+
+    assert Counter(model for model, _ in model_session_pairs) == Counter(
+        {"MMGCN": 4, "MultiDAGCL": 4}
+    )
+    assert Counter(model_session_pairs) == Counter(
+        (model, session)
+        for model in ("MMGCN", "MultiDAGCL")
+        for session in ("Ses01", "Ses02", "Ses03", "Ses04")
+    )
+
+    manifest = load_yaml(CLEAN_FORMAL_MANIFEST)
+    assert manifest["expected_run_count"] == 8
+    assert manifest["execution"] == {"mode": "sequential", "max_concurrent_runs": 1}
+    assert manifest["feature"]["path"] == CLEAN_FEATURE_PATH
+    assert manifest["feature"]["sha256"] == CLEAN_FEATURE_SHA256
+    assert manifest["feature"]["text_dim"] == 768
+    assert manifest["protocol"]["checkpoint_selection_split"] == "validation"
+    assert manifest["protocol"]["test_split_used_for_selection"] is False
+    assert manifest["protocol"]["test_session"] == "Ses05"
+    assert [run["config_path"] for run in manifest["runs"]] == [
+        path.relative_to(ROOT).as_posix() for path in CLEAN_FORMAL_PIPELINE_CONFIGS
+    ]
+    assert all(run["seed"] == 42 and run["epochs"] == 30 for run in manifest["runs"])
+    assert all(run["feature_sha256"] == CLEAN_FEATURE_SHA256 for run in manifest["runs"])
+    assert all(run["test_split_used_for_selection"] is False for run in manifest["runs"])
+
+
+def test_formal_validator_rejects_drift_caps_and_test_selection() -> None:
+    train_path = CLEAN_FORMAL_TRAIN_CONFIGS[0]
+    training = load_yaml(train_path)
+    training["dataset"]["feature_sha256"] = UNPINNED_SHA256
+    training["model"]["text_feature_dim"] = 100
+    training["system"]["seed"] = 7
+    training["train"]["max_epochs"] = 29
+    training["train"]["max_train_batches"] = 1
+    training["protocol"]["test_split_used_for_selection"] = True
+    errors = []
+    validate_clean_roberta_v1_formal_training(
+        train_path, "mmgcn", training, errors
+    )
+    assert any("clean feature SHA mismatch" in error for error in errors)
+    assert any("text dim mismatch" in error for error in errors)
+    assert any("seed mismatch" in error for error in errors)
+    assert any("epochs mismatch" in error for error in errors)
+    assert any("max_train_batches" in error for error in errors)
+    assert any("exclude test from selection" in error for error in errors)
+
+    pipeline_path = CLEAN_FORMAL_PIPELINE_CONFIGS[4]
+    pipeline = load_yaml(pipeline_path)
+    pipeline["evaluation"]["checkpoint_selected_by"] = "test_weighted_f1"
+    pipeline["evaluation"]["max_test_batches"] = 1
+    pipeline["protocol"]["test_split_used_for_selection"] = True
+    errors = []
+    validate_clean_roberta_v1_formal_pipeline(
+        pipeline_path, "multidag_cl", pipeline, errors
+    )
+    assert any("validation-selected" in error for error in errors)
+    assert any("max_test_batches" in error for error in errors)
+    assert any("exclude test from selection" in error for error in errors)
 
 
 def test_config_tree_rejects_wrong_registry_sha() -> None:

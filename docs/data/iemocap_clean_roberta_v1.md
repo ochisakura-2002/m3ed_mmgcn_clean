@@ -9,14 +9,19 @@ Clean v1 只替换九项 PKL 的 `videoText`（索引 3）。`videoIDs`、speake
 ## 固定协议
 
 - feature set：`iemocap_clean_roberta_base_utterance_mean_v1`
+- PKL：`data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl`
+- SHA256：`c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf`
 - model：`FacebookAI/roberta-base`
 - revision：`c8b8a37ce3afa8b16a98ff5d0016c157a16ef432`
 - 输入边界：每个 utterance 独立编码，不拼接历史或未来
 - pooling：排除 padding 和全部 special token 后做 mean pooling
 - 输出：float32、768 维
+- audio/visual 维度：1582 / 342
 - 因果范围：`utterance_only_no_dialogue_context`
 - label 使用：`labels_not_used_for_feature_extraction`
 - 模型只从命令行给定的本地目录加载，`local_files_only=True`，不微调
+- 审计状态：严格审计 `PASS`
+- 冻结状态：`frozen_for_main_experiments`，immutable v1
 
 ## 生成、审计与登记
 
@@ -46,15 +51,30 @@ python scripts/analyze/audit_iemocap_feature_pkl.py \
   --strict
 ```
 
-随后用 `scripts/analyze/audit_iemocap_feature_pkl.py --strict` 对照旧 PKL。审计通过后：
+Clean v1 已使用 `scripts/analyze/audit_iemocap_feature_pkl.py --strict` 对照旧 PKL，严格审计结果为 `PASS`。审计确认只有 `videoText` 被替换，非文本字段以及 audio/visual 的 shape、dtype 和数值保持不变。
 
-1. 把生成的 SHA256 同时写入 `configs/data/iemocap_feature_sets.yaml` 的 `clean_roberta_v1.sha256`。
-2. 把同一 SHA256 写入后续 clean-feature 正式训练配置的 `dataset.feature_sha256`。
-3. 把 registry status 从 `pending_generation` 更新为 `frozen_audited`，并保留审计报告。
-4. 先去掉 smoke 配置中的 unpinned 放行，再生成后续正式实验配置；当前仓库不预生成 16-run 配置。
+最终产物 SHA256 为：
 
-只要 `feature_sha256` 还是 `TO_BE_FILLED_AFTER_GENERATION`，正式训练入口就会拒绝执行。只有明确写有 `allow_unpinned_feature_for_smoke: true` 的 smoke 配置可以绕过 pin 校验，而且真实运行仍要求目标 PKL 已存在。
+```text
+c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+```
+
+该 SHA256 已同时固定到 feature registry 和四个 clean v1 smoke 配置。smoke 与正式训练使用相同的完整文件哈希校验，不再允许 `TO_BE_FILLED_AFTER_GENERATION` 或 `allow_unpinned_feature_for_smoke` 绕过校验。实际 PKL SHA 不匹配时，训练入口必须在模型初始化前失败。当前仓库不预生成正式 16-run 配置。
+
+## Session-holdout 线性探针
+
+对 Clean v1 文本特征执行五个 held-out Session 的线性探针，Weighted-F1（WF1）如下：
+
+| Held-out Session | WF1 |
+| --- | ---: |
+| Ses01 | 0.415652 |
+| Ses02 | 0.507076 |
+| Ses03 | 0.440045 |
+| Ses04 | 0.462018 |
+| Ses05 | 0.453176 |
+
+旧特征在 Ses01–Ses04 出现的异常高分已经消失；Clean v1 的五折结果回到一致且更可信的范围。该探针只用于检查文本表示和 session 边界，不替代四个主模型的正式实验结果。
 
 ## 冻结规则
 
-v1 一旦通过审计即冻结到本课题结束。构建脚本默认拒绝覆盖任何既有输出；不得替换、重写或原地修补 v1。任何 tokenizer、revision、pooling、截断、空句策略、上下文边界或实现语义的未来变化都必须生成独立的 v2 路径、feature-set 名称、metadata 和 SHA256，并重新审计。
+Clean v1 已通过严格审计，自此冻结到本课题结束。构建脚本默认拒绝覆盖任何既有输出；不得替换、重写或原地修补 v1。任何 tokenizer、revision、pooling、截断、空句策略、上下文边界或实现语义的变化都必须创建独立的 v2 路径、feature-set 名称、metadata 和 SHA256，并重新审计。

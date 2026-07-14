@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import pickle
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -14,6 +15,9 @@ import torch
 import yaml
 
 from models.baselines.causal_baseline_registry import build_new_causal_baseline
+import scripts.baselines.train_multidag_cl as train_multidag_module
+import scripts.baselines.train_new_causal_graph_baseline as train_causal_module
+import scripts.train_mmgcn as train_mmgcn_module
 from scripts.analyze.audit_iemocap_feature_pkl import (
     audit_feature_pkls,
     write_audit_outputs,
@@ -35,12 +39,19 @@ from scripts.train_mmgcn import build_model as build_mmgcn
 from utils.evaluation import build_prediction_row, compute_calibration_metrics
 from utils.iemocap_features import (
     UNPINNED_SHA256,
+    load_iemocap_feature_registry,
     validate_iemocap_feature_config,
 )
 from utils.run_metadata import compute_file_sha256
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CLEAN_FEATURE_NAME = "iemocap_clean_roberta_base_utterance_mean_v1"
+CLEAN_FEATURE_PATH = (
+    "data/processed/iemocap/"
+    "IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
+)
+CLEAN_FEATURE_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
 CLEAN_CONFIGS = (
     ROOT / "configs/baselines/mmgcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
     ROOT / "configs/baselines/multidag_cl/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
@@ -309,11 +320,22 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(file)
 
 
-def test_four_clean_configs_parse_accept_768_and_pin_rules() -> None:
+def test_registry_and_four_clean_configs_use_frozen_sha_and_768_dims() -> None:
+    registry = load_iemocap_feature_registry(ROOT)
+    clean_entry = registry["clean_roberta_v1"]
+    assert clean_entry["feature_set_name"] == CLEAN_FEATURE_NAME
+    assert clean_entry["path"] == CLEAN_FEATURE_PATH
+    assert clean_entry["sha256"] == CLEAN_FEATURE_SHA256
+    assert clean_entry["text_dim"] == 768
+    assert clean_entry["status"] == "frozen_for_main_experiments"
+
     configs = [load_yaml(path) for path in CLEAN_CONFIGS]
     for config in configs:
-        assert config["dataset"]["feature_sha256"] == UNPINNED_SHA256
-        assert config["dataset"]["allow_unpinned_feature_for_smoke"] is True
+        dataset = config["dataset"]
+        assert dataset["feature_pkl_path"] == CLEAN_FEATURE_PATH
+        assert dataset["feature_set_name"] == CLEAN_FEATURE_NAME
+        assert dataset["feature_sha256"] == CLEAN_FEATURE_SHA256
+        assert "allow_unpinned_feature_for_smoke" not in dataset
         validate_iemocap_feature_config(config, ROOT, require_file=False)
 
     mmgcn = build_mmgcn(configs[0])
@@ -325,10 +347,114 @@ def test_four_clean_configs_parse_accept_768_and_pin_rules() -> None:
     assert gsmcc.config.text_dim == 768
     assert dialoguegcn.config.text_dim == 768
 
-    formal = copy.deepcopy(configs[0])
-    formal["dataset"].pop("allow_unpinned_feature_for_smoke")
+    unpinned = copy.deepcopy(configs[0])
+    unpinned["dataset"]["feature_sha256"] = UNPINNED_SHA256
     with pytest.raises(ValueError, match="Refusing unpinned"):
-        validate_iemocap_feature_config(formal, ROOT, require_file=False)
+        validate_iemocap_feature_config(unpinned, ROOT, require_file=False)
+
+
+def test_smoke_and_formal_validation_both_hash_actual_pkl(tmp_path: Path) -> None:
+    feature_path = tmp_path / CLEAN_FEATURE_PATH
+    feature_path.parent.mkdir(parents=True)
+    feature_path.write_bytes(b"audited-clean-feature-test-double")
+    actual_sha256 = compute_file_sha256(feature_path)
+
+    registry_path = tmp_path / "configs/data/iemocap_feature_sets.yaml"
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        yaml.safe_dump(
+            {
+                "clean_roberta_v1": {
+                    "feature_set_name": CLEAN_FEATURE_NAME,
+                    "path": CLEAN_FEATURE_PATH,
+                    "sha256": actual_sha256,
+                    "text_dim": 768,
+                    "status": "frozen_for_main_experiments",
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    base_config = {
+        "dataset": {
+            "name": "IEMOCAP",
+            "feature_pkl_path": CLEAN_FEATURE_PATH,
+            "feature_set_name": CLEAN_FEATURE_NAME,
+            "feature_sha256": actual_sha256,
+        },
+        "model": {"text_feature_dim": 768},
+    }
+    for run_kind in ("smoke", "formal"):
+        config = copy.deepcopy(base_config)
+        config["project"] = {"experiment_name": f"{run_kind}_hash_validation"}
+        assert validate_iemocap_feature_config(config, tmp_path) == actual_sha256
+
+    feature_path.write_bytes(b"mutated-feature-test-double")
+    for run_kind in ("smoke", "formal"):
+        config = copy.deepcopy(base_config)
+        config["project"] = {"experiment_name": f"{run_kind}_hash_validation"}
+        with pytest.raises(ValueError, match="SHA256 mismatch"):
+            validate_iemocap_feature_config(config, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("config_path", "trainer_kind"),
+    (
+        (CLEAN_CONFIGS[0], "mmgcn"),
+        (CLEAN_CONFIGS[1], "multidag_cl"),
+        (CLEAN_CONFIGS[2], "causal"),
+        (CLEAN_CONFIGS[3], "causal"),
+    ),
+)
+def test_sha_mismatch_fails_before_model_initialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_path: Path,
+    trainer_kind: str,
+) -> None:
+    feature_path = tmp_path / "mismatched.pkl"
+    feature_path.write_bytes(b"not-the-frozen-clean-v1-pkl")
+    config = load_yaml(config_path)
+    config["dataset"]["feature_pkl_path"] = str(feature_path)
+    config["dataset"].pop("feature_set_name", None)
+    config["dataset"]["feature_sha256"] = CLEAN_FEATURE_SHA256
+    temporary_config = tmp_path / f"{config_path.parent.parent.parent.parent.name}.yaml"
+    temporary_config.write_text(
+        yaml.safe_dump(config, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    model_initializations = []
+
+    def forbidden_model_initialization(*args, **kwargs):
+        model_initializations.append((args, kwargs))
+        raise AssertionError("model initialization must not precede feature SHA validation")
+
+    if trainer_kind == "mmgcn":
+        monkeypatch.setattr(train_mmgcn_module, "build_model", forbidden_model_initialization)
+        monkeypatch.setattr(sys, "argv", ["train_mmgcn.py", "--config", str(temporary_config)])
+        invocation = train_mmgcn_module.main
+    elif trainer_kind == "multidag_cl":
+        monkeypatch.setattr(train_multidag_module, "build_model", forbidden_model_initialization)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["train_multidag_cl.py", "--config", str(temporary_config)],
+        )
+        invocation = train_multidag_module.main
+    else:
+        monkeypatch.setattr(
+            train_causal_module,
+            "build_new_causal_baseline",
+            forbidden_model_initialization,
+        )
+        invocation = lambda: train_causal_module.run_training(temporary_config)
+
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        invocation()
+    assert model_initializations == []
 
 
 def test_pipeline_lock_is_atomic_cleans_up_and_force_unlocks(tmp_path: Path) -> None:

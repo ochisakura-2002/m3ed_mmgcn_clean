@@ -44,7 +44,7 @@ CLEAN_ROBERTA_V1_PATH = (
     "IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
 )
 CLEAN_ROBERTA_V1_NAME = "iemocap_clean_roberta_base_utterance_mean_v1"
-UNPINNED_FEATURE_SHA256 = "TO_BE_FILLED_AFTER_GENERATION"
+CLEAN_ROBERTA_V1_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
 IEMOCAP_FEATURE_REGISTRY = ROOT / "configs" / "data" / "iemocap_feature_sets.yaml"
 CAUSAL_BENCHMARK_VARIANTS = {
     "official_prefix.yaml": ("official_prefix", None),
@@ -635,32 +635,96 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
             )
 
 
+def validate_clean_roberta_v1_registry(
+    registry: dict[str, Any], errors: list[str]
+) -> None:
+    """Validate frozen Clean v1 fields while preserving the legacy contract."""
+
+    legacy = registry.get("legacy_mmgcn_textcnn", {})
+    clean = registry.get("clean_roberta_v1", {})
+    require(
+        legacy.get("path") == IEMOCAP_FEATURE_PKL,
+        "IEMOCAP legacy registry path mismatch",
+        errors,
+    )
+    require(
+        legacy.get("sha256") == IEMOCAP_FEATURE_SHA256,
+        "IEMOCAP legacy registry SHA256 mismatch",
+        errors,
+    )
+    require(legacy.get("text_dim") == 100, "IEMOCAP legacy registry text_dim mismatch", errors)
+    require(clean.get("path") == CLEAN_ROBERTA_V1_PATH, "clean v1 registry path mismatch", errors)
+    require(
+        clean.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME,
+        "clean v1 registry feature_set_name mismatch",
+        errors,
+    )
+    require(clean.get("sha256") == CLEAN_ROBERTA_V1_SHA256, "clean v1 registry SHA mismatch", errors)
+    require(clean.get("text_dim") == 768, "clean v1 registry text_dim mismatch", errors)
+    require(
+        clean.get("status") == "frozen_for_main_experiments",
+        "clean v1 registry status mismatch",
+        errors,
+    )
+
+
+def validate_clean_roberta_v1_smoke_config(
+    path: Path,
+    family: str,
+    config: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate one smoke config against the immutable Clean v1 contract."""
+
+    dataset = config.get("dataset", {})
+    model = config.get("model", {})
+    require(dataset.get("name") == "IEMOCAP", f"{rel(path)} must use IEMOCAP", errors)
+    require(
+        dataset.get("feature_pkl_path") == CLEAN_ROBERTA_V1_PATH,
+        f"{rel(path)} clean feature path mismatch",
+        errors,
+    )
+    require(
+        dataset.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME,
+        f"{rel(path)} feature_set_name mismatch",
+        errors,
+    )
+    require(
+        dataset.get("feature_sha256") == CLEAN_ROBERTA_V1_SHA256,
+        f"{rel(path)} clean feature SHA mismatch",
+        errors,
+    )
+    require(
+        dataset.get("allow_unpinned_feature_for_smoke") is not True,
+        f"{rel(path)} must not enable unpinned clean features",
+        errors,
+    )
+    if family in {"mmgcn", "multidag_cl"}:
+        require(
+            model.get("text_feature_dim") == 768,
+            f"{rel(path)} text_feature_dim mismatch",
+            errors,
+        )
+    else:
+        require(model.get("text_dim") == 768, f"{rel(path)} text_dim mismatch", errors)
+        require(
+            dataset.get("text_feature_dim") == 768,
+            f"{rel(path)} dataset text_feature_dim mismatch",
+            errors,
+        )
+    epochs = (
+        config.get("train", {}).get("max_epochs")
+        if family == "mmgcn"
+        else config.get("training", {}).get("epochs")
+    )
+    require(epochs == 2, f"{rel(path)} must run exactly two smoke epochs", errors)
+
+
 def validate_clean_roberta_v1_tree(errors: list[str]) -> None:
     if not IEMOCAP_FEATURE_REGISTRY.exists():
         errors.append(f"missing {rel(IEMOCAP_FEATURE_REGISTRY)}")
     else:
-        registry = load_yaml(IEMOCAP_FEATURE_REGISTRY)
-        legacy = registry.get("legacy_mmgcn_textcnn", {})
-        clean = registry.get("clean_roberta_v1", {})
-        require(
-            legacy.get("path") == IEMOCAP_FEATURE_PKL,
-            "IEMOCAP legacy registry path mismatch",
-            errors,
-        )
-        require(
-            legacy.get("sha256") == IEMOCAP_FEATURE_SHA256,
-            "IEMOCAP legacy registry SHA256 mismatch",
-            errors,
-        )
-        require(legacy.get("text_dim") == 100, "IEMOCAP legacy registry text_dim mismatch", errors)
-        require(clean.get("path") == CLEAN_ROBERTA_V1_PATH, "clean v1 registry path mismatch", errors)
-        require(
-            clean.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME,
-            "clean v1 registry feature_set_name mismatch",
-            errors,
-        )
-        require(clean.get("sha256") == UNPINNED_FEATURE_SHA256, "clean v1 registry SHA mismatch", errors)
-        require(clean.get("text_dim") == 768, "clean v1 registry text_dim mismatch", errors)
+        validate_clean_roberta_v1_registry(load_yaml(IEMOCAP_FEATURE_REGISTRY), errors)
 
     expected_names = {"smoke_real_2epoch.yaml"}
     for family, directory in CLEAN_ROBERTA_V1_TRAIN_DIRS.items():
@@ -673,49 +737,7 @@ def validate_clean_roberta_v1_tree(errors: list[str]) -> None:
         path = directory / "smoke_real_2epoch.yaml"
         if not path.exists():
             continue
-        config = load_yaml(path)
-        dataset = config.get("dataset", {})
-        model = config.get("model", {})
-        require(dataset.get("name") == "IEMOCAP", f"{rel(path)} must use IEMOCAP", errors)
-        require(
-            dataset.get("feature_pkl_path") == CLEAN_ROBERTA_V1_PATH,
-            f"{rel(path)} clean feature path mismatch",
-            errors,
-        )
-        require(
-            dataset.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME,
-            f"{rel(path)} feature_set_name mismatch",
-            errors,
-        )
-        require(
-            dataset.get("feature_sha256") == UNPINNED_FEATURE_SHA256,
-            f"{rel(path)} must retain the pre-generation SHA placeholder",
-            errors,
-        )
-        require(
-            dataset.get("allow_unpinned_feature_for_smoke") is True,
-            f"{rel(path)} must explicitly allow only this unpinned smoke run",
-            errors,
-        )
-        if family in {"mmgcn", "multidag_cl"}:
-            require(
-                model.get("text_feature_dim") == 768,
-                f"{rel(path)} text_feature_dim mismatch",
-                errors,
-            )
-        else:
-            require(model.get("text_dim") == 768, f"{rel(path)} text_dim mismatch", errors)
-            require(
-                dataset.get("text_feature_dim") == 768,
-                f"{rel(path)} dataset text_feature_dim mismatch",
-                errors,
-            )
-        epochs = (
-            config.get("train", {}).get("max_epochs")
-            if family == "mmgcn"
-            else config.get("training", {}).get("epochs")
-        )
-        require(epochs == 2, f"{rel(path)} must run exactly two smoke epochs", errors)
+        validate_clean_roberta_v1_smoke_config(path, family, load_yaml(path), errors)
 
 
 def main() -> None:

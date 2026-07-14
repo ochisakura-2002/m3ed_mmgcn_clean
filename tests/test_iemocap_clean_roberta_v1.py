@@ -24,6 +24,11 @@ from scripts.analyze.audit_iemocap_feature_pkl import (
 )
 from scripts.analyze.probe_iemocap_text_features import run_probes
 from scripts.baselines.train_multidag_cl import build_model as build_multidag
+from scripts.dev.validate_config_tree import (
+    validate_clean_roberta_v1_registry,
+    validate_clean_roberta_v1_smoke_config,
+    validate_clean_roberta_v1_tree,
+)
 from scripts.features.build_iemocap_clean_text_features import (
     FEATURE_SET_NAME,
     TEXT_FEATURE_DIM,
@@ -318,6 +323,72 @@ def test_strict_audit_detects_nan_and_writes_all_outputs(tmp_path: Path) -> None
 def load_yaml(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
+
+
+def test_config_tree_accepts_frozen_registry_and_four_smoke_configs() -> None:
+    errors = []
+    validate_clean_roberta_v1_tree(errors)
+    assert errors == []
+
+    explicit_false = load_yaml(CLEAN_CONFIGS[0])
+    explicit_false["dataset"]["allow_unpinned_feature_for_smoke"] = False
+    validate_clean_roberta_v1_smoke_config(
+        CLEAN_CONFIGS[0], "mmgcn", explicit_false, errors
+    )
+    assert errors == []
+
+
+def test_config_tree_rejects_wrong_registry_sha() -> None:
+    registry = load_yaml(ROOT / "configs/data/iemocap_feature_sets.yaml")
+    registry["clean_roberta_v1"]["sha256"] = "0" * 64
+    errors = []
+    validate_clean_roberta_v1_registry(registry, errors)
+    assert "clean v1 registry SHA mismatch" in errors
+
+
+@pytest.mark.parametrize("invalid_sha", ("0" * 64, UNPINNED_SHA256))
+def test_config_tree_rejects_wrong_or_placeholder_smoke_sha(
+    invalid_sha: str,
+) -> None:
+    config = load_yaml(CLEAN_CONFIGS[0])
+    config["dataset"]["feature_sha256"] = invalid_sha
+    errors = []
+    validate_clean_roberta_v1_smoke_config(
+        CLEAN_CONFIGS[0], "mmgcn", config, errors
+    )
+    assert any("clean feature SHA mismatch" in error for error in errors)
+
+
+def test_config_tree_rejects_enabled_unpinned_smoke_flag() -> None:
+    config = load_yaml(CLEAN_CONFIGS[0])
+    config["dataset"]["allow_unpinned_feature_for_smoke"] = True
+    errors = []
+    validate_clean_roberta_v1_smoke_config(
+        CLEAN_CONFIGS[0], "mmgcn", config, errors
+    )
+    assert any("must not enable unpinned clean features" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("family", "config_path"),
+    tuple(
+        zip(
+            ("mmgcn", "multidag_cl", "gsmcc", "dialoguegcn"),
+            CLEAN_CONFIGS,
+        )
+    ),
+)
+def test_config_tree_rejects_non_768_text_feature_dim(
+    family: str, config_path: Path
+) -> None:
+    config = load_yaml(config_path)
+    if family in {"mmgcn", "multidag_cl"}:
+        config["model"]["text_feature_dim"] = 100
+    else:
+        config["model"]["text_dim"] = 100
+    errors = []
+    validate_clean_roberta_v1_smoke_config(config_path, family, config, errors)
+    assert any("text" in error and "dim mismatch" in error for error in errors)
 
 
 def test_registry_and_four_clean_configs_use_frozen_sha_and_768_dims() -> None:

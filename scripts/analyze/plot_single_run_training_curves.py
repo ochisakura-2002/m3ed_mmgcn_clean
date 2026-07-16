@@ -6,10 +6,10 @@ Purpose:
     as a separate figure along epochs.
 
 Input:
-    outputs/runs/<run_id>/logs/epoch_metrics.csv
+    outputs/<YYYYMMDD>/runs/<run_id>/logs/epoch_metrics.csv
 
 Output:
-    outputs/runs/<run_id>/figures/training_curves/
+    outputs/<YYYYMMDD>/runs/<run_id>/figures/training_curves/
         <metric_name>.png
         <metric_name>.pdf
         best_epoch_summary.csv
@@ -22,6 +22,7 @@ Usage:
 import argparse
 from pathlib import Path
 import re
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -32,7 +33,11 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import find_run_directory  # noqa: E402
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 BEST_SELECTION_METRIC = "val_weighted_f1"
 
 BEST_VAL_VS_TEST_COLUMNS = [
@@ -68,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         "--run-id",
         type=str,
         required=True,
-        help="Run ID under outputs/runs/.",
+        help="Run ID discovered from dated outputs first, then legacy outputs.",
     )
 
     return parser.parse_args()
@@ -566,7 +571,7 @@ def main() -> None:
     args = parse_args()
 
     run_id = args.run_id
-    run_dir = RUNS_DIR / run_id
+    run_dir = find_run_directory(run_id, OUTPUT_ROOT)
 
     if not run_dir.exists():
         raise FileNotFoundError(

@@ -16,6 +16,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.analyze.audit_model_causality import run_audit  # noqa: E402
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
 
 
 SUMMARY_FIELDS = [
@@ -43,6 +49,8 @@ SUMMARY_FIELDS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
@@ -121,14 +129,33 @@ def write_outputs(
         file.write("\n".join(lines))
 
 
-def run_four_model_audit(config_path: Path) -> Tuple[List[Dict[str, Any]], bool]:
+def run_four_model_audit(
+    config_path: Path,
+    output_dir_override: Path | None = None,
+    experiment_date: str | None = None,
+) -> Tuple[List[Dict[str, Any]], bool]:
     config = load_yaml(resolve_path(str(config_path)))
     models = config.get("models", {})
     if not isinstance(models, dict) or not models:
         raise ValueError("models must be a non-empty mapping.")
     audit = config.get("audit", {})
-    output_dir = resolve_path(
-        str(config.get("output_dir", "outputs/analysis/four_model_causal_audit"))
+    output_config = config.get("output", {})
+    frozen_date = resolve_experiment_date(
+        cli_date=experiment_date,
+        config=config,
+    )
+    output_root = resolve_path(str(configured_output_root(config)))
+    output_name = sanitize_run_name(
+        str(output_config.get("name", "four_model_causal_audit"))
+        if isinstance(output_config, Mapping)
+        else "four_model_causal_audit"
+    )
+    output_dir = (
+        resolve_path(str(output_dir_override))
+        if output_dir_override is not None
+        else resolve_path(str(config["output_dir"]))
+        if config.get("output_dir") is not None
+        else resolve_output_category("audits", frozen_date, output_root) / output_name
     )
     rows: List[Dict[str, Any]] = []
     sources: List[str] = []
@@ -188,7 +215,11 @@ def run_four_model_audit(config_path: Path) -> Tuple[List[Dict[str, Any]], bool]
 
 def main() -> None:
     args = parse_args()
-    rows, passed = run_four_model_audit(Path(args.config))
+    rows, passed = run_four_model_audit(
+        Path(args.config),
+        None if args.output_dir is None else Path(args.output_dir),
+        args.experiment_date,
+    )
     for row in rows:
         print(
             f"model={row['model']} strict_pass_1e6={row['strict_pass_1e6']} "

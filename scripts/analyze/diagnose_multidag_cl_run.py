@@ -1,6 +1,6 @@
 """Diagnose one MultiDAG+CL training run from saved CSV logs.
 
-The script reads a completed run under outputs/runs/<run_id>/, summarizes the
+The script discovers a completed dated or legacy run by ID, summarizes the
 validation-best epoch and late-training behavior, and writes lightweight CSV,
 Markdown, and matplotlib diagnostics. It never loads checkpoints.
 """
@@ -11,6 +11,7 @@ import argparse
 import os
 import tempfile
 from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -18,6 +19,9 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import find_run_directory  # noqa: E402
 os.environ.setdefault(
     "MPLCONFIGDIR",
     str(Path(tempfile.gettempdir()) / "m3ed_mmgcn_matplotlib"),
@@ -30,7 +34,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 BEST_SELECTION_METRIC = "val_weighted_f1"
 EPSILON = 1e-8
 
@@ -42,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-id",
         required=True,
-        help="Run ID under outputs/runs/.",
+        help="Run ID discovered from dated outputs first, then legacy outputs.",
     )
     return parser.parse_args()
 
@@ -488,7 +492,7 @@ def plot_diagnostics(
 def main() -> None:
     args = parse_args()
     run_id = str(args.run_id)
-    run_dir = RUNS_DIR / run_id
+    run_dir = find_run_directory(run_id, OUTPUT_ROOT)
     if not run_dir.exists():
         raise FileNotFoundError(f"Run directory not found: {run_dir}")
 

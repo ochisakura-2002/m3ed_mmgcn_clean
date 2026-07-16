@@ -50,5 +50,6 @@ training:
   num_workers: 0
 
 output:
-  run_root: outputs/runs
+  root: outputs
+  experiment_date: null
   experiment_name: multidag_cl_iemocap_causal_benchmark_official_prefix

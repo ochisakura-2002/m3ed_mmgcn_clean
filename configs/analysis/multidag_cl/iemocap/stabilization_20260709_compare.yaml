@@ -1,5 +1,7 @@
 analysis_name: multidag_cl_iemocap_stabilization_20260709
-output_dir: outputs/analysis/multidag_cl/iemocap/stabilization_20260709
+output:
+  root: outputs
+  experiment_date: null
 
 baseline_run_id: 20260709_101233_iemocap_multidag_cl_causal_w5
 

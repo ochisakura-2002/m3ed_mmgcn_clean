@@ -1,0 +1,42 @@
+run_name: project_gsmcc_legacy_fivefold
+profile: formal_legacy_fivefold_base
+model:
+  name: project_paper_oriented_gsmcc
+  fidelity_status: PROJECT_VARIANT_NOT_PAPER_REPRODUCTION
+  causal_grade: noncausal_offline_full_context
+  text_feature_dim: 100
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  num_classes: 6
+  hidden_dim: 100
+  num_speakers: 2
+  graph_layers: 4
+  window: 10
+  dropout: 0.4
+  cross_modal_scale: 1.0
+  use_contrastive_loss: true
+  contrastive_temperature: 0.1
+  contrastive_loss_weight: 1.0
+dataset:
+  name: IEMOCAP
+  feature_set_name: legacy_mmgcn_textcnn
+  feature_protocol: legacy_mmgcn_features_v1
+  feature_cleanliness: legacy_emotion_supervised_text_features
+  usage: fair_legacy_feature_comparison
+  experiment_track: legacy_fivefold_fair_comparison
+  protocol_comparability: fair_comparison_not_paper_reproduction
+  feature_pkl_path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+  num_classes: 6
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  val_split_strategy: outer_session_stratified
+  outer_test_session: Ses05
+  inner_val_ratio: 0.1
+  split_seed: 42
+training: {epochs: 250, batch_size: 32, seed: 42, select_best_by: val_weighted_f1, grad_clip: 1.0, num_workers: 0, early_stopping_patience: 20, amp: false}
+optimizer: {name: AdamW, learning_rate: 0.00001, weight_decay: 0.0001}
+scheduler: {name: none}
+system: {seed: 42, device: cuda}
+output:
+  root: outputs
+  experiment_date: null

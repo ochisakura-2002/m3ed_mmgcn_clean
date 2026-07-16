@@ -5,11 +5,11 @@ Purpose:
     For one experiment run, analyze the final evaluated model on test_best_model.
 
 Input:
-    outputs/runs/<run_id>/logs/evaluations/test_best_model/metrics.csv
-    outputs/runs/<run_id>/logs/evaluations/test_best_model/confusion_matrix.csv
+    outputs/<YYYYMMDD>/runs/<run_id>/logs/evaluations/test_best_model/metrics.csv
+    outputs/<YYYYMMDD>/runs/<run_id>/logs/evaluations/test_best_model/confusion_matrix.csv
 
 Output:
-    outputs/runs/<run_id>/figures/final_analysis/
+    outputs/<YYYYMMDD>/runs/<run_id>/figures/final_analysis/
         overall_metrics.csv
         per_class_metrics_from_confusion_matrix.csv
 
@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Any
 import argparse
 import re
+import sys
 
 import numpy as np
 import pandas as pd
@@ -43,7 +44,11 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import find_run_directory  # noqa: E402
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 EVAL_NAME = "test_best_model"
 
@@ -73,7 +78,7 @@ def parse_args() -> argparse.Namespace:
         "--run-id",
         type=str,
         required=True,
-        help="Run ID under outputs/runs/.",
+        help="Run ID discovered from dated outputs first, then legacy outputs.",
     )
     parser.add_argument(
         "--eval-name",
@@ -436,7 +441,7 @@ def main() -> None:
     args = parse_args()
 
     run_id = args.run_id
-    run_dir = RUNS_DIR / run_id
+    run_dir = find_run_directory(run_id, OUTPUT_ROOT)
 
     if not run_dir.exists():
         raise FileNotFoundError(

@@ -226,6 +226,10 @@ def build_run_metadata(
     if contract_version is None:
         contract_version = DEFAULT_CAUSAL_CONTRACT_VERSION
 
+    output = config.get("output", {})
+    if not isinstance(output, Mapping):
+        output = {}
+
     metadata = {
         "model_family": model_family,
         "model_variant": model_variant,
@@ -249,6 +253,13 @@ def build_run_metadata(
         "visual_dim": _optional_int(model.get("visual_feature_dim", model.get("visual_dim"))),
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
         "test_split_used_for_selection": False,
+        "experiment_date": _optional_text(output.get("experiment_date")),
+        "output_root": _optional_text(output.get("output_root", output.get("root"))),
+        "day_output_root": _optional_text(output.get("day_output_root")),
+        "run_dir": _optional_text(output.get("run_dir")),
+        "log_dir": _optional_text(output.get("log_dir")),
+        "analysis_dir": _optional_text(output.get("analysis_dir")),
+        "manifest_dir": _optional_text(output.get("manifest_dir")),
     }
     normalized_name = _model_name(config).lower()
     if normalized_name in NEW_GSMCC_NAMES | NEW_DIALOGUEGCN_NAMES:

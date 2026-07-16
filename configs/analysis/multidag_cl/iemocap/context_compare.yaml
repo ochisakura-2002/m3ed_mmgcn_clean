@@ -1,6 +1,9 @@
+output:
+  root: outputs
+  experiment_date: null
+
 analysis:
   name: multidag_cl_iemocap_context_compare
-  output_dir: outputs/report_figures/multidag_cl/iemocap/context_compare
   split: test
 
 # Fill after formal context-window runs finish.

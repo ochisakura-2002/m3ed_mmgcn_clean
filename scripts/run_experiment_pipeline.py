@@ -39,6 +39,8 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUN_INFO_PREFIX = "CODEX_RUN_INFO_JSON="
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 TRAIN_SCRIPT_REGISTRY = {
@@ -69,6 +71,16 @@ EVALUATE_MISSING_MODALITIES_SCRIPT = "scripts/experiments/evaluate_missing_modal
 PLOT_MISSING_MODALITY_SUMMARY_SCRIPT = "scripts/analyze/plot_missing_modality_summary.py"
 EXPORT_PAPER_ARTIFACTS_SCRIPT = "scripts/analyze/export_paper_artifacts.py"
 
+from utils.output_paths import (  # noqa: E402
+    EXPERIMENT_DATE_ENV,
+    configured_output_root,
+    create_unique_category_dir,
+    find_run_directory,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -85,6 +97,11 @@ def parse_args() -> argparse.Namespace:
         "--force-unlock",
         action="store_true",
         help="Explicitly remove this pipeline config's existing lock before starting.",
+    )
+    parser.add_argument(
+        "--experiment-date",
+        default=None,
+        help="Frozen pipeline launch date in YYYYMMDD format.",
     )
 
     return parser.parse_args()
@@ -353,14 +370,11 @@ def validate_train_config(
         )
 
 
-def get_existing_run_info(run_id: str) -> Dict[str, str]:
-    run_dir = PROJECT_ROOT / "outputs" / "runs" / run_id
-
-    if not run_dir.exists():
-        raise FileNotFoundError(
-            f"Specified run_id does not exist: {run_id}\n"
-            f"Expected directory: {run_dir}"
-        )
+def get_existing_run_info(
+    run_id: str,
+    output_root: Path = PROJECT_ROOT / "outputs",
+) -> Dict[str, str]:
+    run_dir = find_run_directory(run_id, output_root)
 
     return {
         "run_id": run_id,
@@ -428,7 +442,10 @@ def resolve_current_run_info(
     ).strip()
 
     if specified_run_id:
-        return get_existing_run_info(specified_run_id)
+        output_root = configured_output_root(config)
+        if not output_root.is_absolute():
+            output_root = PROJECT_ROOT / output_root
+        return get_existing_run_info(specified_run_id, output_root)
 
     if pipeline_needs_current_run(config):
         raise ValueError(
@@ -522,11 +539,17 @@ def print_pipeline_summary(
         print("Target run_id: NONE")
 
     print("\nMaster tables:")
-    print("  outputs/analysis_tables/run_file_status.csv")
-    print("  outputs/analysis_tables/run_summary_master.csv")
-    print("  outputs/analysis_tables/epoch_metrics_master.csv")
-    print("  outputs/analysis_tables/evaluation_master.csv")
-    print("  outputs/analysis_tables/per_class_master.csv")
+    analysis_tables_dir = Path(
+        str(safe_get(config, ["output", "analysis_dir"], "outputs"))
+    ) / "analysis_tables"
+    for filename in (
+        "run_file_status.csv",
+        "run_summary_master.csv",
+        "epoch_metrics_master.csv",
+        "evaluation_master.csv",
+        "per_class_master.csv",
+    ):
+        print(" ", analysis_tables_dir / filename)
 
     multi_train_enabled = get_bool(config, ["multi_run_training_curves", "enabled"], False)
     multi_final_enabled = get_bool(config, ["multi_run_final_analysis", "enabled"], False)
@@ -545,6 +568,7 @@ def print_pipeline_summary(
 def run_training_stage(
     config: Dict[str, Any],
     dry_run: bool,
+    experiment_date: str,
 ) -> Tuple[bool, Optional[Dict[str, str]]]:
     train_enabled = get_bool(config, ["train", "enabled"], False)
     if not train_enabled:
@@ -562,7 +586,12 @@ def run_training_stage(
     train_script = choose_train_script(model_name)
     run_info = run_project_script(
         script_relative_path=train_script,
-        script_args=["--config", path_to_command_arg(train_config_path)],
+        script_args=[
+            "--config",
+            path_to_command_arg(train_config_path),
+            "--experiment-date",
+            experiment_date,
+        ],
         dry_run=dry_run,
     )
     if dry_run:
@@ -928,14 +957,56 @@ def main() -> Optional[str]:
 
     config_path = resolve_path(args.config)
     config = load_yaml(config_path)
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=config,
+    )
+    output_root = configured_output_root(config)
+    if not output_root.is_absolute():
+        output_root = PROJECT_ROOT / output_root
+    pipeline_name = sanitize_run_name(
+        str(safe_get(config, ["project", "experiment_name"], config_path.stem))
+    )
+    config.setdefault("output", {})
+    config["output"].update(
+        {
+            "root": str(output_root),
+            "experiment_date": frozen_date,
+            "output_root": str(output_root),
+            "day_output_root": str(output_root / frozen_date),
+            "log_dir": str(
+                resolve_output_category("logs", frozen_date, output_root)
+                / pipeline_name
+            ),
+            "analysis_dir": str(
+                resolve_output_category("analysis", frozen_date, output_root)
+            ),
+        }
+    )
     lock = PipelineLock(pipeline_lock_path(config_path), config_path)
     lock.acquire(force_unlock=bool(args.force_unlock))
+    old_experiment_date = os.environ.get(EXPERIMENT_DATE_ENV)
+    os.environ[EXPERIMENT_DATE_ENV] = frozen_date
     try:
         print_pipeline_header(config_path, config)
         dry_run = get_bool(config, ["execution", "dry_run"], False)
+        manifest_dir = None
+        if not dry_run:
+            manifest_dir = create_unique_category_dir(
+                "manifests",
+                pipeline_name,
+                frozen_date,
+                output_root,
+            )
+            config["output"]["manifest_dir"] = str(manifest_dir)
+            with (manifest_dir / "pipeline_config_resolved.yaml").open(
+                "w", encoding="utf-8"
+            ) as file:
+                yaml.safe_dump(config, file, sort_keys=False, allow_unicode=True)
         train_was_executed, training_run_info = run_training_stage(
             config=config,
             dry_run=dry_run,
+            experiment_date=frozen_date,
         )
         run_info = resolve_current_run_info(
             config=config,
@@ -955,9 +1026,28 @@ def main() -> Optional[str]:
         run_missing_modalities_stage(config=config, run_info=run_info, dry_run=dry_run)
         run_multi_run_training_curves_stage(config=config, dry_run=dry_run)
         run_multi_run_final_analysis_stage(config=config, dry_run=dry_run)
+        if manifest_dir is not None:
+            (manifest_dir / "run_status.json").write_text(
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "experiment_date": frozen_date,
+                        "day_output_root": str(output_root / frozen_date),
+                        "run_info": run_info,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
         print_pipeline_summary(run_info=run_info, config=config)
         return None if run_info is None else str(run_info["run_id"])
     finally:
+        if old_experiment_date is None:
+            os.environ.pop(EXPERIMENT_DATE_ENV, None)
+        else:
+            os.environ[EXPERIMENT_DATE_ENV] = old_experiment_date
         lock.release()
 
 

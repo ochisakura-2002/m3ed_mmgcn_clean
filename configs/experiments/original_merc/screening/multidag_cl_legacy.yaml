@@ -1,0 +1,40 @@
+run_name: original_multidag_cl_legacy_screening
+profile: screening
+model:
+  name: original_repro_multidag_cl
+  causal_grade: noncausal_offline_full_context
+  text_feature_dim: 100
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  num_classes: 6
+  hidden_dim: 300
+  graph_layers: 4
+  dropout: 0.4
+  window_past: 1
+  use_curriculum_learning: true
+  curriculum_bucket_count: 5
+  nodal_attention: null
+  class_weight: [11.52777618, 6.92492002, 4.38821676, 6.22723168, 7.83017908, 3.95776276]
+dataset:
+  name: IEMOCAP
+  feature_set_name: legacy_mmgcn_textcnn
+  feature_protocol: legacy_mmgcn_features_v1
+  feature_cleanliness: legacy_emotion_supervised_text_features
+  usage: reproduction_diagnostic
+  experiment_track: legacy_official_split_safe_selection
+  protocol_comparability: paper_adjacent_not_exact
+  feature_pkl_path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+  num_classes: 6
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  val_split_strategy: official_train_stratified
+  outer_test_session: Ses05
+  inner_val_ratio: 0.1
+  split_seed: 42
+training: {epochs: 30, batch_size: 16, seed: 42, select_best_by: val_weighted_f1, grad_clip: 1.0, num_workers: 0, early_stopping_patience: 0, amp: false}
+optimizer: {name: Adam, learning_rate: 0.0005, weight_decay: 0.0001}
+scheduler: {name: none}
+system: {seed: 42, device: cuda}
+output:
+  root: outputs
+  experiment_date: null

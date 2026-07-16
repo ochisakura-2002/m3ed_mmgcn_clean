@@ -52,6 +52,11 @@ def parse_args() -> argparse.Namespace:
         default="configs/train_mmgcn_m3ed.yaml",
         help="Path to YAML config file.",
     )
+    parser.add_argument(
+        "--experiment-date",
+        default=None,
+        help="Frozen experiment launch date in YYYYMMDD format.",
+    )
 
     return parser.parse_args()
 
@@ -130,7 +135,10 @@ def main() -> None:
     seed = int(config["system"]["seed"])
     set_seed(seed)
 
-    run_info = prepare_run_environment(config)
+    run_info = prepare_run_environment(
+        config,
+        experiment_date=args.experiment_date,
+    )
 
     print_config_summary(
         config=config,

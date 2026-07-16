@@ -55,6 +55,28 @@ CLEAN_ROBERTA_V1_PATH = (
 CLEAN_ROBERTA_V1_NAME = "iemocap_clean_roberta_base_utterance_mean_v1"
 CLEAN_ROBERTA_V1_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
 IEMOCAP_FEATURE_REGISTRY = ROOT / "configs" / "data" / "iemocap_feature_sets.yaml"
+ORIGINAL_REPRO_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
+ORIGINAL_MERC_EXPERIMENT_DIR = ROOT / "configs" / "experiments" / "original_merc"
+ORIGINAL_REPRO_MODELS = {
+    "mmgcn": "original_repro_mmgcn",
+    "multidag_cl": "original_repro_multidag_cl",
+    "gsmcc": "project_paper_oriented_gsmcc",
+    "dialoguegcn": "original_repro_dialoguegcn",
+}
+ORIGINAL_MERC_TRACKS = {
+    "legacy_official_split_safe_selection": (
+        "official_train_stratified",
+        "paper_adjacent_not_exact",
+    ),
+    "legacy_fivefold_fair_comparison": (
+        "outer_session_stratified",
+        "fair_comparison_not_paper_reproduction",
+    ),
+    "clean_roberta_fivefold_fair_comparison": (
+        "outer_session_stratified",
+        "fair_comparison_not_paper_reproduction",
+    ),
+}
 CAUSAL_BENCHMARK_VARIANTS = {
     "official_prefix.yaml": ("official_prefix", None),
     "val_ses01.yaml": ("session_holdout", "Ses01"),
@@ -1174,11 +1196,141 @@ def validate_clean_roberta_v1_tree(errors: list[str]) -> None:
     validate_clean_roberta_v1_formal_tree(errors)
 
 
+def validate_original_merc_config(
+    path: Path,
+    family: str,
+    feature_track: str,
+    experiment_track: str,
+    formal: bool,
+    errors: list[str],
+) -> None:
+    config = load_yaml(path)
+    model = config.get("model", {})
+    dataset = config.get("dataset", {})
+    training = config.get("training", {})
+    require(model.get("name") == ORIGINAL_REPRO_MODELS[family], f"{rel(path)} model mismatch", errors)
+    require(
+        model.get("causal_grade") == "noncausal_offline_full_context",
+        f"{rel(path)} causal grade mismatch",
+        errors,
+    )
+    expected_strategy, expected_comparability = ORIGINAL_MERC_TRACKS[experiment_track]
+    require(dataset.get("experiment_track") == experiment_track, f"{rel(path)} experiment track mismatch", errors)
+    require(dataset.get("protocol_comparability") == expected_comparability, f"{rel(path)} comparability mismatch", errors)
+    require(dataset.get("val_split_strategy") == expected_strategy, f"{rel(path)} split strategy mismatch", errors)
+    require(dataset.get("outer_test_session") in {"Ses01", "Ses02", "Ses03", "Ses04", "Ses05"}, f"{rel(path)} outer fold missing", errors)
+    if experiment_track == "legacy_official_split_safe_selection":
+        require(dataset.get("outer_test_session") == "Ses05", f"{rel(path)} official-safe test must be Ses05", errors)
+    require(0 < float(dataset.get("inner_val_ratio", 0)) < 1, f"{rel(path)} inner ratio invalid", errors)
+    require(training.get("select_best_by") == "val_weighted_f1", f"{rel(path)} selects by test or wrong metric", errors)
+    if family == "mmgcn":
+        require(model.get("use_residual") is True, f"{rel(path)} disables MMGCN residual", errors)
+    if family == "gsmcc":
+        require(model.get("fidelity_status") == "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION", f"{rel(path)} GS-MCC status mismatch", errors)
+    if family == "dialoguegcn" and formal:
+        require(model.get("base_model") == "LSTM", f"{rel(path)} DialogueGCN base model mismatch", errors)
+        require(model.get("dropout") == 0.4, f"{rel(path)} DialogueGCN dropout mismatch", errors)
+        require(training.get("batch_size") == 32, f"{rel(path)} DialogueGCN batch size mismatch", errors)
+        require(config.get("optimizer", {}).get("learning_rate") == 0.0003, f"{rel(path)} DialogueGCN learning rate mismatch", errors)
+        require(config.get("optimizer", {}).get("weight_decay") == 0.0, f"{rel(path)} DialogueGCN L2 mismatch", errors)
+        require(model.get("use_class_weight") is True, f"{rel(path)} DialogueGCN class weight disabled", errors)
+        require(model.get("use_nodal_attention") is True, f"{rel(path)} DialogueGCN nodal attention disabled", errors)
+    if feature_track == "legacy":
+        require(dataset.get("feature_set_name") == "legacy_mmgcn_textcnn", f"{rel(path)} legacy feature name mismatch", errors)
+        require(dataset.get("feature_pkl_path") == IEMOCAP_FEATURE_PKL, f"{rel(path)} legacy feature path mismatch", errors)
+        require(dataset.get("feature_sha256") == IEMOCAP_FEATURE_SHA256, f"{rel(path)} legacy SHA mismatch", errors)
+        require(model.get("text_feature_dim") == 100, f"{rel(path)} legacy text dimension mismatch", errors)
+        require(dataset.get("feature_protocol") == "legacy_mmgcn_features_v1", f"{rel(path)} legacy feature protocol mismatch", errors)
+        require(dataset.get("feature_cleanliness") == "legacy_emotion_supervised_text_features", f"{rel(path)} legacy cleanliness mismatch", errors)
+        expected_usage = (
+            "reproduction_diagnostic"
+            if experiment_track == "legacy_official_split_safe_selection"
+            else "fair_legacy_feature_comparison"
+        )
+        require(dataset.get("usage") == expected_usage, f"{rel(path)} legacy usage mismatch", errors)
+    else:
+        require(dataset.get("feature_set_name") == CLEAN_ROBERTA_V1_NAME, f"{rel(path)} clean feature name mismatch", errors)
+        require(dataset.get("feature_pkl_path") == CLEAN_ROBERTA_V1_PATH, f"{rel(path)} clean feature path mismatch", errors)
+        require(dataset.get("feature_sha256") == CLEAN_ROBERTA_V1_SHA256, f"{rel(path)} clean SHA mismatch", errors)
+        require(model.get("text_feature_dim") == 768, f"{rel(path)} clean text dimension mismatch", errors)
+        require(dataset.get("feature_protocol") == "clean_roberta_v1", f"{rel(path)} clean feature protocol mismatch", errors)
+        require(dataset.get("feature_cleanliness") == "frozen_self_supervised_utterance_only", f"{rel(path)} clean cleanliness mismatch", errors)
+        require(dataset.get("usage") == "fair_main_experiment", f"{rel(path)} clean usage mismatch", errors)
+    caps = [training.get("max_train_batches"), training.get("max_eval_batches")]
+    if formal:
+        require(all(value is None for value in caps), f"{rel(path)} formal config contains batch caps", errors)
+    else:
+        require(training.get("epochs") == 2, f"{rel(path)} smoke must use two epochs", errors)
+        require(all(value == 1 for value in caps), f"{rel(path)} smoke caps must equal one", errors)
+
+
+def validate_original_merc_tree(errors: list[str]) -> None:
+    expected_smoke = {
+        f"{family}_{track}.yaml"
+        for family in ORIGINAL_REPRO_MODELS
+        for track in ("legacy", "clean")
+    }
+    actual_smoke = {path.name for path in ORIGINAL_REPRO_SMOKE_DIR.glob("*.yaml")}
+    require(actual_smoke == expected_smoke, "original reproduction smoke config matrix mismatch", errors)
+    for family in ORIGINAL_REPRO_MODELS:
+        for track in ("legacy", "clean"):
+            path = ORIGINAL_REPRO_SMOKE_DIR / f"{family}_{track}.yaml"
+            if path.exists():
+                experiment_track = (
+                    "legacy_official_split_safe_selection"
+                    if track == "legacy"
+                    else "clean_roberta_fivefold_fair_comparison"
+                )
+                validate_original_merc_config(
+                    path, family, track, experiment_track, False, errors
+                )
+
+    screening_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "screening"
+    clean_screening_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_screening"
+    legacy_fold_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "legacy_fold_bases"
+    clean_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_fold_bases"
+    expected_screening = {f"{family}_legacy.yaml" for family in ORIGINAL_REPRO_MODELS}
+    expected_clean = {f"{family}_clean.yaml" for family in ORIGINAL_REPRO_MODELS}
+    require({path.name for path in screening_dir.glob("*.yaml")} == expected_screening, "original screening matrix mismatch", errors)
+    require({path.name for path in clean_screening_dir.glob("*.yaml")} == expected_clean, "original clean screening matrix mismatch", errors)
+    require({path.name for path in legacy_fold_dir.glob("*.yaml")} == expected_screening, "original legacy fold-base matrix mismatch", errors)
+    require({path.name for path in clean_dir.glob("*.yaml")} == expected_clean, "original clean fold-base matrix mismatch", errors)
+    for family in ORIGINAL_REPRO_MODELS:
+        screening = screening_dir / f"{family}_legacy.yaml"
+        clean_screening = clean_screening_dir / f"{family}_clean.yaml"
+        legacy_fold = legacy_fold_dir / f"{family}_legacy.yaml"
+        clean = clean_dir / f"{family}_clean.yaml"
+        if screening.exists():
+            validate_original_merc_config(screening, family, "legacy", "legacy_official_split_safe_selection", True, errors)
+        if clean_screening.exists():
+            validate_original_merc_config(clean_screening, family, "clean", "clean_roberta_fivefold_fair_comparison", True, errors)
+        if legacy_fold.exists():
+            validate_original_merc_config(legacy_fold, family, "legacy", "legacy_fivefold_fair_comparison", True, errors)
+        if clean.exists():
+            validate_original_merc_config(clean, family, "clean", "clean_roberta_fivefold_fair_comparison", True, errors)
+
+    manifest_path = ORIGINAL_MERC_EXPERIMENT_DIR / "pipeline_manifest.yaml"
+    require(manifest_path.exists(), "missing original MERC pipeline manifest", errors)
+    if manifest_path.exists():
+        manifest = load_yaml(manifest_path)
+        stages = manifest.get("stages", {})
+        require(len(stages.get("smoke", [])) == 8, "original manifest must list eight smoke runs", errors)
+        require(len(stages.get("legacy_paper_adjacent_screening", [])) == 4, "original manifest must list four legacy paper-adjacent screening runs", errors)
+        require(len(stages.get("clean_screening", [])) == 4, "original manifest must list four clean screening runs", errors)
+        require(len(stages.get("legacy_folds", [])) == 4, "original manifest must list four legacy fold bases", errors)
+        require(len(stages.get("clean_folds", [])) == 4, "original manifest must list four clean fold bases", errors)
+        require(manifest.get("protocol", {}).get("test_split_used_for_selection") is False, "original manifest permits test selection", errors)
+        require(manifest.get("top2_policy", {}).get("seeds") == [13, 42, 77], "original top2 seed template mismatch", errors)
+        require(manifest.get("top2_policy", {}).get("selection_source") == "clean_single_fold_screening_validation_only", "original top2 source mismatch", errors)
+        require(manifest.get("top2_policy", {}).get("test_metrics_allowed") is False, "original top2 permits test metrics", errors)
+
+
 def main() -> None:
     errors: list[str] = []
 
     validate_causal_benchmark_tree(errors)
     validate_clean_roberta_v1_tree(errors)
+    validate_original_merc_tree(errors)
 
     for path in sorted(FORMAL_PIPELINE_DIR.glob("*.yaml")):
         validate_pipeline(path, errors)

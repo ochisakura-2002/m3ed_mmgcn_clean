@@ -17,4 +17,7 @@ audit:
   gradient_target: history_squared_logit_sum
   perturbation_seeds: [42, 43, 44]
 
-output_dir: outputs/analysis/four_model_causal_audit
+output:
+  root: outputs
+  experiment_date: null
+  name: four_model_causal_audit

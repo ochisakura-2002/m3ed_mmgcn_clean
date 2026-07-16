@@ -24,7 +24,7 @@ Train MMGCN on M3ED or IEMOCAP.
 5. logs/confusion_matrix_best.csv
 6. logs/per_class_recall_best.csv
 7. logs/experiment_config.yaml
-8. outputs/latest_run.txt
+8. outputs/<date>/manifests/<run_id>/latest_run.txt
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ import argparse
 import json
 import csv
 import sys
-from datetime import datetime
 from typing import Dict, List, Tuple, Any
 
 import pandas as pd
@@ -54,6 +53,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utils.seed import set_seed  # noqa: E402
 from utils.run_metadata import write_run_metadata  # noqa: E402
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    create_unique_run_dir,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
 from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
 from datasets.m3ed.torch_dataset import M3EDTorchDataset  # noqa: E402
@@ -77,6 +82,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/train_mmgcn_m3ed.yaml",
         help="Path to YAML config file.",
+    )
+    parser.add_argument(
+        "--experiment-date",
+        default=None,
+        help="Frozen experiment launch date in YYYYMMDD format.",
     )
 
     return parser.parse_args()
@@ -156,59 +166,78 @@ def sanitize_name(name: str) -> str:
     return text
 
 
-def prepare_run_environment(config: dict, config_path: Path) -> Dict[str, Any]:
-    """
-    创建本次实验目录。
+def prepare_run_environment(
+    config: dict,
+    config_path: Path,
+    experiment_date: str | None = None,
+) -> Dict[str, Any]:
+    """Create one collision-safe run below the frozen experiment date."""
 
-    目录结构：
-        outputs/runs/<timestamp>_<experiment_name>/
-            checkpoints/
-            logs/
-            figures/
-    """
-    output_dir = PROJECT_ROOT / str(config["system"].get("output_dir", "outputs"))
-    runs_dir = output_dir / "runs"
-
+    output_dir = configured_output_root(config)
+    if not output_dir.is_absolute():
+        output_dir = PROJECT_ROOT / output_dir
+    frozen_date = resolve_experiment_date(
+        cli_date=experiment_date,
+        config=config,
+    )
     experiment_name = sanitize_name(
         config.get("project", {}).get("experiment_name", "mmgcn_experiment")
     )
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = f"{timestamp}_{experiment_name}"
-
-    run_dir = runs_dir / run_id
+    run_dir = create_unique_run_dir(
+        experiment_name,
+        frozen_date,
+        output_dir,
+    )
+    run_id = run_dir.name
     logs_dir = run_dir / "logs"
     checkpoints_dir = run_dir / "checkpoints"
     figures_dir = run_dir / "figures"
+    manifest_dir = resolve_output_category(
+        "manifests", frozen_date, output_dir
+    ) / run_id
 
-    for path in [run_dir, logs_dir, checkpoints_dir, figures_dir]:
+    for path in (logs_dir, checkpoints_dir, figures_dir, manifest_dir):
         path.mkdir(parents=True, exist_ok=True)
 
-    save_yaml_config(
-        config=config,
-        output_path=logs_dir / "experiment_config.yaml",
+    config.setdefault("output", {})
+    config["output"].update(
+        {
+            "root": str(configured_output_root(config)),
+            "experiment_date": frozen_date,
+            "output_root": str(output_dir),
+            "day_output_root": str(output_dir / frozen_date),
+            "run_dir": str(run_dir),
+            "log_dir": str(logs_dir),
+            "analysis_dir": str(
+                resolve_output_category("analysis", frozen_date, output_dir)
+            ),
+            "manifest_dir": str(manifest_dir),
+        }
     )
+    save_yaml_config(config=config, output_path=logs_dir / "experiment_config.yaml")
     write_run_metadata(
         config=config,
         output_path=run_dir / "run_metadata.json",
         project_root=PROJECT_ROOT,
     )
 
-    latest_run_path = output_dir / "latest_run.txt"
-    latest_run_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(latest_run_path, "w", encoding="utf-8") as f:
-        f.write(f"run_id={run_id}\n")
-        f.write(f"run_dir={run_dir.resolve()}\n")
-        f.write(f"experiment_name={experiment_name}\n")
-        f.write(f"config_path={config_path.resolve()}\n")
+    latest_run_path = manifest_dir / "latest_run.txt"
+    with latest_run_path.open("w", encoding="utf-8") as file:
+        file.write(f"run_id={run_id}\n")
+        file.write(f"run_dir={run_dir.resolve()}\n")
+        file.write(f"experiment_name={experiment_name}\n")
+        file.write(f"config_path={config_path.resolve()}\n")
 
     return {
         "run_id": run_id,
         "output_dir": output_dir,
+        "day_output_root": output_dir / frozen_date,
+        "experiment_date": frozen_date,
         "run_dir": run_dir,
         "logs_dir": logs_dir,
         "checkpoints_dir": checkpoints_dir,
         "figures_dir": figures_dir,
+        "manifest_dir": manifest_dir,
         "latest_run_path": latest_run_path,
     }
 
@@ -859,6 +888,7 @@ def main() -> None:
     run_paths = prepare_run_environment(
         config=config,
         config_path=config_path,
+        experiment_date=args.experiment_date,
     )
     print(
         "CODEX_RUN_INFO_JSON="

@@ -8,13 +8,14 @@ results into paper-facing CSV/Markdown/LaTeX tables.
 Usage:
     python scripts/analyze/export_paper_multi_run_tables.py \
       --run-ids <run1> <run2> <run3> \
-      --output-dir outputs/paper_artifacts/tables
+      --experiment-date 20260716
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
@@ -23,8 +24,16 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "paper_artifacts" / "tables"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 BEST_SELECTION_METRIC = "val_weighted_f1"
 
 RESULT_COLUMNS = [
@@ -66,14 +75,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--runs-dir",
-        default=str(DEFAULT_RUNS_DIR),
+        default=None,
         help="Directory containing run folders.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(DEFAULT_OUTPUT_DIR),
+        default=None,
         help="Output directory for paper tables.",
     )
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -278,25 +288,52 @@ def has_any_nonempty(df: pd.DataFrame, columns: List[str]) -> bool:
 
 def main() -> None:
     args = parse_args()
-    runs_dir = resolve_path(args.runs_dir)
-    output_dir = resolve_path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     run_ids = unique_in_order(list(args.run_ids) + load_run_ids_from_config(args.config))
     if not run_ids:
         raise ValueError("No run IDs provided. Use --run-ids or --config with runs.")
+    explicit_runs_dir = resolve_path(args.runs_dir) if args.runs_dir is not None else None
+    run_directories: Dict[str, Path] = {}
+    for run_id in run_ids:
+        candidate = (
+            explicit_runs_dir / run_id
+            if explicit_runs_dir is not None
+            else find_run_directory(run_id, OUTPUT_ROOT)
+        )
+        run_directories[run_id] = candidate
+    inferred_date = next(
+        (
+            value
+            for value in (
+                infer_experiment_date_from_run(path)
+                for path in run_directories.values()
+            )
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        inferred_date=inferred_date,
+    )
+    output_dir = (
+        resolve_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_output_category("reports", frozen_date, OUTPUT_ROOT)
+        / "paper_multi_run_tables"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 100)
     print("Export paper multi-run tables")
     print("=" * 100)
-    print("Runs dir:", runs_dir)
+    print("Runs root:", explicit_runs_dir or OUTPUT_ROOT)
     print("Output dir:", output_dir)
     print("Run IDs:", run_ids)
     print("=" * 100)
 
     rows: List[Dict[str, Any]] = []
     for run_id in run_ids:
-        run_dir = runs_dir / run_id
+        run_dir = run_directories[run_id]
         if not run_dir.exists():
             print(f"[WARN] Run directory not found, skip: {run_dir}")
             continue

@@ -7,7 +7,7 @@ selection, or dataset splits.
 
 Usage:
     python scripts/analyze/export_paper_artifacts.py \
-      --run-dir outputs/runs/<run_id> \
+      --run-dir outputs/<YYYYMMDD>/runs/<run_id> \
       --split test \
       --also-val
 """
@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-dir",
         required=True,
-        help="Run directory, e.g. outputs/runs/<run_id>.",
+        help="Explicit dated or legacy run directory.",
     )
     parser.add_argument(
         "--split",

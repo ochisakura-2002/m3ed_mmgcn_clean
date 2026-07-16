@@ -1,6 +1,7 @@
-runs_root: outputs/runs
-report_path: docs/baselines/causal_benchmark_8run_review.md
-output_dir: outputs/analysis/causal_benchmark_8run_review
+output:
+  root: outputs
+  experiment_date: null
+  name: causal_benchmark_8run_review
 
 selection_metric: val_weighted_f1
 std_ddof: 1

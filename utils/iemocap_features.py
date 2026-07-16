@@ -60,9 +60,8 @@ def validate_iemocap_feature_config(
 ) -> Optional[str]:
     """Validate an IEMOCAP feature pin and return the verified checksum.
 
-    A placeholder digest is accepted only when the config explicitly marks
-    itself as a smoke run.  Even then, an actual training invocation still
-    requires the PKL to exist; only checksum pinning is relaxed.
+    Both smoke and formal training require a real pinned digest.  Feature
+    validation is intentionally completed before any model is initialized.
     """
 
     dataset = _mapping(config.get("dataset", {}), "dataset")
@@ -74,14 +73,12 @@ def validate_iemocap_feature_config(
         raise ValueError("dataset.feature_pkl_path is required for IEMOCAP.")
 
     expected = str(dataset.get("feature_sha256", "")).strip()
-    allow_unpinned = dataset.get("allow_unpinned_feature_for_smoke") is True
     if expected == UNPINNED_SHA256:
-        if not allow_unpinned:
-            raise ValueError(
-                "Refusing unpinned IEMOCAP features: dataset.feature_sha256 is "
-                f"still {UNPINNED_SHA256!r}. Only an explicit "
-                "allow_unpinned_feature_for_smoke: true smoke config may proceed."
-            )
+        raise ValueError(
+            "Refusing unpinned IEMOCAP features: smoke and formal training both "
+            "require dataset.feature_sha256 to contain the audited SHA256, not "
+            f"{UNPINNED_SHA256!r}."
+        )
     elif not _SHA256_PATTERN.fullmatch(expected.lower()):
         raise ValueError("dataset.feature_sha256 must be a lowercase 64-character SHA256.")
 
@@ -122,7 +119,7 @@ def validate_iemocap_feature_config(
         return None
     if not feature_path.is_file():
         raise FileNotFoundError(f"IEMOCAP feature PKL not found: {feature_path}")
-    if expected == UNPINNED_SHA256 or not verify_checksum:
+    if not verify_checksum:
         return None
 
     actual = compute_file_sha256(feature_path)

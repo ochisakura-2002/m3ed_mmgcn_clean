@@ -121,8 +121,6 @@ def check_project_dirs() -> None:
         "scripts",
         "utils",
         "outputs",
-        "outputs/runs",
-        "outputs/report_figures",
         "third_party",
         "third_party/pretrained",
         "third_party/MMGCN",

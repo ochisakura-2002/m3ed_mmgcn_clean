@@ -48,6 +48,7 @@ from .split_utils import (
     IEMOCAP_TRAIN_SESSION_IDS,
     parse_iemocap_session_id,
 )
+from .original_repro_split import build_official_train_split, build_outer_session_split
 
 
 IGNORE_INDEX = -100
@@ -76,6 +77,13 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
             Hold out all trainVid dialogues from ``val_session_id`` and keep
             the other three training sessions for train. Official testVid is
             never changed.
+        outer_session_stratified:
+            Merge the official train/test dialogue lists, hold out one full
+            outer session for test, and create a deterministic dialogue-level
+            stratified validation subset from the remaining four sessions.
+        official_train_stratified:
+            Preserve the original trainVid/testVid boundary and create a
+            deterministic dialogue-level validation subset only from trainVid.
 
     By default, the split follows the official loader's valid sampler logic:
         val   = trainVid[:int(valid_ratio * len(trainVid))]
@@ -103,6 +111,8 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         valid_ratio: float = 0.1,
         val_split_strategy: str = "official_prefix",
         val_session_id: Optional[str] = None,
+        outer_test_session: Optional[str] = None,
+        inner_val_ratio: Optional[float] = None,
         seed: int = 42,
     ) -> None:
         super().__init__()
@@ -113,6 +123,12 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         self.val_split_strategy = str(val_split_strategy)
         self.val_session_id = (
             None if val_session_id is None else str(val_session_id).strip()
+        )
+        self.outer_test_session = (
+            None if outer_test_session is None else str(outer_test_session).strip()
+        )
+        self.inner_val_ratio = (
+            self.valid_ratio if inner_val_ratio is None else float(inner_val_ratio)
         )
         self.seed = int(seed)
 
@@ -182,6 +198,40 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         test_vid = list(self.testVid)
 
         strategy = self.val_split_strategy.lower()
+
+        if strategy == "outer_session_stratified":
+            if self.outer_test_session is None:
+                raise ValueError(
+                    "outer_test_session is required for outer_session_stratified."
+                )
+            resolved = build_outer_session_split(
+                dialogue_ids=list(dict.fromkeys(train_vid + test_vid)),
+                labels_by_dialogue=self.videoLabels,
+                speakers_by_dialogue=self.videoSpeakers,
+                outer_test_session=self.outer_test_session,
+                inner_val_ratio=self.inner_val_ratio,
+                split_seed=self.seed,
+            )
+            return (
+                list(resolved.train_dialogue_ids),
+                list(resolved.inner_val_dialogue_ids),
+                list(resolved.test_dialogue_ids),
+            )
+
+        if strategy == "official_train_stratified":
+            resolved = build_official_train_split(
+                train_dialogue_ids=train_vid,
+                test_dialogue_ids=test_vid,
+                labels_by_dialogue=self.videoLabels,
+                speakers_by_dialogue=self.videoSpeakers,
+                inner_val_ratio=self.inner_val_ratio,
+                split_seed=self.seed,
+            )
+            return (
+                list(resolved.train_dialogue_ids),
+                list(resolved.inner_val_dialogue_ids),
+                list(resolved.test_dialogue_ids),
+            )
 
         if strategy == "session_holdout":
             if self.val_session_id not in IEMOCAP_TRAIN_SESSION_IDS:
@@ -256,7 +306,8 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
             raise ValueError(
                 "Unsupported val_split_strategy: "
                 f"{self.val_split_strategy}. Use official_prefix, random, or "
-                "session_holdout."
+                "session_holdout, outer_session_stratified, or "
+                "official_train_stratified."
             )
 
         return train_ids, val_ids, test_vid
@@ -474,6 +525,8 @@ def build_iemocap_dataloader(
     valid_ratio: float = 0.1,
     val_split_strategy: str = "official_prefix",
     val_session_id: Optional[str] = None,
+    outer_test_session: Optional[str] = None,
+    inner_val_ratio: Optional[float] = None,
     seed: int = 42,
     shuffle: Optional[bool] = None,
     num_workers: int = 0,
@@ -485,6 +538,8 @@ def build_iemocap_dataloader(
         valid_ratio=valid_ratio,
         val_split_strategy=val_split_strategy,
         val_session_id=val_session_id,
+        outer_test_session=outer_test_session,
+        inner_val_ratio=inner_val_ratio,
         seed=seed,
     )
 

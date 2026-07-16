@@ -10,7 +10,7 @@ Input:
         configs/analysis/multi_run_training_curves.yaml
 
     Master table:
-        outputs/analysis_tables/epoch_metrics_master.csv
+        outputs/<YYYYMMDD>/analysis/analysis_tables/epoch_metrics_master.csv
 
 Output:
     <analysis.output_dir>/training_curves/
@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 import argparse
 import re
+import sys
 
 import pandas as pd
 import yaml
@@ -41,7 +42,19 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EPOCH_MASTER = PROJECT_ROOT / "outputs" / "analysis_tables" / "epoch_metrics_master.csv"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    find_analysis_artifact,
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +68,9 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to multi-run training curve YAML config.",
     )
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--epoch-master", default=None)
 
     return parser.parse_args()
 
@@ -146,14 +162,26 @@ def get_filename(config: Dict[str, Any], metric: str) -> str:
     return sanitize_filename(filenames.get(metric, metric))
 
 
-def get_output_dir(config: Dict[str, Any]) -> Path:
+def get_output_dir(
+    config: Dict[str, Any],
+    explicit_output_dir: str | None,
+    experiment_date: str,
+) -> Path:
     analysis_config = config.get("analysis", {})
-    output_dir_text = analysis_config.get(
-        "output_dir",
-        "outputs/report_figures/multi_run_training_curves",
-    )
-
-    output_dir = resolve_path(str(output_dir_text)) / "training_curves"
+    output_root = resolve_path(str(configured_output_root(config)))
+    if explicit_output_dir is not None:
+        output_dir = resolve_path(explicit_output_dir)
+    elif analysis_config.get("output_dir") is not None:
+        output_dir = resolve_path(str(analysis_config["output_dir"])) / "training_curves"
+    else:
+        name = sanitize_run_name(
+            str(analysis_config.get("name", "multi_run_training_curves"))
+        )
+        output_dir = (
+            resolve_output_category("analysis", experiment_date, output_root)
+            / name
+            / "training_curves"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     return output_dir
@@ -169,21 +197,15 @@ def get_figure_config(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def load_epoch_master() -> pd.DataFrame:
-    if not DEFAULT_EPOCH_MASTER.exists():
-        raise FileNotFoundError(
-            f"Missing epoch master table: {DEFAULT_EPOCH_MASTER}\n"
-            f"Please run: python scripts/analyze/build_analysis_tables.py"
-        )
-
-    df = pd.read_csv(DEFAULT_EPOCH_MASTER)
+def load_epoch_master(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
 
     required_columns = ["run_id", "epoch"]
 
     for column in required_columns:
         if column not in df.columns:
             raise ValueError(
-                f"Missing required column '{column}' in {DEFAULT_EPOCH_MASTER}"
+                f"Missing required column '{column}' in {path}"
             )
 
     return df
@@ -309,10 +331,27 @@ def main() -> None:
 
     runs = get_runs_from_config(config)
     metrics = get_metric_list(config)
-    output_dir = get_output_dir(config)
+    try:
+        first_run = find_run_directory(str(runs[0]["run_id"]), OUTPUT_ROOT)
+        inferred_date = infer_experiment_date_from_run(first_run)
+    except (FileNotFoundError, RuntimeError):
+        inferred_date = None
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=config,
+        inferred_date=inferred_date,
+    )
+    output_dir = get_output_dir(config, args.output_dir, frozen_date)
     figure_config = get_figure_config(config)
 
-    epoch_df = load_epoch_master()
+    epoch_master = (
+        resolve_path(args.epoch_master)
+        if args.epoch_master is not None
+        else find_analysis_artifact(
+            "analysis_tables/epoch_metrics_master.csv", OUTPUT_ROOT
+        )
+    )
+    epoch_df = load_epoch_master(epoch_master)
     selected_df = filter_selected_runs(epoch_df, runs)
 
     print("=" * 100)
@@ -320,7 +359,7 @@ def main() -> None:
     print("=" * 100)
     print("Project root:", PROJECT_ROOT)
     print("Config:", config_path)
-    print("Epoch master:", DEFAULT_EPOCH_MASTER)
+    print("Epoch master:", epoch_master)
     print("Output dir:", output_dir)
     print("Selected runs:")
     for item in runs:

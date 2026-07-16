@@ -1,5 +1,7 @@
 analysis_name: multidag_cl_iemocap_loss_stability_w5
-output_dir: outputs/analysis/multidag_cl/iemocap/loss_stability_w5
+output:
+  root: outputs
+  experiment_date: null
 
 runs:
   - run_id: ""

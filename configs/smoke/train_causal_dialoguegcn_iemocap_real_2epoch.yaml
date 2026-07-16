@@ -60,5 +60,5 @@ scheduler:
   name: none
 
 output:
-  run_root: outputs/dev
-
+  root: outputs
+  experiment_date: null

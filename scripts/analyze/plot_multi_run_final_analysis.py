@@ -9,10 +9,10 @@ Input:
         configs/analysis/multi_run_final_analysis.yaml
 
     Master tables:
-        outputs/analysis_tables/evaluation_master.csv
+        outputs/<YYYYMMDD>/analysis/analysis_tables/evaluation_master.csv
 
     Confusion matrices:
-        outputs/runs/<run_id>/logs/evaluations/<eval_name>/confusion_matrix.csv
+        outputs/<YYYYMMDD>/runs/<run_id>/logs/evaluations/<eval_name>/confusion_matrix.csv
 
 Output:
     <analysis.output_dir>/final_analysis/
@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 import argparse
 import re
+import sys
 
 import numpy as np
 import pandas as pd
@@ -52,8 +53,19 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
-EVALUATION_MASTER_PATH = PROJECT_ROOT / "outputs" / "analysis_tables" / "evaluation_master.csv"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    find_analysis_artifact,
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +79,9 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to multi-run final analysis YAML config.",
     )
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--evaluation-master", default=None)
 
     return parser.parse_args()
 
@@ -156,16 +171,24 @@ def get_split(config: Dict[str, Any]) -> str:
     return str(config.get("analysis", {}).get("split", "test"))
 
 
-def get_output_dir(config: Dict[str, Any]) -> Path:
-    output_dir_text = config.get(
-        "analysis",
-        {},
-    ).get(
-        "output_dir",
-        "outputs/report_figures/multi_run_final_analysis",
-    )
-
-    output_dir = resolve_path(str(output_dir_text)) / "final_analysis"
+def get_output_dir(
+    config: Dict[str, Any],
+    explicit_output_dir: str | None,
+    experiment_date: str,
+) -> Path:
+    analysis = config.get("analysis", {})
+    output_root = resolve_path(str(configured_output_root(config)))
+    if explicit_output_dir is not None:
+        output_dir = resolve_path(explicit_output_dir)
+    elif analysis.get("output_dir") is not None:
+        output_dir = resolve_path(str(analysis["output_dir"])) / "final_analysis"
+    else:
+        name = sanitize_run_name(str(analysis.get("name", "multi_run_final_analysis")))
+        output_dir = (
+            resolve_output_category("analysis", experiment_date, output_root)
+            / name
+            / "final_analysis"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     return output_dir
@@ -215,21 +238,15 @@ def get_per_class_filename(config: Dict[str, Any], metric: str) -> str:
     return sanitize_filename(filenames.get(metric, f"per_class_{metric}_comparison"))
 
 
-def load_evaluation_master() -> pd.DataFrame:
-    if not EVALUATION_MASTER_PATH.exists():
-        raise FileNotFoundError(
-            f"Missing evaluation master table: {EVALUATION_MASTER_PATH}\n"
-            f"Please run: python scripts/analyze/build_analysis_tables.py"
-        )
-
-    df = pd.read_csv(EVALUATION_MASTER_PATH)
+def load_evaluation_master(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
 
     required_columns = ["run_id", "split"]
 
     for column in required_columns:
         if column not in df.columns:
             raise ValueError(
-                f"Missing required column '{column}' in {EVALUATION_MASTER_PATH}"
+                f"Missing required column '{column}' in {path}"
             )
 
     return df
@@ -582,12 +599,29 @@ def main() -> None:
 
     runs = get_runs_from_config(config)
     split = get_split(config)
-    output_dir = get_output_dir(config)
+    try:
+        first_run = find_run_directory(str(runs[0]["run_id"]), OUTPUT_ROOT)
+        inferred_date = infer_experiment_date_from_run(first_run)
+    except (FileNotFoundError, RuntimeError):
+        inferred_date = None
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=config,
+        inferred_date=inferred_date,
+    )
+    output_dir = get_output_dir(config, args.output_dir, frozen_date)
     figure_config = get_figure_config(config)
     overall_metrics = get_overall_metrics(config)
     per_class_metrics = get_per_class_metrics(config)
 
-    evaluation_df = load_evaluation_master()
+    evaluation_master = (
+        resolve_path(args.evaluation_master)
+        if args.evaluation_master is not None
+        else find_analysis_artifact(
+            "analysis_tables/evaluation_master.csv", OUTPUT_ROOT
+        )
+    )
+    evaluation_df = load_evaluation_master(evaluation_master)
     selected_overall_df = select_overall_rows(
         evaluation_df=evaluation_df,
         runs=runs,
@@ -606,7 +640,7 @@ def main() -> None:
     print("=" * 100)
     print("Project root:", PROJECT_ROOT)
     print("Config:", config_path)
-    print("Evaluation master:", EVALUATION_MASTER_PATH)
+    print("Evaluation master:", evaluation_master)
     print("Output dir:", output_dir)
     print("Split:", split)
     print("Selected runs:")

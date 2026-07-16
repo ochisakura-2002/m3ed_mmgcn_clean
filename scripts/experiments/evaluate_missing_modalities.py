@@ -3,7 +3,7 @@
 Batch evaluate one checkpoint under multiple test-time active modality settings.
 
 Output layout:
-    outputs/runs/<run_id>/
+    outputs/<YYYYMMDD>/runs/<run_id>/
       logs/
         missing_modalities/
           test_best_model/
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint",
         type=str,
         required=True,
-        help="Path to checkpoint, e.g. outputs/runs/.../checkpoints/best_model.pt.",
+        help="Path to a dated or legacy run checkpoint.",
     )
     parser.add_argument(
         "--split",
@@ -217,7 +217,7 @@ def main() -> None:
 
     if checkpoint.parent.name != "checkpoints":
         raise RuntimeError(
-            "Expected checkpoint path like outputs/runs/<run_id>/checkpoints/best_model.pt. "
+            "Expected checkpoint path like <run_dir>/checkpoints/best_model.pt. "
             f"Got: {checkpoint}"
         )
 

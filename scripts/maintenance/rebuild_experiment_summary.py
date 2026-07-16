@@ -1,25 +1,29 @@
 """
-Rebuild experiment_summary.csv from existing run directories.
+Rebuild a dated experiment_summary.csv from existing run directories.
 
-这个脚本用于修复或重建 outputs/experiment_summary.csv。
+这个脚本用于修复或重建按日期归档的 experiment_summary.csv。
 
 为什么需要它：
 不同训练脚本可能写入不同数量的字段。
 如果直接 append 到旧 CSV，容易出现表头和数据列数不一致的问题。
 
 这个脚本会扫描：
-    outputs/runs/*/logs/experiment_config.yaml
-    outputs/runs/*/logs/epoch_metrics.csv
+    outputs/<YYYYMMDD>/runs/*/logs/experiment_config.yaml
+    outputs/<YYYYMMDD>/runs/*/logs/epoch_metrics.csv
+
+Legacy run directories are discovered as a compatibility fallback.
 
 然后重建统一 schema 的：
-    outputs/experiment_summary.csv
+    outputs/<YYYYMMDD>/analysis/experiment_summary/experiment_summary.csv
 
 运行方式：
     python scripts/maintenance/rebuild_experiment_summary.py
 """
 
 from pathlib import Path
+import argparse
 import shutil
+import sys
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -28,8 +32,16 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
-SUMMARY_PATH = PROJECT_ROOT / "outputs" / "experiment_summary.csv"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    discover_run_directories,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 
 SUMMARY_COLUMNS = [
@@ -147,39 +159,52 @@ def build_summary_row(run_dir: Path) -> Dict[str, Any]:
     return row
 
 
-def backup_old_summary() -> None:
+def backup_old_summary(summary_path: Path) -> None:
     """备份旧的 experiment_summary.csv。"""
-    if not SUMMARY_PATH.exists():
+    if not summary_path.exists():
         return
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = SUMMARY_PATH.with_suffix(f".backup_{timestamp}.csv")
+    backup_path = summary_path.with_suffix(f".backup_{timestamp}.csv")
 
-    shutil.copy2(SUMMARY_PATH, backup_path)
+    shutil.copy2(summary_path, backup_path)
 
     print("Old summary backed up to:", backup_path)
 
 
 def main() -> None:
     """主函数。"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
+    args = parser.parse_args()
+    run_dirs = discover_run_directories(OUTPUT_ROOT)
+    inferred_date = next(
+        (
+            value
+            for value in (infer_experiment_date_from_run(path) for path in run_dirs)
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        inferred_date=inferred_date,
+    )
+    summary_dir = (
+        Path(args.output_dir).resolve()
+        if args.output_dir is not None
+        else resolve_output_category("analysis", frozen_date, OUTPUT_ROOT)
+        / "experiment_summary"
+    )
+    summary_path = summary_dir / "experiment_summary.csv"
     print("=" * 80)
     print("Rebuild experiment_summary.csv")
     print("=" * 80)
 
     print("Project root:", PROJECT_ROOT)
-    print("Runs dir:", RUNS_DIR)
-    print("Summary path:", SUMMARY_PATH)
-
-    if not RUNS_DIR.exists():
-        raise FileNotFoundError(f"Runs directory not found: {RUNS_DIR}")
-
-    run_dirs = sorted(
-        [
-            path
-            for path in RUNS_DIR.iterdir()
-            if path.is_dir()
-        ]
-    )
+    print("Runs root:", OUTPUT_ROOT)
+    print("Summary path:", summary_path)
 
     rows: List[Dict[str, Any]] = []
 
@@ -201,7 +226,7 @@ def main() -> None:
     if len(rows) == 0:
         raise RuntimeError("No valid runs found. Summary not rebuilt.")
 
-    backup_old_summary()
+    backup_old_summary(summary_path)
 
     summary_df = pd.DataFrame(rows)
 
@@ -211,12 +236,12 @@ def main() -> None:
 
     summary_df = summary_df[SUMMARY_COLUMNS]
 
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    summary_df.to_csv(SUMMARY_PATH, index=False, encoding="utf-8-sig")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
 
     print("\nSummary rebuilt successfully.")
     print("Number of runs:", len(summary_df))
-    print("Saved to:", SUMMARY_PATH)
+    print("Saved to:", summary_path)
     print("=" * 80)
 
 

@@ -12,11 +12,11 @@ Evaluate a trained checkpoint on M3ED or IEMOCAP.
 2. IEMOCAP
 
 输入：
-    --checkpoint outputs/runs/<run_id>/checkpoints/best_model.pt
+    --checkpoint outputs/<YYYYMMDD>/runs/<run_id>/checkpoints/best_model.pt
     --split val 或 test
 
 输出：
-    outputs/runs/<run_id>/logs/evaluations/<split>_<checkpoint_name>/
+    outputs/<YYYYMMDD>/runs/<run_id>/logs/evaluations/<split>_<checkpoint_name>/
         metrics.csv
         predictions.csv
         confusion_matrix.csv
@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint",
         type=str,
         required=True,
-        help="Path to checkpoint, e.g. outputs/runs/xxx/checkpoints/best_model.pt",
+        help="Path to a dated or legacy run checkpoint.",
     )
 
     parser.add_argument(
@@ -569,7 +569,7 @@ def get_run_dir_from_checkpoint(checkpoint_path: Path) -> Path:
     从 checkpoint 路径推断 run_dir。
 
     期望：
-        outputs/runs/<run_id>/checkpoints/best_model.pt
+        outputs/<YYYYMMDD>/runs/<run_id>/checkpoints/best_model.pt
     """
     if checkpoint_path.parent.name == "checkpoints":
         return checkpoint_path.parent.parent

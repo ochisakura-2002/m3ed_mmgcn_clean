@@ -1,0 +1,53 @@
+run_name: original_gsmcc_clean_smoke
+profile: smoke
+protocol_version: original_merc_three_track_v2
+model:
+  name: project_paper_oriented_gsmcc
+  fidelity_status: PROJECT_VARIANT_NOT_PAPER_REPRODUCTION
+  causal_grade: noncausal_offline_full_context
+  text_feature_dim: 768
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  num_classes: 6
+  hidden_dim: 100
+  num_speakers: 2
+  graph_layers: 4
+  window: 10
+  dropout: 0.4
+  cross_modal_scale: 1.0
+  use_contrastive_loss: true
+  contrastive_temperature: 0.1
+  contrastive_loss_weight: 1.0
+dataset:
+  name: IEMOCAP
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  feature_protocol: clean_roberta_v1
+  feature_cleanliness: frozen_self_supervised_utterance_only
+  usage: fair_main_experiment
+  experiment_track: clean_roberta_fivefold_fair_comparison
+  protocol_comparability: fair_comparison_not_paper_reproduction
+  feature_pkl_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  num_classes: 6
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  val_split_strategy: outer_session_stratified
+  outer_test_session: Ses05
+  inner_val_ratio: 0.1
+  split_seed: 42
+training:
+  epochs: 2
+  batch_size: 2
+  seed: 42
+  select_best_by: val_weighted_f1
+  grad_clip: 1.0
+  num_workers: 0
+  early_stopping_patience: 0
+  amp: false
+  max_train_batches: 1
+  max_eval_batches: 1
+optimizer: {name: AdamW, learning_rate: 0.00001, weight_decay: 0.0001}
+scheduler: {name: none}
+system: {seed: 42, device: cpu}
+output:
+  root: tmp/smoke_outputs
+  experiment_date: null

@@ -1,0 +1,4 @@
+model_name,paper_weighted_f1_points,paper_protocol_note,paper_source
+original_repro_mmgcn,66.22,IEMOCAP multimodal weighted-F1,ACL 2021 Table result
+original_repro_multidag_cl,69.08,IEMOCAP MultiDAG+CL weighted-F1,LREC-COLING 2024 Table result
+original_repro_dialoguegcn,64.18,IEMOCAP five-run average weighted-F1,EMNLP-IJCNLP 2019 Table result

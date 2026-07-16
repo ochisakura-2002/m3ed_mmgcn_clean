@@ -46,5 +46,6 @@ training:
   num_workers: 0
 
 output:
-  run_root: outputs/runs
+  root: outputs
+  experiment_date: null
   experiment_name: iemocap_multidag_cl_context_w5_tav_graph1

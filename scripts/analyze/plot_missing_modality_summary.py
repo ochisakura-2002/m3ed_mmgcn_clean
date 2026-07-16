@@ -3,10 +3,10 @@
 Plot missing-modality evaluation summary.
 
 Input:
-    outputs/runs/<run_id>/logs/missing_modalities/test_best_model/summary.csv
+    outputs/<YYYYMMDD>/runs/<run_id>/logs/missing_modalities/test_best_model/summary.csv
 
 Output:
-    outputs/runs/<run_id>/figures/missing_modalities/test_best_model/
+    outputs/<YYYYMMDD>/runs/<run_id>/figures/missing_modalities/test_best_model/
 """
 
 from __future__ import annotations

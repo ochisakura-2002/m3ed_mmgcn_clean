@@ -71,7 +71,7 @@ def main() -> None:
 
     print("\nCheck files:")
     print("experiment_config.yaml:", run_info["logs_dir"] / "experiment_config.yaml")
-    print("latest_run.txt:", PROJECT_ROOT / "outputs" / "latest_run.txt")
+    print("latest_run.txt:", run_info["latest_run_path"])
 
     print("\nDebug IO finished successfully.")
     print("=" * 60)

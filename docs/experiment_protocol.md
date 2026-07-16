@@ -2,6 +2,25 @@
 
 本文档记录当前 `MMGCN` 相关实验逻辑，避免后续混淆实验解释。
 
+## Original MERC 三轨协议
+
+原始 MERC baseline 比较必须记录 `experiment_track`，且三个轨道分别汇总、
+分别排名：
+
+1. `legacy_official_split_safe_selection`：保留原始 PKL 的 `trainVid` 和
+   `testVid`（Ses05）；Validation 只能从 `trainVid` 内按 dialogue 产生；
+   `protocol_comparability: paper_adjacent_not_exact`。
+2. `legacy_fivefold_fair_comparison`：旧特征，Ses01--Ses05 外层五折，
+   其余 session 内按 dialogue 产生 Validation；只用于公平工程比较，不计算
+   严格 paper reproduction gap。
+3. `clean_roberta_fivefold_fair_comparison`：Clean RoBERTa v1，采用相同
+   五折/内层 Validation 规则；用于最终 baseline 与模块实验。
+
+Top-2 必须在四个 clean single-fold screening 全部完成后选择。排序证据依次为
+clean Validation Weighted-F1、训练稳定性、复现可信度、模块插入点清晰度，
+legacy paper-adjacent Validation 仅作辅助。Test 指标不得参与 checkpoint、epoch、
+超参数或 Top-2 选择。
+
 ## 当前主线
 
 当前主线是复现和分析 `M3ED + MMGCN` baseline。`SimpleMLP` 作为 sanity baseline 和对照模型保留。
@@ -126,6 +145,67 @@
 7. evaluation split。
 
 如果本地和远程路径不同，文档中只记录相对项目路径或环境变量式描述。
+
+## 按实验启动日期组织输出
+
+所有新的动态实验产物按 pipeline 或单次入口的启动日期写入：
+
+```text
+outputs/<YYYYMMDD>/
+  runs/
+  logs/
+  analysis/
+  reports/
+  manifests/
+  smoke/
+  audits/
+  review/
+```
+
+日期必须是合法的八位本地日历日期。解析优先级固定为命令行
+`--experiment-date`、配置 `output.experiment_date`、环境变量
+`MERC_EXPERIMENT_DATE`、运行机器的本地日期。正式 YAML 使用：
+
+```yaml
+output:
+  root: outputs
+  experiment_date: null
+```
+
+`null` 表示在运行时解析；正式配置不得写死某一天。pipeline 启动时只解析
+一次日期，并把同一个值显式传给全部子进程。因此跨午夜的多 run 任务仍全部
+写入启动日目录，不会中途切换日期。
+
+run ID 仍包含时间和随机短后缀，并通过原子目录创建避免并发覆盖。
+`latest_run.txt` 只允许存在于当前 run/pipeline 自己的 manifest 目录中，不是
+跨 pipeline 的共享状态。resume 必须继续使用 checkpoint 所属的原 run 目录；
+当前日期变化不会产生新日期目录。
+
+显式传入 checkpoint、`--run-dir` 或 `--output-dir` 时完全服从该路径。自动
+发现先查找日期目录，再查找旧结构 `outputs/runs`、`outputs/analysis`，并去重。
+旧结果只读兼容，不移动、不改名。以下全局静态目录不按日期分类，也不会被
+识别为日期：
+
+```text
+outputs/environment/
+outputs/reference/
+outputs/cache/
+```
+
+查找某一天的结果：
+
+```bash
+find outputs/20260716/runs -maxdepth 1 -type d
+find outputs/20260716/logs -type f
+find outputs/20260716/analysis -maxdepth 2 -type f
+```
+
+显式指定日期的示例：
+
+```bash
+python scripts/train_mmgcn.py --config configs/train_mmgcn_m3ed.yaml --experiment-date 20260716
+MERC_EXPERIMENT_DATE=20260716 python scripts/run_experiment_pipeline.py --config configs/pipeline/mmgcn_pipeline_m3ed.yaml
+```
 
 ## 结果解释边界
 

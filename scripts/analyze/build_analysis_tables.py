@@ -1,48 +1,58 @@
 """
-Build clean analysis master tables from outputs/runs.
+Build clean analysis master tables from dated and legacy run directories.
 
-This script rebuilds analysis tables from outputs/runs/<run_id>/ directly.
-It does not depend on outputs/experiment_summary.csv or outputs/evaluation_summary.csv.
+This script rebuilds analysis tables from discovered run directories directly.
+It does not depend on the optional experiment/evaluation summary CSV files.
 
 Outputs:
-  outputs/analysis_tables/run_file_status.csv
-  outputs/analysis_tables/run_summary_master.csv
-  outputs/analysis_tables/epoch_metrics_master.csv
-  outputs/analysis_tables/evaluation_master.csv
-  outputs/analysis_tables/per_class_master.csv
+  outputs/<YYYYMMDD>/analysis/analysis_tables/run_file_status.csv
+  outputs/<YYYYMMDD>/analysis/analysis_tables/run_summary_master.csv
+  outputs/<YYYYMMDD>/analysis/analysis_tables/epoch_metrics_master.csv
+  outputs/<YYYYMMDD>/analysis/analysis_tables/evaluation_master.csv
+  outputs/<YYYYMMDD>/analysis/analysis_tables/per_class_master.csv
 """
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import argparse
+import sys
 
 import pandas as pd
 import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "analysis_tables"
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.output_paths import (  # noqa: E402
+    discover_run_directories,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build clean analysis master tables from outputs/runs."
+        description="Build clean analysis master tables from dated and legacy runs."
     )
 
     parser.add_argument(
         "--runs-dir",
         type=str,
-        default=str(DEFAULT_RUNS_DIR),
-        help="Directory containing run folders.",
+        default=None,
+        help="Explicit directory containing run folders; defaults to new+legacy discovery.",
     )
 
     parser.add_argument(
         "--output-dir",
         type=str,
-        default=str(DEFAULT_OUTPUT_DIR),
-        help="Directory to save analysis master tables.",
+        default=None,
+        help="Explicit output directory; otherwise uses the dated analysis category.",
     )
+    parser.add_argument("--experiment-date", default=None)
 
     parser.add_argument(
         "--include-run-ids",
@@ -382,20 +392,40 @@ def save_table(rows: List[Dict[str, Any]], output_path: Path) -> pd.DataFrame:
 
 def main() -> None:
     args = parse_args()
-
-    runs_dir = resolve_path(args.runs_dir)
-    output_dir = resolve_path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if not runs_dir.exists():
-        raise FileNotFoundError(f"Runs directory not found: {runs_dir}")
-
-    run_dirs = sorted([p for p in runs_dir.iterdir() if p.is_dir()])
+    if args.runs_dir is not None:
+        runs_dir = resolve_path(args.runs_dir)
+        if not runs_dir.exists():
+            raise FileNotFoundError(f"Runs directory not found: {runs_dir}")
+        run_dirs = sorted([p for p in runs_dir.iterdir() if p.is_dir()])
+    else:
+        runs_dir = DEFAULT_OUTPUT_ROOT
+        run_dirs = discover_run_directories(DEFAULT_OUTPUT_ROOT)
     run_dirs = filter_run_dirs(
         run_dirs=run_dirs,
         include_run_ids=args.include_run_ids,
         exclude_run_ids=args.exclude_run_ids,
     )
+    inferred_date = next(
+        (
+            value
+            for value in (infer_experiment_date_from_run(path) for path in run_dirs)
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        inferred_date=inferred_date,
+    )
+    output_dir = (
+        resolve_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_output_category(
+            "analysis", frozen_date, DEFAULT_OUTPUT_ROOT
+        )
+        / "analysis_tables"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 100)
     print("Build analysis master tables")

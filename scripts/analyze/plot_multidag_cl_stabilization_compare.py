@@ -1,6 +1,6 @@
 """Compare MultiDAG+CL stabilization runs from saved CSV logs.
 
-The script reads only lightweight logs under outputs/runs/<run_id>/:
+The script reads only lightweight logs under a discovered dated or legacy run:
 experiment_config.yaml, epoch_metrics.csv, validation/test metrics.csv, and an
 optional single-run diagnosis CSV. It writes summary tables, figures, and a
 short Markdown report for one stabilization comparison.
@@ -13,6 +13,7 @@ import math
 import os
 import tempfile
 from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
@@ -21,7 +22,18 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 BEST_SELECTION_METRIC = "val_weighted_f1"
 
 os.environ.setdefault(
@@ -101,6 +113,8 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to stabilization comparison YAML config.",
     )
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -396,7 +410,7 @@ def load_run_bundle(
     runs_dir: Path,
 ) -> Dict[str, Any]:
     run_id = str(run_item["run_id"])
-    run_dir = runs_dir / run_id
+    run_dir = find_run_directory(run_id, runs_dir)
     paths = validate_required_run_files(run_dir)
     config = load_yaml(paths["config"])
     epoch_df = read_csv_required(paths["epoch"])
@@ -977,16 +991,31 @@ def main() -> None:
     config_path = resolve_path(args.config)
     config = load_yaml(config_path)
 
-    output_dir = resolve_path(str(config.get("output_dir", "")))
-    if not str(config.get("output_dir", "")).strip():
-        raise ValueError("Config field 'output_dir' is required.")
-    tables_dir = output_dir / "tables"
-    figures_dir = output_dir / "figures"
-
     runs = get_runs(config)
     baseline_run_id = str(config.get("baseline_run_id", "")).strip()
     if not baseline_run_id:
         raise ValueError("Config field 'baseline_run_id' is required.")
+    baseline_run_dir = find_run_directory(baseline_run_id, OUTPUT_ROOT)
+    inferred_date = infer_experiment_date_from_run(baseline_run_dir)
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=config,
+        inferred_date=inferred_date,
+    )
+    configured_root = resolve_path(str(configured_output_root(config)))
+    analysis_name = sanitize_run_name(
+        str(config.get("analysis_name", "multidag_cl_stabilization_compare"))
+    )
+    output_dir = (
+        resolve_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_path(str(config["output_dir"]))
+        if config.get("output_dir") is not None
+        else resolve_output_category("analysis", frozen_date, configured_root)
+        / analysis_name
+    )
+    tables_dir = output_dir / "tables"
+    figures_dir = output_dir / "figures"
 
     plot_config = get_plot_config(config)
     primary_metric = str(config.get("metrics", {}).get("primary", "test_weighted_f1"))
@@ -996,7 +1025,7 @@ def main() -> None:
     print("=" * 100)
     print("Project root:", PROJECT_ROOT)
     print("Config:", config_path)
-    print("Runs dir:", RUNS_DIR)
+    print("Runs root:", OUTPUT_ROOT)
     print("Output dir:", output_dir)
     print("Baseline run:", baseline_run_id)
     print("=" * 100)
@@ -1005,7 +1034,7 @@ def main() -> None:
     missing_errors: List[str] = []
     for item in runs:
         try:
-            bundle = load_run_bundle(item, RUNS_DIR)
+            bundle = load_run_bundle(item, OUTPUT_ROOT)
             bundles.append(bundle)
             diagnosis_note = (
                 "with diagnosis"

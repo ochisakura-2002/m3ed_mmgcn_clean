@@ -1,13 +1,15 @@
 """
-Collect evaluation results into outputs/evaluation_summary.csv.
+Collect evaluation results into a dated evaluation_summary.csv.
 
 这个脚本扫描所有 run 目录下的 evaluation 结果：
 
-    outputs/runs/*/logs/evaluations/*/metrics.csv
+    outputs/<YYYYMMDD>/runs/*/logs/evaluations/*/metrics.csv
+
+Legacy run directories are discovered as a compatibility fallback.
 
 并汇总成统一表格：
 
-    outputs/evaluation_summary.csv
+    outputs/<YYYYMMDD>/analysis/evaluation_summary/evaluation_summary.csv
 
 用途：
 1. 对比 SimpleMLP / MMGCN / 后续 causal-MMGCN
@@ -19,6 +21,8 @@ Collect evaluation results into outputs/evaluation_summary.csv.
 """
 
 from pathlib import Path
+import argparse
+import sys
 from typing import Dict, Any, List
 
 import pandas as pd
@@ -26,8 +30,16 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
-OUTPUT_PATH = PROJECT_ROOT / "outputs" / "evaluation_summary.csv"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    discover_run_directories,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 
 SUMMARY_COLUMNS = [
@@ -77,7 +89,7 @@ def build_row_from_metrics(metrics_path: Path) -> Dict[str, Any]:
     eval_dir = metrics_path.parent
 
     # metrics.csv 路径：
-    # outputs/runs/<run_id>/logs/evaluations/<eval_name>/metrics.csv
+    # <run_dir>/logs/evaluations/<eval_name>/metrics.csv
     run_dir = eval_dir.parents[2]
     run_id = run_dir.name
 
@@ -134,19 +146,42 @@ def build_row_from_metrics(metrics_path: Path) -> Dict[str, Any]:
 
 def main() -> None:
     """主函数。"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
+    args = parser.parse_args()
+    run_dirs = discover_run_directories(OUTPUT_ROOT)
+    inferred_date = next(
+        (
+            value
+            for value in (infer_experiment_date_from_run(path) for path in run_dirs)
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        inferred_date=inferred_date,
+    )
+    output_dir = (
+        Path(args.output_dir).resolve()
+        if args.output_dir is not None
+        else resolve_output_category("analysis", frozen_date, OUTPUT_ROOT)
+        / "evaluation_summary"
+    )
+    output_path = output_dir / "evaluation_summary.csv"
     print("=" * 80)
     print("Collect evaluation summary")
     print("=" * 80)
 
     print("Project root:", PROJECT_ROOT)
-    print("Runs dir:", RUNS_DIR)
-    print("Output path:", OUTPUT_PATH)
-
-    if not RUNS_DIR.exists():
-        raise FileNotFoundError(f"Runs directory not found: {RUNS_DIR}")
+    print("Runs root:", OUTPUT_ROOT)
+    print("Output path:", output_path)
 
     metrics_paths = sorted(
-        RUNS_DIR.glob("*/logs/evaluations/*/metrics.csv")
+        path
+        for run_dir in run_dirs
+        for path in (run_dir / "logs" / "evaluations").glob("*/metrics.csv")
     )
 
     if len(metrics_paths) == 0:
@@ -173,12 +208,12 @@ def main() -> None:
 
     summary_df = summary_df[SUMMARY_COLUMNS]
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    summary_df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_df.to_csv(output_path, index=False, encoding="utf-8-sig")
 
     print("\nEvaluation summary saved.")
     print("Number of rows:", len(summary_df))
-    print("Saved to:", OUTPUT_PATH)
+    print("Saved to:", output_path)
 
     print("\nCompact view:")
     compact_columns = [

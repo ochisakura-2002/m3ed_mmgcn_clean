@@ -41,4 +41,5 @@ training:
   select_best_by: val_weighted_f1
 
 output:
-  run_root: outputs/smoke/multidag_cl
+  root: outputs
+  experiment_date: null

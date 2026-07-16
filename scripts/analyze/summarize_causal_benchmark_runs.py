@@ -23,6 +23,16 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+    sanitize_run_name,
+)
 UNCONFIRMED = "UNCONFIRMED"
 SUPPORTED_ARTIFACT_SUFFIXES = {".json", ".csv", ".yaml", ".yml"}
 EXPECTED_SESSIONS = ("Ses01", "Ses02", "Ses03", "Ses04")
@@ -177,6 +187,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs-root", default=None, help="Override runs root.")
     parser.add_argument("--output-dir", default=None, help="Override CSV output directory.")
     parser.add_argument("--report-path", default=None, help="Override Markdown report path.")
+    parser.add_argument("--experiment-date", default=None)
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -303,14 +314,30 @@ def configured_all_run_ids(config: Mapping[str, Any]) -> List[str]:
     return list(dict.fromkeys(run_ids))
 
 
+def resolve_run_directory(runs_root: Path, run_id: str) -> Path:
+    direct = runs_root / run_id
+    if direct.is_dir():
+        return direct
+    output_root = runs_root.parent if runs_root.name == "runs" else runs_root
+    return find_run_directory(run_id, output_root)
+
+
 def ensure_run_directories(config: Mapping[str, Any], runs_root: Path) -> None:
     missing = [
         runs_root / run_id
         for run_id in configured_all_run_ids(config)
-        if not (runs_root / run_id).is_dir()
+        if not _run_directory_exists(runs_root, run_id)
     ]
     if missing:
         raise MissingRunDirectoriesError(missing)
+
+
+def _run_directory_exists(runs_root: Path, run_id: str) -> bool:
+    try:
+        resolve_run_directory(runs_root, run_id)
+    except (FileNotFoundError, RuntimeError):
+        return False
+    return True
 
 
 def load_json_mapping(path: Path, notes: List[str]) -> Dict[str, Any]:
@@ -503,7 +530,7 @@ def build_run_record(model: str, session: str, run_id: str, runs_root: Path) -> 
         expected_model=model,
         expected_session=session,
         run_id=run_id,
-        run_dir=runs_root / run_id,
+        run_dir=resolve_run_directory(runs_root, run_id),
     )
     files = discover_run_files(record.run_dir)
     record.metadata = load_run_metadata(record.run_dir, record.notes)
@@ -2018,14 +2045,49 @@ def strict_failures(
 def run_review(args: argparse.Namespace) -> int:
     review_config_path = resolve_project_path(args.config)
     review_config = load_review_config(review_config_path)
-    runs_root = resolve_project_path(args.runs_root or review_config.get("runs_root", "outputs/runs"))
-    output_dir = resolve_project_path(
-        args.output_dir or review_config.get("output_dir", "outputs/analysis/causal_benchmark_8run_review")
-    )
-    report_path = resolve_project_path(
-        args.report_path or review_config.get("report_path", "docs/baselines/causal_benchmark_8run_review.md")
+    output_root = resolve_project_path(configured_output_root(review_config))
+    runs_root = resolve_project_path(
+        args.runs_root or review_config.get("runs_root", output_root)
     )
     ensure_run_directories(review_config, runs_root)
+    inferred_date = next(
+        (
+            value
+            for value in (
+                infer_experiment_date_from_run(
+                    resolve_run_directory(runs_root, run_id)
+                )
+                for run_id in configured_all_run_ids(review_config)
+            )
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=review_config,
+        inferred_date=inferred_date,
+    )
+    output_config = review_config.get("output", {})
+    review_name = sanitize_run_name(
+        str(output_config.get("name", "causal_benchmark_8run_review"))
+        if isinstance(output_config, Mapping)
+        else "causal_benchmark_8run_review"
+    )
+    output_dir = (
+        resolve_project_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_project_path(review_config["output_dir"])
+        if review_config.get("output_dir") is not None
+        else resolve_output_category("review", frozen_date, output_root) / review_name
+    )
+    report_path = (
+        resolve_project_path(args.report_path)
+        if args.report_path is not None
+        else resolve_project_path(review_config["report_path"])
+        if review_config.get("report_path") is not None
+        else output_dir / "review_report.md"
+    )
 
     formal_records = [
         build_run_record(model, session, run_id, runs_root)

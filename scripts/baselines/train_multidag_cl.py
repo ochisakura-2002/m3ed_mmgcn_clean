@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-from datetime import datetime
 from itertools import islice
 import json
 from pathlib import Path
@@ -32,6 +31,12 @@ from models.baselines.multidag_cl import MultiDAGCLBaseline  # noqa: E402
 from utils.io import ensure_dir, load_yaml, sanitize_name, save_yaml  # noqa: E402
 from utils.metrics import compute_classification_metrics  # noqa: E402
 from utils.run_metadata import write_run_metadata  # noqa: E402
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    create_unique_run_dir,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
 from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
@@ -61,6 +66,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to a MultiDAG+CL YAML training config.",
     )
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -379,24 +385,51 @@ def get_device(config: Dict[str, Any]) -> torch.device:
     return torch.device(device_name)
 
 
-def prepare_run_environment(config: Dict[str, Any], config_path: Path) -> Dict[str, Path]:
-    output_config = config.get("output", {})
-    run_root_text = output_config.get("run_root")
-    if not run_root_text:
-        run_root_text = str(Path(str(config["system"].get("output_dir", "outputs"))) / "runs")
-
-    run_root = resolve_path(str(run_root_text))
+def prepare_run_environment(
+    config: Dict[str, Any],
+    config_path: Path,
+    experiment_date: str | None = None,
+) -> Dict[str, Path]:
+    output_config = config.setdefault("output", {})
+    output_root = resolve_path(str(configured_output_root(config)))
+    frozen_date = resolve_experiment_date(
+        cli_date=experiment_date,
+        config=config,
+    )
     experiment_name = sanitize_name(
         str(output_config.get("experiment_name", config["project"]["experiment_name"]))
     )
-    run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{experiment_name}"
-    run_dir = run_root / run_id
+    run_dir = create_unique_run_dir(
+        experiment_name,
+        frozen_date,
+        output_root,
+    )
+    run_id = run_dir.name
 
     logs_dir = run_dir / "logs"
     checkpoints_dir = run_dir / "checkpoints"
     figures_dir = run_dir / "figures"
-    for path in (logs_dir, checkpoints_dir, figures_dir):
+    manifest_dir = resolve_output_category(
+        "manifests", frozen_date, output_root
+    ) / run_id
+    for path in (logs_dir, checkpoints_dir, figures_dir, manifest_dir):
         ensure_dir(path)
+
+    output_config.pop("run_root", None)
+    output_config.update(
+        {
+            "root": str(output_root),
+            "experiment_date": frozen_date,
+            "output_root": str(output_root),
+            "day_output_root": str(output_root / frozen_date),
+            "run_dir": str(run_dir),
+            "log_dir": str(logs_dir),
+            "analysis_dir": str(
+                resolve_output_category("analysis", frozen_date, output_root)
+            ),
+            "manifest_dir": str(manifest_dir),
+        }
+    )
 
     save_yaml(config, logs_dir / "experiment_config.yaml")
     write_run_metadata(
@@ -405,8 +438,7 @@ def prepare_run_environment(config: Dict[str, Any], config_path: Path) -> Dict[s
         project_root=PROJECT_ROOT,
     )
 
-    latest_path = run_root.parent / "latest_run.txt"
-    ensure_dir(latest_path.parent)
+    latest_path = manifest_dir / "latest_run.txt"
     with latest_path.open("w", encoding="utf-8") as file:
         file.write(f"run_id={run_id}\n")
         file.write(f"run_dir={project_relative(run_dir)}\n")
@@ -420,6 +452,9 @@ def prepare_run_environment(config: Dict[str, Any], config_path: Path) -> Dict[s
         "checkpoints_dir": checkpoints_dir,
         "figures_dir": figures_dir,
         "latest_run_path": latest_path,
+        "manifest_dir": manifest_dir,
+        "experiment_date": frozen_date,
+        "day_output_root": output_root / frozen_date,
     }
 
 
@@ -1203,7 +1238,11 @@ def main() -> None:
     set_seed(seed)
     device = get_device(config)
 
-    run_paths = prepare_run_environment(config, config_path)
+    run_paths = prepare_run_environment(
+        config,
+        config_path,
+        experiment_date=args.experiment_date,
+    )
     print(
         "CODEX_RUN_INFO_JSON="
         + json.dumps(

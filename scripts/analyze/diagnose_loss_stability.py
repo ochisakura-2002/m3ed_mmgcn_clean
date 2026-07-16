@@ -1,6 +1,6 @@
 """Diagnose loss stability from one or more epoch_metrics.csv files.
 
-This script reads lightweight run logs under outputs/runs/<run_id>/ and writes
+This script reads lightweight logs from discovered dated or legacy runs and writes
 CSV, Markdown, and matplotlib loss-curve artifacts. It never loads checkpoints.
 """
 
@@ -10,13 +10,23 @@ import argparse
 import os
 import tempfile
 from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = PROJECT_ROOT / "outputs" / "runs"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    find_run_directory,
+    infer_experiment_date_from_run,
+    resolve_experiment_date,
+    resolve_output_category,
+)
+
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 EPSILON = 1.0e-8
 
 os.environ.setdefault(
@@ -63,16 +73,17 @@ def parse_args() -> argparse.Namespace:
         "--run-id",
         action="append",
         required=True,
-        help="Run ID under outputs/runs/. Repeat for multiple runs.",
+        help="Dated or legacy run ID. Repeat for multiple runs.",
     )
     parser.add_argument(
         "--output-dir",
         default=None,
         help=(
             "Comparison output directory. Defaults to "
-            "outputs/analysis/loss_stability_compare for multiple runs."
+            "the dated analysis category for multiple runs."
         ),
     )
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -91,7 +102,7 @@ def project_relative(path: Path) -> str:
 
 
 def run_dir(run_id: str) -> Path:
-    return RUNS_DIR / str(run_id)
+    return find_run_directory(str(run_id), OUTPUT_ROOT)
 
 
 def epoch_metrics_path(run_id: str) -> Path:
@@ -419,7 +430,28 @@ def main() -> None:
         run_single(run_ids[0], run_dfs[run_ids[0]], summary_df)
         return
 
-    output_dir = resolve_path(args.output_dir or "outputs/analysis/loss_stability_compare")
+    inferred_date = next(
+        (
+            value
+            for value in (
+                infer_experiment_date_from_run(run_dir(run_id)) for run_id in run_ids
+            )
+            if value is not None
+        ),
+        None,
+    )
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        inferred_date=inferred_date,
+    )
+    output_dir = (
+        resolve_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_output_category(
+            "analysis", frozen_date, OUTPUT_ROOT
+        )
+        / "loss_stability_compare"
+    )
     run_multi(run_ids, run_dfs, summary_df, output_dir)
 
 

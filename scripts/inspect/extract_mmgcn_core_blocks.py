@@ -15,16 +15,26 @@ Extract core code blocks from official MMGCN implementation.
     python scripts/inspect/extract_mmgcn_core_blocks.py
 
 输出：
-    outputs/mmgcn_core_blocks.txt
+    outputs/<YYYYMMDD>/reports/mmgcn_core_blocks_<...>/mmgcn_core_blocks.txt
 """
 
+import argparse
 from pathlib import Path
+import sys
 from typing import List, Tuple
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.output_paths import (  # noqa: E402
+    create_unique_category_dir,
+    resolve_experiment_date,
+)
+
 OFFICIAL_DIR = PROJECT_ROOT / "third_party" / "MMGCN_official"
-OUTPUT_PATH = PROJECT_ROOT / "outputs" / "mmgcn_core_blocks.txt"
+OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 
 
 TARGET_MODEL_FILES = [
@@ -171,15 +181,36 @@ def extract_train_args() -> str:
     return "\n".join(output)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--experiment-date", default=None)
+    return parser.parse_args()
+
+
 def main() -> None:
     """主函数。"""
+    args = parse_args()
+    frozen_date = resolve_experiment_date(cli_date=args.experiment_date)
+    output_dir = (
+        Path(args.output_dir).resolve()
+        if args.output_dir is not None
+        else create_unique_category_dir(
+            "reports",
+            "mmgcn_core_blocks",
+            frozen_date,
+            OUTPUT_ROOT,
+        )
+    )
+    output_path = output_dir / "mmgcn_core_blocks.txt"
+
     print("=" * 100)
     print("Extract MMGCN official core blocks")
     print("=" * 100)
 
     print("Project root:", PROJECT_ROOT)
     print("Official dir:", OFFICIAL_DIR)
-    print("Output path:", OUTPUT_PATH)
+    print("Output path:", output_path)
 
     all_outputs = []
 
@@ -206,13 +237,13 @@ def main() -> None:
 
     all_outputs.append(extract_train_args())
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(all_outputs))
 
     print("\nExtraction finished.")
-    print("Saved to:", OUTPUT_PATH)
+    print("Saved to:", output_path)
     print("=" * 100)
 
 

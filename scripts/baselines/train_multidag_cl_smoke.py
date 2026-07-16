@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import datetime
 from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable, List, Tuple
@@ -26,6 +25,12 @@ from datasets.smoke.mmgcn_smoke_dataset import build_mmgcn_smoke_dataloader  # n
 from models.baselines.multidag_cl import MultiDAGCLBaseline  # noqa: E402
 from utils.io import ensure_dir, load_yaml, resolve_project_path, sanitize_name, save_yaml  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    create_unique_run_dir,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 
 
 METRIC_KEYS = ("acc", "weighted_f1", "macro_f1", "uar")
@@ -40,6 +45,7 @@ def _parse_args() -> argparse.Namespace:
         default="configs/smoke/train_multidag_cl_smoke.yaml",
         help="Path to the smoke YAML config.",
     )
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -50,18 +56,40 @@ def _project_relative(path: Path) -> str:
         return str(path)
 
 
-def _make_run_dir(config: Dict[str, Any]) -> Path:
-    output_config = config.get("output", {})
-    run_root = resolve_project_path(output_config.get("run_root"))
-    if run_root is None:
-        raise ValueError("output.run_root must be set")
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+def _make_run_dir(config: Dict[str, Any], experiment_date: str | None) -> Path:
+    output_config = config.setdefault("output", {})
+    output_root = resolve_project_path(str(configured_output_root(config)))
+    if output_root is None:
+        raise ValueError("output root must be set")
+    frozen_date = resolve_experiment_date(
+        cli_date=experiment_date,
+        config=config,
+    )
     run_name = output_config.get("run_name", "multidag_cl_smoke")
-    run_dir = run_root / f"{timestamp}_{sanitize_name(str(run_name))}"
-    ensure_dir(run_dir)
+    run_dir = create_unique_run_dir(
+        sanitize_name(str(run_name)), frozen_date, output_root
+    )
+    manifest_dir = resolve_output_category(
+        "manifests", frozen_date, output_root
+    ) / run_dir.name
+    ensure_dir(manifest_dir)
+    output_config.pop("run_root", None)
+    output_config.update(
+        {
+            "root": str(output_root),
+            "experiment_date": frozen_date,
+            "output_root": str(output_root),
+            "day_output_root": str(output_root / frozen_date),
+            "run_dir": str(run_dir),
+            "log_dir": str(run_dir),
+            "analysis_dir": str(
+                resolve_output_category("analysis", frozen_date, output_root)
+            ),
+            "manifest_dir": str(manifest_dir),
+        }
+    )
 
-    latest_path = run_root / "latest_run.txt"
+    latest_path = manifest_dir / "latest_run.txt"
     with latest_path.open("w", encoding="utf-8") as file:
         file.write(f"run_dir={_project_relative(run_dir)}\n")
 
@@ -348,7 +376,7 @@ def main() -> None:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("Config requested CUDA, but CUDA is not available")
 
-    run_dir = _make_run_dir(config)
+    run_dir = _make_run_dir(config, args.experiment_date)
     save_yaml(config, run_dir / "config.yaml")
 
     train_loader, val_loader = _build_dataloaders(config)

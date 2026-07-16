@@ -19,6 +19,12 @@ import re
 
 import yaml
 
+from utils.output_paths import (
+    configured_output_root,
+    create_unique_run_dir,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 from utils.run_metadata import write_run_metadata
 
 
@@ -154,12 +160,13 @@ def make_run_id(experiment_name: str) -> str:
 def create_run_dirs(
     output_dir: str,
     experiment_name: str,
+    experiment_date: Optional[str] = None,
 ) -> Dict[str, Path]:
     """
     创建一次实验的输出目录。
 
     目录结构：
-        outputs/runs/<run_id>/
+        outputs/<YYYYMMDD>/runs/<run_id>/
             logs/
             checkpoints/
             figures/
@@ -178,12 +185,19 @@ def create_run_dirs(
     if output_root is None:
         raise ValueError("output_dir cannot be None")
 
-    run_id = make_run_id(experiment_name)
-
-    run_dir = output_root / "runs" / run_id
+    frozen_date = resolve_experiment_date(cli_date=experiment_date)
+    run_dir = create_unique_run_dir(
+        experiment_name=experiment_name,
+        experiment_date=frozen_date,
+        output_root=output_root,
+    )
+    run_id = run_dir.name
     logs_dir = run_dir / "logs"
     checkpoints_dir = run_dir / "checkpoints"
     figures_dir = run_dir / "figures"
+    manifest_dir = resolve_output_category(
+        "manifests", frozen_date, output_root
+    ) / run_id
 
     ensure_dir(logs_dir)
     ensure_dir(checkpoints_dir)
@@ -195,34 +209,41 @@ def create_run_dirs(
         "logs_dir": logs_dir,
         "checkpoints_dir": checkpoints_dir,
         "figures_dir": figures_dir,
+        "manifest_dir": manifest_dir,
+        "experiment_date": frozen_date,
+        "output_root": output_root,
+        "day_output_root": output_root / frozen_date,
     }
 
 
-def write_latest_run(run_id: str, run_dir: Path) -> None:
+def write_latest_run(run_id: str, run_dir: Path, manifest_dir: Path) -> Path:
     """
-    写入 outputs/latest_run.txt。
+    写入当前 run 自己的 manifest 目录，避免跨 pipeline 共享状态。
 
     这个文件用于记录最近一次实验目录。
     后续 evaluate_best_model.py 可以默认读取它。
     """
-    latest_path = PROJECT_ROOT / "outputs" / "latest_run.txt"
+    latest_path = Path(manifest_dir) / "latest_run.txt"
     ensure_dir(latest_path.parent)
 
     with open(latest_path, "w", encoding="utf-8") as f:
         f.write(f"run_id={run_id}\n")
         f.write(f"run_dir={run_dir}\n")
+    return latest_path
 
 
-def prepare_run_environment(config: Dict[str, Any]) -> Dict[str, Path]:
+def prepare_run_environment(
+    config: Dict[str, Any], experiment_date: Optional[str] = None
+) -> Dict[str, Path]:
     """
     根据配置文件创建实验输出目录，并保存本次实验配置。
 
     这个函数后续会在 train.py 开头调用。
 
     它做三件事：
-    1. 创建 outputs/runs/<run_id>/
+    1. 创建 outputs/<YYYYMMDD>/runs/<run_id>/
     2. 保存 logs/experiment_config.yaml
-    3. 写 outputs/latest_run.txt
+    3. 写当前 run manifest 目录内的 latest_run.txt
 
     参数：
         config:
@@ -232,11 +253,32 @@ def prepare_run_environment(config: Dict[str, Any]) -> Dict[str, Path]:
         run 相关路径字典。
     """
     experiment_name = config["project"]["experiment_name"]
-    output_dir = config["system"]["output_dir"]
+    output_dir = configured_output_root(config)
+    frozen_date = resolve_experiment_date(
+        cli_date=experiment_date,
+        config=config,
+    )
 
     run_info = create_run_dirs(
-        output_dir=output_dir,
+        output_dir=str(output_dir),
         experiment_name=experiment_name,
+        experiment_date=frozen_date,
+    )
+
+    config.setdefault("output", {})
+    config["output"].update(
+        {
+            "root": str(output_dir),
+            "experiment_date": frozen_date,
+            "output_root": str(run_info["output_root"]),
+            "day_output_root": str(run_info["day_output_root"]),
+            "run_dir": str(run_info["run_dir"]),
+            "log_dir": str(run_info["logs_dir"]),
+            "analysis_dir": str(
+                resolve_output_category("analysis", frozen_date, run_info["output_root"])
+            ),
+            "manifest_dir": str(run_info["manifest_dir"]),
+        }
     )
 
     config_save_path = run_info["logs_dir"] / "experiment_config.yaml"
@@ -247,9 +289,10 @@ def prepare_run_environment(config: Dict[str, Any]) -> Dict[str, Path]:
         project_root=PROJECT_ROOT,
     )
 
-    write_latest_run(
+    run_info["latest_run_path"] = write_latest_run(
         run_id=run_info["run_id"],
         run_dir=run_info["run_dir"],
+        manifest_dir=run_info["manifest_dir"],
     )
 
     return run_info

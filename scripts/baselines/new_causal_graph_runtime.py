@@ -91,7 +91,9 @@ def normalized_training_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     result["system"].setdefault("seed", int(training["seed"]))
     result["system"].setdefault("device", "cuda")
     result.setdefault("output", {})
-    result["output"].setdefault("run_root", "outputs/runs")
+    if "root" not in result["output"] and "run_root" not in result["output"]:
+        result["output"]["root"] = "outputs"
+    result["output"].setdefault("experiment_date", None)
     result.setdefault("run_name", normalize_new_causal_model_name(result["model"]["name"]))
     result.setdefault("causal_contract_version", "1.0")
     return result

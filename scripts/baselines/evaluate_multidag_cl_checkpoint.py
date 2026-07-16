@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         required=True,
-        help="Path to checkpoint, e.g. outputs/runs/<run_id>/checkpoints/best_model.pt.",
+        help="Path to a dated or legacy run checkpoint.",
     )
     parser.add_argument(
         "--split",

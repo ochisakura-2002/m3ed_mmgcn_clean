@@ -59,5 +59,5 @@ scheduler:
   name: none
 
 output:
-  run_root: outputs/runs
-
+  root: outputs
+  experiment_date: null

@@ -8,7 +8,7 @@ help interpret validation-test gaps.
 Usage:
     python scripts/analyze/diagnose_iemocap_splits.py \
       --config configs/baselines/multidag_cl/iemocap/formal/context_w5_tav.yaml \
-      --output-dir outputs/paper_artifacts/split_diagnostics/iemocap
+      --experiment-date 20260716
 """
 
 from __future__ import annotations
@@ -37,6 +37,11 @@ if TYPE_CHECKING:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+from utils.output_paths import (  # noqa: E402
+    configured_output_root,
+    resolve_experiment_date,
+    resolve_output_category,
+)
 
 from datasets.iemocap import parse_iemocap_session_id  # noqa: E402
 
@@ -75,9 +80,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="outputs/paper_artifacts/split_diagnostics/iemocap",
+        default=None,
         help="Directory for diagnostics tables, figures, and notes.",
     )
+    parser.add_argument("--experiment-date", default=None)
     return parser.parse_args()
 
 
@@ -1188,9 +1194,19 @@ def save_notes(stats_df: pd.DataFrame, output_dir: Path) -> None:
 def main() -> None:
     args = parse_args()
     config_path = resolve_path(args.config)
-    output_dir = resolve_path(args.output_dir)
 
     config = load_yaml(config_path)
+    frozen_date = resolve_experiment_date(
+        cli_date=args.experiment_date,
+        config=config,
+    )
+    output_root = resolve_path(str(configured_output_root(config)))
+    output_dir = (
+        resolve_path(args.output_dir)
+        if args.output_dir is not None
+        else resolve_output_category("audits", frozen_date, output_root)
+        / "iemocap_split_diagnostics"
+    )
     training = get_training_config(config)
     batch_size = int(training["batch_size"])
     label_list = get_label_list(config)

@@ -35,6 +35,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.io import load_yaml, prepare_run_environment  # noqa: E402
+from utils.output_paths import resolve_output_category  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
 from utils.metrics import (  # noqa: E402
     compute_classification_metrics,
@@ -58,6 +59,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/train_simple_mlp_m3ed.yaml",
         help="Path to YAML config file.",
+    )
+    parser.add_argument(
+        "--experiment-date",
+        default=None,
+        help="Frozen experiment launch date in YYYYMMDD format.",
     )
 
     return parser.parse_args()
@@ -381,8 +387,16 @@ def append_experiment_summary(
     best_epoch: int,
     best_metrics: Dict[str, float],
 ) -> None:
-    """追加写入 outputs/experiment_summary.csv。"""
-    summary_path = PROJECT_ROOT / "outputs" / "experiment_summary.csv"
+    """Append to this experiment date's analysis summary."""
+    summary_path = (
+        resolve_output_category(
+            "analysis",
+            str(run_info["experiment_date"]),
+            Path(run_info["output_root"]),
+        )
+        / "experiment_summary"
+        / "experiment_summary.csv"
+    )
 
     row = {
         "run_id": run_info["run_id"],
@@ -460,7 +474,10 @@ def main() -> None:
 
     device = get_device(config)
 
-    run_info = prepare_run_environment(config)
+    run_info = prepare_run_environment(
+        config,
+        experiment_date=args.experiment_date,
+    )
     print(
         "CODEX_RUN_INFO_JSON="
         + json.dumps(
@@ -633,7 +650,7 @@ def main() -> None:
     print("Best checkpoint :", run_info["checkpoints_dir"] / "best_model.pt")
     print("Last checkpoint :", run_info["checkpoints_dir"] / "last_model.pt")
     print("Val predictions :", run_info["logs_dir"] / "val_predictions_best.csv")
-    print("Experiment summary:", PROJECT_ROOT / "outputs" / "experiment_summary.csv")
+    print("Experiment summary: managed by dated analysis outputs")
     print("=" * 80)
 
 

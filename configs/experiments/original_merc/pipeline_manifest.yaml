@@ -1,0 +1,70 @@
+version: original_merc_pipeline_v2
+output:
+  root: outputs
+  experiment_date: null
+protocol:
+  checkpoint_selection: val_weighted_f1
+  test_split_used_for_selection: false
+  tracks:
+    legacy_official_split_safe_selection:
+      test: original_testVid_Ses05
+      validation: trainVid_dialogue_level_stratified
+      protocol_comparability: paper_adjacent_not_exact
+    legacy_fivefold_fair_comparison:
+      outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]
+      validation: remaining_sessions_dialogue_level_stratified
+      protocol_comparability: fair_comparison_not_paper_reproduction
+    clean_roberta_fivefold_fair_comparison:
+      outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]
+      validation: remaining_sessions_dialogue_level_stratified
+      protocol_comparability: fair_comparison_not_paper_reproduction
+stages:
+  smoke:
+    - {config: configs/smoke/original_repro/mmgcn_legacy.yaml}
+    - {config: configs/smoke/original_repro/mmgcn_clean.yaml}
+    - {config: configs/smoke/original_repro/multidag_cl_legacy.yaml}
+    - {config: configs/smoke/original_repro/multidag_cl_clean.yaml}
+    - {config: configs/smoke/original_repro/gsmcc_legacy.yaml}
+    - {config: configs/smoke/original_repro/gsmcc_clean.yaml}
+    - {config: configs/smoke/original_repro/dialoguegcn_legacy.yaml}
+    - {config: configs/smoke/original_repro/dialoguegcn_clean.yaml}
+  legacy_paper_adjacent_screening:
+    - {config: configs/experiments/original_merc/screening/mmgcn_legacy.yaml}
+    - {config: configs/experiments/original_merc/screening/multidag_cl_legacy.yaml}
+    - {config: configs/experiments/original_merc/screening/gsmcc_legacy.yaml}
+    - {config: configs/experiments/original_merc/screening/dialoguegcn_legacy.yaml}
+  clean_screening:
+    - {config: configs/experiments/original_merc/clean_screening/mmgcn_clean.yaml}
+    - {config: configs/experiments/original_merc/clean_screening/multidag_cl_clean.yaml}
+    - {config: configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml}
+    - {config: configs/experiments/original_merc/clean_screening/dialoguegcn_clean.yaml}
+  legacy_folds:
+    - {config: configs/experiments/original_merc/legacy_fold_bases/mmgcn_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/legacy_fold_bases/multidag_cl_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/legacy_fold_bases/gsmcc_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/legacy_fold_bases/dialoguegcn_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+  clean_folds:
+    - {config: configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/clean_fold_bases/multidag_cl_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+  top2: []
+top2_policy:
+  selection_source: clean_single_fold_screening_validation_only
+  ordered_criteria:
+    - clean_screening_validation_weighted_f1
+    - training_stability
+    - reproduction_credibility
+    - clear_module_insertion_point
+    - legacy_paper_adjacent_validation_diagnostic
+  test_metrics_allowed: false
+  count: 2
+  seeds: [13, 42, 77]
+  outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]
+  status: pending_screening_results
+top2_selection_file: null
+clean_fold_candidates:
+  - configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml
+  - configs/experiments/original_merc/clean_fold_bases/multidag_cl_clean.yaml
+  - configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml
+  - configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml

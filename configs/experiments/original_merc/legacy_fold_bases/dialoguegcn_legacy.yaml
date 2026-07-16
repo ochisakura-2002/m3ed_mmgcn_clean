@@ -1,0 +1,42 @@
+run_name: original_dialoguegcn_legacy_fivefold
+profile: formal_legacy_fivefold_base
+model:
+  name: original_repro_dialoguegcn
+  causal_grade: noncausal_offline_full_context
+  text_feature_dim: 100
+  audio_feature_dim: 1582
+  visual_feature_dim: 342
+  num_classes: 6
+  context_hidden_dim: 100
+  graph_hidden_dim: 100
+  num_speakers: 2
+  dropout: 0.4
+  use_nodal_attention: true
+  use_class_weight: true
+  base_model: LSTM
+  window_past: 10
+  window_future: 10
+  active_modalities: [text]
+dataset:
+  name: IEMOCAP
+  feature_set_name: legacy_mmgcn_textcnn
+  feature_protocol: legacy_mmgcn_features_v1
+  feature_cleanliness: legacy_emotion_supervised_text_features
+  usage: fair_legacy_feature_comparison
+  experiment_track: legacy_fivefold_fair_comparison
+  protocol_comparability: fair_comparison_not_paper_reproduction
+  feature_pkl_path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
+  feature_sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
+  num_classes: 6
+  label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
+  val_split_strategy: outer_session_stratified
+  outer_test_session: Ses05
+  inner_val_ratio: 0.1
+  split_seed: 42
+training: {epochs: 60, batch_size: 32, seed: 42, select_best_by: val_weighted_f1, grad_clip: 1.0, num_workers: 0, early_stopping_patience: 10, amp: false}
+optimizer: {name: Adam, learning_rate: 0.0003, weight_decay: 0.0}
+scheduler: {name: none}
+system: {seed: 42, device: cuda}
+output:
+  root: outputs
+  experiment_date: null

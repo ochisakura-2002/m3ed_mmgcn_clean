@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import random
 import sys
 from pathlib import Path
@@ -60,6 +61,230 @@ EXPERIMENT_TRACKS = {
         "protocol_comparability": "fair_comparison_not_paper_reproduction",
     },
 }
+NUMERIC_STATUS_FINITE = "FINITE"
+NUMERIC_STATUS_FORWARD = "NONFINITE_FORWARD"
+NUMERIC_STATUS_LOSS = "NONFINITE_LOSS"
+NUMERIC_STATUS_GRADIENT = "NONFINITE_GRADIENT"
+NUMERIC_STATUS_PARAMETER = "NONFINITE_PARAMETER"
+NUMERIC_STATUS_CHECKPOINT = "NONFINITE_CHECKPOINT"
+
+
+def _loss_value(value: Any) -> Any:
+    if torch.is_tensor(value):
+        if value.numel() == 1:
+            return float(value.detach().cpu().item())
+        return f"tensor(shape={list(value.shape)})"
+    if isinstance(value, Mapping):
+        return {str(key): _loss_value(item) for key, item in value.items()}
+    return value
+
+
+class NumericValidationError(FloatingPointError):
+    """A fail-fast error carrying machine-readable numerical failure context."""
+
+    def __init__(
+        self,
+        *,
+        numeric_status: str,
+        model_name: str,
+        epoch: Optional[int],
+        batch_index: Optional[int],
+        stage: str,
+        tensor_or_parameter: str,
+        classification_loss: Any = None,
+        auxiliary_losses: Any = None,
+        total_loss: Any = None,
+        learning_rate: Any = None,
+        amp_enabled: bool = False,
+    ) -> None:
+        self.numeric_status = numeric_status
+        self.model_name = str(model_name)
+        self.epoch = epoch
+        self.batch_index = batch_index
+        self.stage = str(stage)
+        self.tensor_or_parameter = str(tensor_or_parameter)
+        self.classification_loss = _loss_value(classification_loss)
+        self.auxiliary_losses = _loss_value(auxiliary_losses or {})
+        self.total_loss = _loss_value(total_loss)
+        self.learning_rate = _loss_value(learning_rate)
+        self.amp_enabled = bool(amp_enabled)
+        fields = {
+            "model_name": self.model_name,
+            "epoch": self.epoch,
+            "batch_index": self.batch_index,
+            "stage": self.stage,
+            "tensor_or_parameter": self.tensor_or_parameter,
+            "classification_loss": self.classification_loss,
+            "auxiliary_losses": self.auxiliary_losses,
+            "total_loss": self.total_loss,
+            "learning_rate": self.learning_rate,
+            "amp_enabled": self.amp_enabled,
+        }
+        super().__init__(
+            f"{numeric_status}: "
+            + ", ".join(f"{key}={value!r}" for key, value in fields.items())
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "numeric_status": self.numeric_status,
+            "first_nonfinite_stage": self.stage,
+            "nonfinite_epoch": self.epoch,
+            "nonfinite_batch": self.batch_index,
+            "tensor_or_parameter": self.tensor_or_parameter,
+            "error": str(self),
+        }
+
+
+def iter_floating_tensors(value: Any, prefix: str = ""):
+    """Yield all floating/complex tensors from nested checkpoint-like values."""
+
+    if torch.is_tensor(value):
+        if value.is_floating_point() or value.is_complex():
+            yield prefix or "tensor", value
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            yield from iter_floating_tensors(item, child)
+        return
+    if isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            child = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            yield from iter_floating_tensors(item, child)
+
+
+def tensor_collection_numeric_summary(value: Any) -> dict[str, Any]:
+    tensor_count = 0
+    element_count = 0
+    nonfinite_tensor_count = 0
+    nonfinite_element_count = 0
+    first_nonfinite_tensor = None
+    for name, tensor in iter_floating_tensors(value):
+        tensor_count += 1
+        element_count += tensor.numel()
+        finite = torch.isfinite(tensor)
+        invalid = int((~finite).sum().item())
+        if invalid:
+            nonfinite_tensor_count += 1
+            nonfinite_element_count += invalid
+            if first_nonfinite_tensor is None:
+                first_nonfinite_tensor = name
+    return {
+        "tensor_count": tensor_count,
+        "element_count": element_count,
+        "nonfinite_tensor_count": nonfinite_tensor_count,
+        "nonfinite_element_count": nonfinite_element_count,
+        "first_nonfinite_tensor": first_nonfinite_tensor,
+        "is_finite": nonfinite_tensor_count == 0,
+    }
+
+
+def checkpoint_numeric_summary(checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    overall = tensor_collection_numeric_summary(checkpoint)
+    parameters = tensor_collection_numeric_summary(checkpoint.get("model_state_dict", {}))
+    return {
+        "checkpoint_numeric_validation": "passed" if overall["is_finite"] else "failed",
+        "checkpoint_nonfinite_tensor_count": overall["nonfinite_tensor_count"],
+        "checkpoint_nonfinite_element_count": overall["nonfinite_element_count"],
+        "checkpoint_first_nonfinite_tensor": overall["first_nonfinite_tensor"],
+        "checkpoint_parameters_finite": bool(parameters["is_finite"]),
+        "checkpoint_parameter_nonfinite_tensor_count": parameters[
+            "nonfinite_tensor_count"
+        ],
+        "checkpoint_parameter_nonfinite_element_count": parameters[
+            "nonfinite_element_count"
+        ],
+    }
+
+
+def _first_nonfinite_tensor(named_tensors) -> Optional[str]:
+    for name, tensor in named_tensors:
+        if tensor is not None and (tensor.is_floating_point() or tensor.is_complex()):
+            if not bool(torch.isfinite(tensor).all()):
+                return str(name)
+    return None
+
+
+def validate_model_output_finite(
+    output: Mapping[str, Any],
+    *,
+    model_name: str,
+    epoch: Optional[int],
+    batch_index: Optional[int],
+    learning_rate: Any,
+    amp_enabled: bool,
+) -> None:
+    context = {
+        "model_name": model_name,
+        "epoch": epoch,
+        "batch_index": batch_index,
+        "classification_loss": output.get("classification_loss"),
+        "auxiliary_losses": output.get("aux_losses", {}),
+        "total_loss": output.get("loss"),
+        "learning_rate": learning_rate,
+        "amp_enabled": amp_enabled,
+    }
+    if not bool(torch.isfinite(output["logits"]).all()):
+        raise NumericValidationError(
+            numeric_status=NUMERIC_STATUS_FORWARD,
+            stage="logits",
+            tensor_or_parameter="logits",
+            **context,
+        )
+    losses = [("classification_loss", output["classification_loss"])]
+    losses.extend((f"auxiliary_losses.{name}", value) for name, value in output["aux_losses"].items())
+    losses.append(("total_loss", output["loss"]))
+    invalid = _first_nonfinite_tensor(losses)
+    if invalid is not None:
+        raise NumericValidationError(
+            numeric_status=NUMERIC_STATUS_LOSS,
+            stage=invalid,
+            tensor_or_parameter=invalid,
+            **context,
+        )
+
+
+def validate_named_tensors_finite(
+    named_tensors,
+    *,
+    numeric_status: str,
+    stage: str,
+    model_name: str,
+    epoch: Optional[int],
+    batch_index: Optional[int],
+    output: Mapping[str, Any],
+    learning_rate: Any,
+    amp_enabled: bool,
+) -> None:
+    invalid = _first_nonfinite_tensor(named_tensors)
+    if invalid is None:
+        return
+    raise NumericValidationError(
+        numeric_status=numeric_status,
+        model_name=model_name,
+        epoch=epoch,
+        batch_index=batch_index,
+        stage=stage,
+        tensor_or_parameter=invalid,
+        classification_loss=output.get("classification_loss"),
+        auxiliary_losses=output.get("aux_losses", {}),
+        total_loss=output.get("loss"),
+        learning_rate=learning_rate,
+        amp_enabled=amp_enabled,
+    )
+
+
+def all_finite_numbers(value: Any) -> bool:
+    if torch.is_tensor(value):
+        return bool(torch.isfinite(value).all()) if (value.is_floating_point() or value.is_complex()) else True
+    if isinstance(value, Mapping):
+        return all(all_finite_numbers(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return all(all_finite_numbers(item) for item in value)
+    if isinstance(value, (float, np.floating)):
+        return math.isfinite(float(value))
+    return True
 
 
 def resolve_path(path_text: str) -> Path:
@@ -364,11 +589,33 @@ def evaluate_model(
                 break
             batch = move_batch(raw_batch, device)
             output = forward_batch(model, batch)
+            validate_model_output_finite(
+                output,
+                model_name=str(config["model"]["name"]),
+                epoch=None,
+                batch_index=batch_number,
+                learning_rate=None,
+                amp_enabled=False,
+            )
             valid = batch["attention_mask"].bool() & (batch["labels"] >= 0)
             count = int(valid.sum().item())
             total_loss += float(output["loss"].item()) * count
             total_count += count
             probabilities = torch.softmax(output["logits"], dim=-1)
+            if not bool(torch.isfinite(probabilities).all()):
+                raise NumericValidationError(
+                    numeric_status=NUMERIC_STATUS_FORWARD,
+                    model_name=str(config["model"]["name"]),
+                    epoch=None,
+                    batch_index=batch_number,
+                    stage="probabilities",
+                    tensor_or_parameter="probabilities",
+                    classification_loss=output["classification_loss"],
+                    auxiliary_losses=output["aux_losses"],
+                    total_loss=output["loss"],
+                    learning_rate=None,
+                    amp_enabled=False,
+                )
             predicted = probabilities.argmax(dim=-1)
             y_true.extend(int(value) for value in batch["labels"][valid].cpu().tolist())
             y_pred.extend(int(value) for value in predicted[valid].cpu().tolist())
@@ -390,13 +637,28 @@ def evaluate_model(
     if total_count == 0:
         raise RuntimeError("evaluation produced no valid utterances")
     label_ids = list(range(len(label_list)))
-    return {
+    result = {
         "loss": total_loss / total_count,
         "metrics": compute_classification_metrics(y_true, y_pred, labels=label_ids),
         "prediction_rows": prediction_rows,
         "y_true": y_true,
         "y_pred": y_pred,
     }
+    if not all_finite_numbers({"loss": result["loss"], "metrics": result["metrics"]}):
+        raise NumericValidationError(
+            numeric_status=NUMERIC_STATUS_LOSS,
+            model_name=str(config["model"]["name"]),
+            epoch=None,
+            batch_index=None,
+            stage="evaluation_metrics",
+            tensor_or_parameter="evaluation_metrics",
+            classification_loss=None,
+            auxiliary_losses={},
+            total_loss=result["loss"],
+            learning_rate=None,
+            amp_enabled=False,
+        )
+    return result
 
 
 def save_evaluation_outputs(
@@ -490,6 +752,22 @@ def load_checkpoint(path: Path, device: torch.device) -> dict[str, Any]:
     missing = required - set(checkpoint)
     if missing:
         raise KeyError(f"checkpoint missing keys: {sorted(missing)}")
+    numeric = checkpoint_numeric_summary(checkpoint)
+    if numeric["checkpoint_numeric_validation"] != "passed":
+        raise NumericValidationError(
+            numeric_status=NUMERIC_STATUS_CHECKPOINT,
+            model_name=str(checkpoint.get("model_key", "unknown")),
+            epoch=checkpoint.get("epoch"),
+            batch_index=None,
+            stage="checkpoint_reload",
+            tensor_or_parameter=str(numeric["checkpoint_first_nonfinite_tensor"]),
+            classification_loss=None,
+            auxiliary_losses={},
+            total_loss=None,
+            learning_rate=None,
+            amp_enabled=False,
+        )
+    checkpoint["checkpoint_numeric_validation"] = numeric
     return checkpoint
 
 
@@ -509,10 +787,19 @@ __all__ = [
     "EXPERIMENT_TRACKS",
     "LEGACY_FIVEFOLD_TRACK",
     "LEGACY_OFFICIAL_TRACK",
+    "NUMERIC_STATUS_CHECKPOINT",
+    "NUMERIC_STATUS_FINITE",
+    "NUMERIC_STATUS_FORWARD",
+    "NUMERIC_STATUS_GRADIENT",
+    "NUMERIC_STATUS_LOSS",
+    "NUMERIC_STATUS_PARAMETER",
+    "NumericValidationError",
     "PROJECT_ROOT",
+    "all_finite_numbers",
     "build_dataloader",
     "build_optimizer",
     "build_scheduler",
+    "checkpoint_numeric_summary",
     "curriculum_train_loader",
     "dump_json",
     "evaluate_model",
@@ -529,6 +816,9 @@ __all__ = [
     "save_evaluation_outputs",
     "save_yaml_config",
     "seed_everything",
+    "tensor_collection_numeric_summary",
+    "validate_model_output_finite",
+    "validate_named_tensors_finite",
     "validate_runtime_config",
     "verify_feature_sha256",
 ]

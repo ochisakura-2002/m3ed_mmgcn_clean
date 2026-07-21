@@ -24,6 +24,9 @@ from utils.output_paths import (  # noqa: E402
     resolve_experiment_date,
     resolve_output_category,
 )
+from scripts.baselines.original_merc_runtime import (  # noqa: E402
+    checkpoint_numeric_summary,
+)
 LEGACY_OFFICIAL_TRACK = "legacy_official_split_safe_selection"
 LEGACY_FIVEFOLD_TRACK = "legacy_fivefold_fair_comparison"
 CLEAN_FIVEFOLD_TRACK = "clean_roberta_fivefold_fair_comparison"
@@ -80,6 +83,174 @@ def resolve(path_text: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def _required_csv_columns_finite(
+    path: Path,
+    required_columns: list[str],
+    probability_columns: bool = False,
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    if not path.is_file():
+        return False, [f"missing_artifact:{path.as_posix()}"]
+    try:
+        frame = pd.read_csv(path)
+    except Exception as error:  # malformed artifacts are invalid evidence
+        return False, [f"unreadable_artifact:{path.as_posix()}:{error}"]
+    if frame.empty:
+        reasons.append(f"empty_artifact:{path.as_posix()}")
+    columns = list(required_columns)
+    if probability_columns:
+        probabilities = [name for name in frame if str(name).startswith("probability_")]
+        if not probabilities:
+            reasons.append(f"missing_probability_columns:{path.as_posix()}")
+        columns.extend(probabilities)
+    for column in columns:
+        if column not in frame:
+            reasons.append(f"missing_required_column:{path.as_posix()}:{column}")
+            continue
+        numeric = pd.to_numeric(frame[column], errors="coerce")
+        values = numeric.to_numpy(dtype=float, na_value=np.nan)
+        if values.size == 0 or not bool(np.isfinite(values).all()):
+            reasons.append(f"nonfinite_or_empty:{path.as_posix()}:{column}")
+    return not reasons, reasons
+
+
+def audit_run_numeric_validity(run_dir: Path) -> dict[str, Any]:
+    """Classify one run before it can enter any aggregate or ranking."""
+
+    run_dir = Path(run_dir)
+    logs = run_dir / "logs"
+    config_path = logs / "experiment_config.yaml"
+    config: dict[str, Any] = {}
+    if config_path.is_file():
+        value = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            config = value
+    model_name = str(config.get("model", {}).get("name", "unknown"))
+    profile = config.get("profile")
+    reasons: list[str] = []
+    detected_status = "FINITE"
+
+    summary_path = logs / "run_summary.json"
+    summary: dict[str, Any] = {}
+    if summary_path.is_file():
+        try:
+            loaded = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary = loaded if isinstance(loaded, dict) else {}
+        except (OSError, json.JSONDecodeError) as error:
+            reasons.append(f"unreadable_run_summary:{error}")
+    explicit_status = summary.get("numeric_status")
+    if explicit_status is not None and explicit_status != "FINITE":
+        detected_status = str(explicit_status)
+        reasons.append(f"numeric_status:{explicit_status}")
+    if summary.get("run_status") == "NUMERICALLY_INVALID":
+        reasons.append("run_status:NUMERICALLY_INVALID")
+    if summary.get("final_metrics_finite") is False:
+        reasons.append("final_metrics_finite:false")
+
+    history_ok, history_reasons = _required_csv_columns_finite(
+        logs / "epoch_metrics.csv",
+        ["train_loss", "train_classification_loss", "val_loss"],
+    )
+    reasons.extend(history_reasons)
+    if not history_ok and detected_status == "FINITE":
+        detected_status = "NONFINITE_LOSS"
+
+    evaluations = logs / "evaluations"
+    for split in ("val", "test"):
+        metrics_ok, metric_reasons = _required_csv_columns_finite(
+            evaluations / f"{split}_best_model" / "metrics.csv",
+            ["loss", "accuracy", "weighted_f1", "macro_f1", "uar"],
+        )
+        predictions_ok, prediction_reasons = _required_csv_columns_finite(
+            evaluations / f"{split}_best_model" / "predictions.csv",
+            ["confidence"],
+            probability_columns=True,
+        )
+        reasons.extend(metric_reasons)
+        reasons.extend(prediction_reasons)
+        if (not metrics_ok or not predictions_ok) and detected_status == "FINITE":
+            detected_status = "NONFINITE_FORWARD"
+
+    checkpoint_path = run_dir / "checkpoints" / "best_model.pt"
+    checkpoint_numeric = {
+        "checkpoint_numeric_validation": "failed",
+        "checkpoint_nonfinite_tensor_count": None,
+        "checkpoint_nonfinite_element_count": None,
+        "checkpoint_parameters_finite": False,
+    }
+    if checkpoint_path.is_file():
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            if not isinstance(checkpoint, dict):
+                raise TypeError("checkpoint is not a mapping")
+            checkpoint_numeric = checkpoint_numeric_summary(checkpoint)
+            if checkpoint_numeric["checkpoint_numeric_validation"] != "passed":
+                reasons.append("checkpoint_contains_nonfinite_tensor")
+                detected_status = "NONFINITE_CHECKPOINT"
+        except Exception as error:
+            reasons.append(f"checkpoint_unreadable:{error}")
+            detected_status = "NONFINITE_CHECKPOINT"
+    else:
+        reasons.append("missing_best_checkpoint")
+        detected_status = "NONFINITE_CHECKPOINT"
+    if summary.get("checkpoint_parameters_finite") is False:
+        reasons.append("checkpoint_parameters_finite:false")
+        detected_status = "NONFINITE_CHECKPOINT"
+
+    invalid = bool(reasons)
+    return {
+        "run_id": run_dir.name,
+        "run_dir": str(run_dir),
+        "model_name": model_name,
+        "profile": profile,
+        "run_status": "NUMERICALLY_INVALID" if invalid else "PASS",
+        "numeric_status": detected_status,
+        "checkpoint_numeric_validation": checkpoint_numeric[
+            "checkpoint_numeric_validation"
+        ],
+        "checkpoint_nonfinite_tensor_count": checkpoint_numeric[
+            "checkpoint_nonfinite_tensor_count"
+        ],
+        "checkpoint_nonfinite_element_count": checkpoint_numeric[
+            "checkpoint_nonfinite_element_count"
+        ],
+        "checkpoint_parameters_finite": bool(
+            checkpoint_numeric["checkpoint_parameters_finite"]
+        ),
+        "final_metrics_finite": not any(
+            "metrics.csv" in reason or "predictions.csv" in reason for reason in reasons
+        ),
+        "invalid_reasons": " | ".join(reasons),
+    }
+
+
+def audit_runs_numeric_validity(runs_root: Path) -> pd.DataFrame:
+    run_dirs = {
+        metrics_path.parents[3]
+        for metrics_path in Path(runs_root).rglob(
+            "logs/evaluations/test_best_model/metrics.csv"
+        )
+    }
+    run_dirs.update(
+        config_path.parents[1]
+        for config_path in Path(runs_root).rglob("logs/experiment_config.yaml")
+    )
+    run_dirs.update(
+        summary_path.parents[1]
+        for summary_path in Path(runs_root).rglob("logs/run_summary.json")
+    )
+    rows = [audit_run_numeric_validity(run_dir) for run_dir in sorted(run_dirs)]
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "run_id", "run_dir", "model_name", "profile", "run_status",
+            "numeric_status", "checkpoint_numeric_validation",
+            "checkpoint_nonfinite_tensor_count", "checkpoint_nonfinite_element_count",
+            "checkpoint_parameters_finite", "final_metrics_finite", "invalid_reasons",
+        ],
+    )
+
+
 def _load_run_config(metrics_path: Path) -> dict[str, Any]:
     run_dir = metrics_path.parents[3]
     config_path = run_dir / "logs" / "experiment_config.yaml"
@@ -92,7 +263,8 @@ def _load_run_config(metrics_path: Path) -> dict[str, Any]:
 
 def collect_split_metrics(runs_root: Path, split: str) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    for metrics_path in sorted(runs_root.rglob(f"{split}_best_model/metrics.csv")):
+    artifact_pattern = f"logs/evaluations/{split}_best_model/metrics.csv"
+    for metrics_path in sorted(runs_root.rglob(artifact_pattern)):
         metrics = pd.read_csv(metrics_path)
         if metrics.empty:
             continue
@@ -139,6 +311,7 @@ def collect_split_metrics(runs_root: Path, split: str) -> pd.DataFrame:
 def write_top2_selection(
     output_dir: Path,
     validation_results: pd.DataFrame,
+    invalid_screening_models: set[str] | None = None,
 ) -> pd.DataFrame:
     columns = [
         "rank",
@@ -228,7 +401,11 @@ def write_top2_selection(
         "project_paper_oriented_gsmcc": "configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml",
         "original_repro_dialoguegcn": "configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml",
     }
-    complete = set(ranking["model_name"]) == set(MODEL_SELECTION_EVIDENCE)
+    invalid_screening_models = set(invalid_screening_models or set())
+    complete = (
+        not invalid_screening_models
+        and set(ranking["model_name"]) == set(MODEL_SELECTION_EVIDENCE)
+    )
     selected = ranking.head(2)["model_name"].tolist() if complete else []
     selection = {
         "selection_source": "clean_single_fold_screening_validation_only",
@@ -240,7 +417,16 @@ def write_top2_selection(
             "legacy_paper_adjacent_validation_diagnostic",
         ],
         "test_split_used_for_selection": False,
-        "status": "ready" if complete else "pending_all_four_clean_screening_results",
+        "status": (
+            "ready"
+            if complete
+            else (
+                "pending_invalid_run_repair"
+                if invalid_screening_models
+                else "pending_all_four_clean_screening_results"
+            )
+        ),
+        "invalid_screening_models": sorted(invalid_screening_models),
         "selected_models": selected,
         "jobs": [
             {
@@ -427,7 +613,6 @@ def write_report(
 
 
 def _write_extended_artifacts(
-    runs_root: Path,
     output_dir: Path,
     detailed: pd.DataFrame,
     summary: pd.DataFrame,
@@ -617,15 +802,28 @@ def _write_extended_artifacts(
     curves_dir = output_dir / "training_curves"
     confusion_dir.mkdir(exist_ok=True)
     curves_dir.mkdir(exist_ok=True)
-    for metrics_path in sorted(runs_root.rglob("test_best_model/per_class_metrics.csv")):
-        frame = pd.read_csv(metrics_path)
-        run_name = metrics_path.parents[3].name
-        frame.insert(0, "run_id", run_name)
-        per_class_rows.append(frame)
-        confusion = metrics_path.parent / "confusion_matrix.csv"
+    for artifact_dir in (confusion_dir, curves_dir):
+        for stale_csv in artifact_dir.glob("*.csv"):
+            stale_csv.unlink()
+    valid_run_dirs = (
+        detailed["run_dir"]
+        .dropna()
+        .astype(str)
+        .drop_duplicates()
+    )
+    for run_dir_text in sorted(valid_run_dirs):
+        run_dir = Path(run_dir_text)
+        run_name = run_dir.name
+        evaluation_dir = run_dir / "logs" / "evaluations" / "test_best_model"
+        metrics_path = evaluation_dir / "per_class_metrics.csv"
+        if metrics_path.is_file():
+            frame = pd.read_csv(metrics_path)
+            frame.insert(0, "run_id", run_name)
+            per_class_rows.append(frame)
+        confusion = evaluation_dir / "confusion_matrix.csv"
         if confusion.is_file():
             shutil.copyfile(confusion, confusion_dir / f"{run_name}.csv")
-        curve = metrics_path.parents[2] / "epoch_metrics.csv"
+        curve = run_dir / "logs" / "epoch_metrics.csv"
         if curve.is_file():
             shutil.copyfile(curve, curves_dir / f"{run_name}.csv")
     per_class = (
@@ -639,8 +837,69 @@ def _write_extended_artifacts(
 def analyze(runs_root: Path, output_dir: Path, paper_targets_path: Path) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     paper_targets = pd.read_csv(paper_targets_path)
+    numeric_audit = audit_runs_numeric_validity(runs_root)
+    invalid_runs = numeric_audit[
+        numeric_audit["run_status"] == "NUMERICALLY_INVALID"
+    ].copy()
+    invalid_runs.to_csv(output_dir / "invalid_runs.csv", index=False)
+    invalid_clean_screening_models = set(
+        invalid_runs.loc[
+            invalid_runs["profile"] == "clean_screening", "model_name"
+        ].astype(str)
+    )
+    valid_clean_screening_models = set(
+        numeric_audit.loc[
+            (numeric_audit["run_status"] == "PASS")
+            & (numeric_audit["profile"] == "clean_screening"),
+            "model_name",
+        ].astype(str)
+    )
+    unresolved_invalid_screening_models = (
+        invalid_clean_screening_models - valid_clean_screening_models
+    )
+    valid_model_profiles = {
+        (str(row.model_name), str(row.profile))
+        for row in numeric_audit.loc[
+            numeric_audit["run_status"] == "PASS", ["model_name", "profile"]
+        ].itertuples(index=False)
+    }
+    invalid_run_resolution = invalid_runs.copy()
+    invalid_run_resolution["valid_replacement_exists"] = [
+        (str(row.model_name), str(row.profile)) in valid_model_profiles
+        for row in invalid_run_resolution.itertuples(index=False)
+    ]
+    invalid_run_resolution["blocks_current_selection"] = (
+        invalid_run_resolution["profile"].eq("clean_screening")
+        & invalid_run_resolution["model_name"].astype(str).isin(
+            unresolved_invalid_screening_models
+        )
+    )
+    resolution_columns = [
+        "run_id",
+        "model_name",
+        "profile",
+        "numeric_status",
+        "invalid_reasons",
+        "valid_replacement_exists",
+        "blocks_current_selection",
+    ]
+    invalid_run_resolution.reindex(
+        columns=resolution_columns
+        + [
+            column
+            for column in invalid_run_resolution.columns
+            if column not in resolution_columns
+        ]
+    ).to_csv(output_dir / "invalid_run_resolution.csv", index=False)
+    valid_run_dirs = set(
+        numeric_audit.loc[numeric_audit["run_status"] == "PASS", "run_dir"].astype(str)
+    )
     collected = collect_split_metrics(runs_root, "test")
     validation_results = collect_split_metrics(runs_root, "val")
+    collected = collected[collected["run_dir"].astype(str).isin(valid_run_dirs)].copy()
+    validation_results = validation_results[
+        validation_results["run_dir"].astype(str).isin(valid_run_dirs)
+    ].copy()
     detailed = add_paper_gaps(collected, paper_targets)
     summary = aggregate(detailed)
     track_summaries = {
@@ -665,11 +924,16 @@ def analyze(runs_root: Path, output_dir: Path, paper_targets_path: Path) -> dict
         track_summary.to_csv(output_dir / f"summary_{track}.csv", index=False)
     ranking.to_csv(output_dir / "protocol_separated_ranking.csv", index=False)
     comparison.to_csv(output_dir / "fivefold_legacy_vs_clean.csv", index=False)
-    screening_ranking = write_top2_selection(output_dir, validation_results)
+    screening_ranking = write_top2_selection(
+        output_dir,
+        validation_results,
+        invalid_screening_models=unresolved_invalid_screening_models,
+    )
     write_report(output_dir, detailed, summary, comparison)
-    _write_extended_artifacts(runs_root, output_dir, detailed, summary)
+    _write_extended_artifacts(output_dir, detailed, summary)
     result = {
         "collected_runs": len(detailed),
+        "invalid_runs": len(invalid_runs),
         "screening_models_ranked": len(screening_ranking),
         "results_dir": str(output_dir),
     }

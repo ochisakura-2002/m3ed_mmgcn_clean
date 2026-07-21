@@ -15,6 +15,7 @@ model:
   window: 10
   dropout: 0.4
   cross_modal_scale: 1.0
+  angular_similarity_eps: 1.0e-7
   use_contrastive_loss: true
   contrastive_temperature: 0.1
   contrastive_loss_weight: 1.0

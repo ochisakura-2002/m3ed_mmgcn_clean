@@ -82,6 +82,14 @@ def test_train_checkpoint_reload_and_test_artifacts(monkeypatch) -> None:
     monkeypatch.setattr(train_module, "train_one_epoch", recording_train_one_epoch)
     monkeypatch.setattr(train_module, "evaluate_model", recording_evaluate_model)
     result = run_training(config_path)
+    assert result["run_status"] == "PASS"
+    assert result["numeric_status"] == "FINITE"
+    assert result["checkpoint_numeric_validation"] == "passed"
+    assert result["checkpoint_nonfinite_tensor_count"] == 0
+    assert result["checkpoint_nonfinite_element_count"] == 0
+    assert result["checkpoint_parameters_finite"] is True
+    assert result["final_metrics_finite"] is True
+    assert result["prediction_count_correct"] is True
     run_dir = Path(result["run_dir"])
     best_path = run_dir / "checkpoints" / "best_model.pt"
     last_path = run_dir / "checkpoints" / "last_model.pt"

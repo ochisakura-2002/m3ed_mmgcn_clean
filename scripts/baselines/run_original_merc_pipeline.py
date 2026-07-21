@@ -17,6 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.baselines.original_merc_runtime import (  # noqa: E402
+    NUMERIC_STATUS_FINITE,
+    NumericValidationError,
     load_yaml_config,
     resolve_path,
 )
@@ -174,19 +176,65 @@ def run_pipeline(
     results = []
     for job in jobs:
         config_path = materialize_overrides(job)
-        results.append(
-            run_training(
+        try:
+            result = run_training(
                 config_path,
                 output_root_override=frozen_output_root,
                 device_override=device,
                 experiment_date=frozen_date,
             )
+        except FloatingPointError as error:
+            failure = (
+                error.as_dict()
+                if isinstance(error, NumericValidationError)
+                else {
+                    "numeric_status": "NONFINITE_FORWARD",
+                    "first_nonfinite_stage": "unclassified_floating_point_error",
+                    "error": str(error),
+                }
+            )
+            (manifest_dir / "run_status.json").write_text(
+                json.dumps(
+                    {
+                        **plan,
+                        "manifest_dir": str(manifest_dir),
+                        "run_status": "NUMERICALLY_INVALID",
+                        "exit_code": 1,
+                        **failure,
+                        "checkpoint_parameters_finite": False,
+                        "final_metrics_finite": False,
+                        "prediction_count_correct": False,
+                        "completed_runs": results,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            raise
+        results.append(result)
+        passed = (
+            result.get("run_status") == "PASS"
+            and result.get("numeric_status") == NUMERIC_STATUS_FINITE
+            and result.get("checkpoint_parameters_finite") is True
+            and result.get("final_metrics_finite") is True
+            and result.get("prediction_count_correct") is True
         )
         (manifest_dir / "run_status.json").write_text(
             json.dumps(
                 {
                     **plan,
                     "manifest_dir": str(manifest_dir),
+                    "run_status": "PASS" if passed else "NUMERICALLY_INVALID",
+                    "exit_code": 0,
+                    "numeric_status": result.get("numeric_status"),
+                    "checkpoint_parameters_finite": result.get(
+                        "checkpoint_parameters_finite"
+                    ),
+                    "final_metrics_finite": result.get("final_metrics_finite"),
+                    "prediction_count_correct": result.get("prediction_count_correct"),
                     "completed_runs": results,
                 },
                 ensure_ascii=False,

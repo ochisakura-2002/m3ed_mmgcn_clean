@@ -23,9 +23,15 @@ from models.baselines.original_repro import (  # noqa: E402
     get_source_metadata,
 )
 from scripts.baselines.original_merc_runtime import (  # noqa: E402
+    NUMERIC_STATUS_FINITE,
+    NUMERIC_STATUS_GRADIENT,
+    NUMERIC_STATUS_PARAMETER,
+    NumericValidationError,
+    all_finite_numbers,
     build_dataloader,
     build_optimizer,
     build_scheduler,
+    checkpoint_numeric_summary,
     curriculum_train_loader,
     dump_json,
     evaluate_model,
@@ -42,6 +48,8 @@ from scripts.baselines.original_merc_runtime import (  # noqa: E402
     save_yaml_config,
     seed_everything,
     validate_runtime_config,
+    validate_model_output_finite,
+    validate_named_tensors_finite,
     verify_feature_sha256,
 )
 from utils.output_paths import (  # noqa: E402
@@ -175,6 +183,8 @@ def train_one_epoch(
     grad_clip: float,
     amp_enabled: bool,
     max_batches: Optional[int],
+    model_name: str = "unknown",
+    epoch: int = 0,
 ) -> dict[str, float]:
     model.train()
     total_loss = 0.0
@@ -185,15 +195,74 @@ def train_one_epoch(
             break
         batch = move_batch(raw_batch, device)
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(device_type=device.type, enabled=amp_enabled):
-            output = forward_batch(model, batch)
-            loss = output["loss"]
+        learning_rate = optimizer.param_groups[0]["lr"]
+        try:
+            with torch.autocast(device_type=device.type, enabled=amp_enabled):
+                output = forward_batch(model, batch)
+                loss = output["loss"]
+        except NumericValidationError:
+            raise
+        except FloatingPointError as error:
+            raise NumericValidationError(
+                numeric_status="NONFINITE_FORWARD",
+                model_name=model_name,
+                epoch=epoch,
+                batch_index=batch_number,
+                stage="model_forward",
+                tensor_or_parameter="model_internal",
+                classification_loss=None,
+                auxiliary_losses={},
+                total_loss=None,
+                learning_rate=learning_rate,
+                amp_enabled=amp_enabled,
+            ) from error
+        validate_model_output_finite(
+            output,
+            model_name=model_name,
+            epoch=epoch,
+            batch_index=batch_number,
+            learning_rate=learning_rate,
+            amp_enabled=amp_enabled,
+        )
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
+        validate_named_tensors_finite(
+            ((name, parameter.grad) for name, parameter in model.named_parameters()),
+            numeric_status=NUMERIC_STATUS_GRADIENT,
+            stage="gradients_after_backward",
+            model_name=model_name,
+            epoch=epoch,
+            batch_index=batch_number,
+            output=output,
+            learning_rate=learning_rate,
+            amp_enabled=amp_enabled,
+        )
         if grad_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        validate_named_tensors_finite(
+            ((name, parameter.grad) for name, parameter in model.named_parameters()),
+            numeric_status=NUMERIC_STATUS_GRADIENT,
+            stage="gradients_after_clipping",
+            model_name=model_name,
+            epoch=epoch,
+            batch_index=batch_number,
+            output=output,
+            learning_rate=learning_rate,
+            amp_enabled=amp_enabled,
+        )
         scaler.step(optimizer)
         scaler.update()
+        validate_named_tensors_finite(
+            model.named_parameters(),
+            numeric_status=NUMERIC_STATUS_PARAMETER,
+            stage="parameters_after_optimizer_step",
+            model_name=model_name,
+            epoch=epoch,
+            batch_index=batch_number,
+            output=output,
+            learning_rate=learning_rate,
+            amp_enabled=amp_enabled,
+        )
         count = int((batch["attention_mask"].bool() & (batch["labels"] >= 0)).sum().item())
         total_count += count
         total_loss += float(loss.detach().item()) * count
@@ -270,9 +339,61 @@ def checkpoint_payload(
     }
 
 
-def save_checkpoint(path: Path, **payload_args: Any) -> None:
+def save_checkpoint(path: Path, **payload_args: Any) -> dict[str, Any]:
+    payload = checkpoint_payload(**payload_args)
+    numeric = checkpoint_numeric_summary(payload)
+    if numeric["checkpoint_numeric_validation"] != "passed":
+        config = payload_args["config"]
+        optimizer = payload_args["optimizer"]
+        error = NumericValidationError(
+            numeric_status="NONFINITE_CHECKPOINT",
+            model_name=str(config["model"]["name"]),
+            epoch=int(payload_args["epoch"]),
+            batch_index=None,
+            stage="checkpoint_save",
+            tensor_or_parameter=str(numeric["checkpoint_first_nonfinite_tensor"]),
+            classification_loss=None,
+            auxiliary_losses={},
+            total_loss=None,
+            learning_rate=optimizer.param_groups[0]["lr"],
+            amp_enabled=bool(payload_args["scaler"].is_enabled()),
+        )
+        error.checkpoint_numeric = numeric
+        raise error
     path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(checkpoint_payload(**payload_args), path)
+    torch.save(payload, path)
+    return numeric
+
+
+def _record_numeric_failure(
+    paths: Mapping[str, Any],
+    error: NumericValidationError,
+    run_start: float,
+) -> None:
+    checkpoint_numeric = getattr(error, "checkpoint_numeric", {})
+    summary = {
+        "run_id": paths["run_id"],
+        "run_dir": str(paths["run_dir"]),
+        "run_status": "NUMERICALLY_INVALID",
+        **error.as_dict(),
+        "checkpoint_reload": "failed",
+        "checkpoint_numeric_validation": checkpoint_numeric.get(
+            "checkpoint_numeric_validation", "not_passed"
+        ),
+        "checkpoint_nonfinite_tensor_count": checkpoint_numeric.get(
+            "checkpoint_nonfinite_tensor_count"
+        ),
+        "checkpoint_nonfinite_element_count": checkpoint_numeric.get(
+            "checkpoint_nonfinite_element_count"
+        ),
+        "checkpoint_parameters_finite": bool(
+            checkpoint_numeric.get("checkpoint_parameters_finite", False)
+        ),
+        "final_metrics_finite": False,
+        "prediction_count_correct": False,
+        "training_time_seconds": time.perf_counter() - run_start,
+    }
+    dump_json(summary, paths["logs"] / "run_summary.json")
 
 
 def _split_ids(loader: torch.utils.data.DataLoader) -> dict[str, list[str]]:
@@ -375,6 +496,14 @@ def run_training(
         resume_run_dir=resume_run_dir,
     )
     run_start = time.perf_counter()
+
+    def guarded_numeric(operation):
+        try:
+            return operation()
+        except NumericValidationError as error:
+            _record_numeric_failure(paths, error, run_start)
+            raise
+
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     print(
@@ -429,22 +558,28 @@ def run_training(
     max_eval_batches = config["training"].get("max_eval_batches")
     for epoch in range(start_epoch, int(config["training"]["epochs"]) + 1):
         epoch_loader = curriculum_train_loader(train_loader, model, epoch, seed)
-        train_result = train_one_epoch(
-            model,
-            epoch_loader,
-            optimizer,
-            scaler,
-            device,
-            float(config["training"].get("grad_clip", 0.0)),
-            amp_enabled,
-            None if max_train_batches is None else int(max_train_batches),
+        train_result = guarded_numeric(
+            lambda: train_one_epoch(
+                model,
+                epoch_loader,
+                optimizer,
+                scaler,
+                device,
+                float(config["training"].get("grad_clip", 0.0)),
+                amp_enabled,
+                None if max_train_batches is None else int(max_train_batches),
+                model_name=str(config["model"]["name"]),
+                epoch=epoch,
+            )
         )
-        val_result = evaluate_model(
-            model,
-            config,
-            val_loader,
-            device,
-            None if max_eval_batches is None else int(max_eval_batches),
+        val_result = guarded_numeric(
+            lambda: evaluate_model(
+                model,
+                config,
+                val_loader,
+                device,
+                None if max_eval_batches is None else int(max_eval_batches),
+            )
         )
         score = float(val_result["metrics"]["weighted_f1"])
         if scheduler is not None:
@@ -470,17 +605,19 @@ def run_training(
         if improved:
             best_score, best_epoch = score, epoch
             epochs_without_improvement = 0
-            save_checkpoint(
-                paths["checkpoints"] / "best_model.pt",
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                scaler=scaler,
-                config=config,
-                epoch=epoch,
-                best_epoch=best_epoch,
-                best_val_weighted_f1=best_score,
-                split_ids=split_ids,
+            guarded_numeric(
+                lambda: save_checkpoint(
+                    paths["checkpoints"] / "best_model.pt",
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    scaler=scaler,
+                    config=config,
+                    epoch=epoch,
+                    best_epoch=best_epoch,
+                    best_val_weighted_f1=best_score,
+                    split_ids=split_ids,
+                )
             )
         else:
             epochs_without_improvement += 1
@@ -494,25 +631,29 @@ def run_training(
 
     if best_epoch < 0:
         raise RuntimeError("no validation-selected checkpoint was produced")
-    save_checkpoint(
-        paths["checkpoints"] / "last_model.pt",
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        scaler=scaler,
-        config=config,
-        epoch=last_epoch,
-        best_epoch=best_epoch,
-        best_val_weighted_f1=best_score,
-        split_ids=split_ids,
+    guarded_numeric(
+        lambda: save_checkpoint(
+            paths["checkpoints"] / "last_model.pt",
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            scaler=scaler,
+            config=config,
+            epoch=last_epoch,
+            best_epoch=best_epoch,
+            best_val_weighted_f1=best_score,
+            split_ids=split_ids,
+        )
     )
 
     best_path = paths["checkpoints"] / "best_model.pt"
-    checkpoint = load_checkpoint(best_path, device)
+    checkpoint = guarded_numeric(lambda: load_checkpoint(best_path, device))
     reloaded = rebuild_model_from_checkpoint(checkpoint, device)
-    val_best = evaluate_model(reloaded, config, val_loader, device, None)
+    val_best = guarded_numeric(lambda: evaluate_model(reloaded, config, val_loader, device, None))
     test_loader = build_dataloader(config, "test", shuffle=False)
-    test_best = evaluate_model(reloaded, config, test_loader, device, None)
+    test_best = guarded_numeric(
+        lambda: evaluate_model(reloaded, config, test_loader, device, None)
+    )
     evaluation_root = paths["logs"] / "evaluations"
     save_evaluation_outputs(
         evaluation_root / "val_best_model", config, "val", val_best, best_path, best_epoch
@@ -520,14 +661,52 @@ def run_training(
     save_evaluation_outputs(
         evaluation_root / "test_best_model", config, "test", test_best, best_path, best_epoch
     )
+    checkpoint_numeric = checkpoint["checkpoint_numeric_validation"]
+    final_metrics_finite = all_finite_numbers(
+        {
+            "validation_loss": val_best["loss"],
+            "validation_metrics": val_best["metrics"],
+            "test_loss": test_best["loss"],
+            "test_metrics": test_best["metrics"],
+        }
+    )
+    prediction_count_correct = (
+        len(val_best["prediction_rows"]) == len(val_best["y_true"])
+        and len(test_best["prediction_rows"]) == len(test_best["y_true"])
+    )
+    run_pass = (
+        checkpoint_numeric["checkpoint_numeric_validation"] == "passed"
+        and bool(checkpoint_numeric["checkpoint_parameters_finite"])
+        and final_metrics_finite
+        and prediction_count_correct
+    )
     summary = {
         "run_id": paths["run_id"],
         "run_dir": str(paths["run_dir"]),
+        "run_status": "PASS" if run_pass else "NUMERICALLY_INVALID",
+        "numeric_status": NUMERIC_STATUS_FINITE,
+        "first_nonfinite_stage": None,
+        "nonfinite_epoch": None,
+        "nonfinite_batch": None,
         "best_epoch": best_epoch,
         "best_val_weighted_f1": best_score,
         "test_weighted_f1": test_best["metrics"]["weighted_f1"],
         "verified_feature_sha256": verified_sha,
         "checkpoint_reload": "passed",
+        "checkpoint_numeric_validation": checkpoint_numeric[
+            "checkpoint_numeric_validation"
+        ],
+        "checkpoint_nonfinite_tensor_count": checkpoint_numeric[
+            "checkpoint_nonfinite_tensor_count"
+        ],
+        "checkpoint_nonfinite_element_count": checkpoint_numeric[
+            "checkpoint_nonfinite_element_count"
+        ],
+        "checkpoint_parameters_finite": checkpoint_numeric[
+            "checkpoint_parameters_finite"
+        ],
+        "final_metrics_finite": final_metrics_finite,
+        "prediction_count_correct": prediction_count_correct,
         "test_split_used_for_selection": False,
         "final_validation_prediction_count": len(val_best["prediction_rows"]),
         "final_test_prediction_count": len(test_best["prediction_rows"]),

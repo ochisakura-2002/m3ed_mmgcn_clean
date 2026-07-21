@@ -37,6 +37,13 @@ MODEL_SELECTION_EVIDENCE = {
     "project_paper_oriented_gsmcc": (1, "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION", 3),
     "original_repro_dialoguegcn": (3, "paper_equation_aligned_official_code_adapted", 3),
 }
+ORIGINAL_MERC_PROTOCOL_VERSION = "original_merc_three_track_v2"
+FORMAL_ORIGINAL_MERC = "formal_original_merc"
+SMOKE_ORIGINAL_MERC = "smoke_original_merc"
+OUT_OF_SCOPE = "out_of_scope"
+FORMAL_CONFIG_PREFIX = "configs/experiments/original_merc/"
+SMOKE_CONFIG_PREFIX = "configs/smoke/original_repro/"
+GENERATED_CONFIG_PREFIX = "tmp/original_merc_pipeline_configs/"
 
 
 def _training_stability(run_dirs: pd.Series) -> tuple[float, float, str]:
@@ -83,6 +90,186 @@ def resolve(path_text: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def _load_json_mapping(path: Path) -> tuple[dict[str, Any], str | None]:
+    if not path.is_file():
+        return {}, None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {}, f"unreadable_metadata:{error}"
+    if not isinstance(value, dict):
+        return {}, "metadata_is_not_a_mapping"
+    return value, None
+
+
+def _load_yaml_mapping(path: Path) -> tuple[dict[str, Any], str | None]:
+    if not path.is_file():
+        return {}, None
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        return {}, f"unreadable_experiment_config:{error}"
+    if not isinstance(value, dict):
+        return {}, "experiment_config_is_not_a_mapping"
+    return value, None
+
+
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _normalized_source_path(path_text: str | None) -> str:
+    if path_text is None:
+        return ""
+    return str(path_text).strip().replace("\\", "/").lower().lstrip("./")
+
+
+def _path_belongs_to(path_text: str | None, prefix: str) -> bool:
+    normalized = _normalized_source_path(path_text)
+    normalized_prefix = prefix.lower().strip("/") + "/"
+    return (
+        normalized.startswith(normalized_prefix)
+        or f"/{normalized_prefix}" in normalized
+    )
+
+
+def _feature_track(config: dict[str, Any]) -> str | None:
+    dimension = config.get("model", {}).get("text_feature_dim")
+    if dimension is None:
+        return None
+    return "legacy" if dimension == 100 else "clean"
+
+
+def discover_candidate_run_directories(runs_root: Path) -> list[Path]:
+    """Find run-like directories without deciding whether they are in protocol scope."""
+
+    runs_root = Path(runs_root)
+    run_dirs = set(discover_run_directories(runs_root))
+    if runs_root.name.lower() == "runs" and runs_root.is_dir():
+        run_dirs.update(path for path in runs_root.iterdir() if path.is_dir())
+    run_dirs.update(
+        {
+            metrics_path.parents[3]
+            for metrics_path in runs_root.rglob(
+                "logs/evaluations/test_best_model/metrics.csv"
+            )
+        }
+    )
+    run_dirs.update(
+        config_path.parents[1]
+        for config_path in runs_root.rglob("logs/experiment_config.yaml")
+    )
+    run_dirs.update(
+        summary_path.parents[1]
+        for summary_path in runs_root.rglob("logs/run_summary.json")
+    )
+    run_dirs.update(
+        metadata_path.parent
+        for metadata_path in runs_root.rglob("run_metadata.json")
+    )
+    return sorted(run_dirs)
+
+
+def classify_run_scope(run_dir: Path) -> dict[str, Any]:
+    """Classify a run before numerical auditing or performance aggregation."""
+
+    run_dir = Path(run_dir)
+    metadata, metadata_error = _load_json_mapping(run_dir / "run_metadata.json")
+    config, config_error = _load_yaml_mapping(
+        run_dir / "logs" / "experiment_config.yaml"
+    )
+    protocol_version = _first_text(
+        metadata.get("protocol_version"), config.get("protocol_version")
+    )
+    config_path = _first_text(
+        metadata.get("config_path"),
+        metadata.get("source_config_path"),
+        config.get("config_path"),
+        config.get("source_config_path"),
+    )
+    profile = _first_text(config.get("profile"), metadata.get("profile"))
+    model_name = _first_text(
+        config.get("model", {}).get("name"), metadata.get("model_name")
+    ) or "unknown"
+    exact_protocol = protocol_version == ORIGINAL_MERC_PROTOCOL_VERSION
+    formal_source = _path_belongs_to(config_path, FORMAL_CONFIG_PREFIX)
+    smoke_source = _path_belongs_to(config_path, SMOKE_CONFIG_PREFIX)
+    generated_source = _path_belongs_to(config_path, GENERATED_CONFIG_PREFIX)
+    generated_formal_fold = generated_source and str(profile or "").startswith(
+        "formal_"
+    )
+    smoke_name = "_smoke_" in run_dir.name.lower()
+
+    if smoke_source or (exact_protocol and (profile == "smoke" or smoke_name)):
+        run_scope = SMOKE_ORIGINAL_MERC
+        scope_reason = (
+            "smoke_config_source"
+            if smoke_source
+            else "smoke_profile_or_run_id"
+        )
+    elif (
+        exact_protocol
+        and profile != "smoke"
+        and (formal_source or generated_formal_fold)
+    ):
+        run_scope = FORMAL_ORIGINAL_MERC
+        scope_reason = (
+            "formal_original_merc_config_source"
+            if formal_source
+            else "generated_formal_fold_config"
+        )
+    else:
+        run_scope = OUT_OF_SCOPE
+        reasons = [reason for reason in (metadata_error, config_error) if reason]
+        if not exact_protocol:
+            reasons.append(
+                "protocol_version_not_original_merc_three_track_v2"
+            )
+        if not config_path:
+            reasons.append("config_source_unavailable")
+        elif generated_source and not generated_formal_fold:
+            reasons.append("generated_config_not_proven_formal_fold")
+        elif not formal_source:
+            reasons.append("config_source_outside_original_merc_formal_tree")
+        if profile == "smoke":
+            reasons.append("smoke_profile_without_original_merc_protocol")
+        scope_reason = " | ".join(dict.fromkeys(reasons)) or "scope_not_proven"
+
+    return {
+        "run_id": run_dir.name,
+        "run_dir": str(run_dir),
+        "run_scope": run_scope,
+        "model_name": model_name,
+        "feature_track": _feature_track(config),
+        "detected_protocol_version": protocol_version,
+        "detected_config_path": config_path,
+        "detected_profile": profile,
+        "scope_reason": scope_reason,
+        "exclusion_reason": scope_reason if run_scope == OUT_OF_SCOPE else "",
+    }
+
+
+def classify_runs(runs_root: Path) -> pd.DataFrame:
+    rows = [
+        classify_run_scope(run_dir)
+        for run_dir in discover_candidate_run_directories(runs_root)
+    ]
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "run_id", "run_dir", "run_scope", "model_name", "feature_track",
+            "detected_protocol_version", "detected_config_path", "detected_profile",
+            "scope_reason", "exclusion_reason",
+        ],
+    )
+
+
 def _required_csv_columns_finite(
     path: Path,
     required_columns: list[str],
@@ -120,14 +307,10 @@ def audit_run_numeric_validity(run_dir: Path) -> dict[str, Any]:
     run_dir = Path(run_dir)
     logs = run_dir / "logs"
     config_path = logs / "experiment_config.yaml"
-    config: dict[str, Any] = {}
-    if config_path.is_file():
-        value = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if isinstance(value, dict):
-            config = value
+    config, config_error = _load_yaml_mapping(config_path)
     model_name = str(config.get("model", {}).get("name", "unknown"))
     profile = config.get("profile")
-    reasons: list[str] = []
+    reasons: list[str] = [config_error] if config_error else []
     detected_status = "FINITE"
 
     summary_path = logs / "run_summary.json"
@@ -225,20 +408,14 @@ def audit_run_numeric_validity(run_dir: Path) -> dict[str, Any]:
 
 
 def audit_runs_numeric_validity(runs_root: Path) -> pd.DataFrame:
-    run_dirs = {
-        metrics_path.parents[3]
-        for metrics_path in Path(runs_root).rglob(
-            "logs/evaluations/test_best_model/metrics.csv"
-        )
-    }
-    run_dirs.update(
-        config_path.parents[1]
-        for config_path in Path(runs_root).rglob("logs/experiment_config.yaml")
+    return audit_run_directories_numeric_validity(
+        discover_candidate_run_directories(runs_root)
     )
-    run_dirs.update(
-        summary_path.parents[1]
-        for summary_path in Path(runs_root).rglob("logs/run_summary.json")
-    )
+
+
+def audit_run_directories_numeric_validity(
+    run_dirs: list[Path],
+) -> pd.DataFrame:
     rows = [audit_run_numeric_validity(run_dir) for run_dir in sorted(run_dirs)]
     return pd.DataFrame(
         rows,
@@ -254,27 +431,31 @@ def audit_runs_numeric_validity(runs_root: Path) -> pd.DataFrame:
 def _load_run_config(metrics_path: Path) -> dict[str, Any]:
     run_dir = metrics_path.parents[3]
     config_path = run_dir / "logs" / "experiment_config.yaml"
-    if not config_path.is_file():
-        return {}
-    with config_path.open("r", encoding="utf-8") as file:
-        value = yaml.safe_load(file)
-    return value if isinstance(value, dict) else {}
+    config, _ = _load_yaml_mapping(config_path)
+    return config
 
 
-def collect_split_metrics(runs_root: Path, split: str) -> pd.DataFrame:
+def collect_split_metrics(
+    runs_root: Path,
+    split: str,
+    allowed_run_dirs: set[Path] | None = None,
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     artifact_pattern = f"logs/evaluations/{split}_best_model/metrics.csv"
     for metrics_path in sorted(runs_root.rglob(artifact_pattern)):
+        run_dir = metrics_path.parents[3]
+        if allowed_run_dirs is not None and run_dir not in allowed_run_dirs:
+            continue
         metrics = pd.read_csv(metrics_path)
         if metrics.empty:
             continue
         config = _load_run_config(metrics_path)
-        if not str(config.get("protocol_version", "")).startswith("original_merc_"):
+        if config.get("protocol_version") != ORIGINAL_MERC_PROTOCOL_VERSION:
             continue
         row = metrics.iloc[0].to_dict()
         row.update(
             {
-                "run_dir": str(metrics_path.parents[3]),
+                "run_dir": str(run_dir),
                 "seed": config.get("system", {}).get("seed"),
                 "split_seed": config.get("dataset", {}).get("split_seed"),
                 "profile": config.get("profile"),
@@ -834,10 +1015,96 @@ def _write_extended_artifacts(
     per_class.to_csv(output_dir / "per_class_metrics.csv", index=False)
 
 
+def _write_scope_artifacts(
+    output_dir: Path,
+    scope_audit: pd.DataFrame,
+    smoke_numeric_audit: pd.DataFrame,
+) -> None:
+    excluded_columns = [
+        "run_id",
+        "run_dir",
+        "detected_protocol_version",
+        "detected_config_path",
+        "detected_profile",
+        "exclusion_reason",
+    ]
+    excluded = scope_audit[scope_audit["run_scope"] == OUT_OF_SCOPE]
+    excluded.reindex(columns=excluded_columns).to_csv(
+        output_dir / "excluded_runs.csv", index=False
+    )
+
+    smoke_columns = [
+        "run_id",
+        "model_name",
+        "feature_track",
+        "numeric_status",
+        "run_status",
+        "epochs",
+        "max_train_batches",
+        "max_eval_batches",
+        "checkpoint_parameters_finite",
+        "prediction_count_correct",
+    ]
+    audit_by_run_dir = {
+        str(row.run_dir): row
+        for row in smoke_numeric_audit.itertuples(index=False)
+    }
+    smoke_rows = []
+    smoke_scope = scope_audit[scope_audit["run_scope"] == SMOKE_ORIGINAL_MERC]
+    for scope_row in smoke_scope.itertuples(index=False):
+        run_dir = Path(scope_row.run_dir)
+        config, _ = _load_yaml_mapping(
+            run_dir / "logs" / "experiment_config.yaml"
+        )
+        summary, _ = _load_json_mapping(run_dir / "logs" / "run_summary.json")
+        numeric = audit_by_run_dir.get(str(run_dir))
+        training = config.get("training", {})
+        smoke_rows.append(
+            {
+                "run_id": scope_row.run_id,
+                "model_name": scope_row.model_name,
+                "feature_track": scope_row.feature_track,
+                "numeric_status": (
+                    numeric.numeric_status if numeric is not None else None
+                ),
+                "run_status": numeric.run_status if numeric is not None else None,
+                "epochs": training.get("epochs"),
+                "max_train_batches": training.get("max_train_batches"),
+                "max_eval_batches": training.get("max_eval_batches"),
+                "checkpoint_parameters_finite": (
+                    numeric.checkpoint_parameters_finite
+                    if numeric is not None
+                    else None
+                ),
+                "prediction_count_correct": summary.get(
+                    "prediction_count_correct"
+                ),
+            }
+        )
+    pd.DataFrame(smoke_rows, columns=smoke_columns).to_csv(
+        output_dir / "smoke_runs.csv", index=False
+    )
+
+
 def analyze(runs_root: Path, output_dir: Path, paper_targets_path: Path) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     paper_targets = pd.read_csv(paper_targets_path)
-    numeric_audit = audit_runs_numeric_validity(runs_root)
+    scope_audit = classify_runs(runs_root)
+    formal_run_dirs = [
+        Path(value)
+        for value in scope_audit.loc[
+            scope_audit["run_scope"] == FORMAL_ORIGINAL_MERC, "run_dir"
+        ]
+    ]
+    smoke_run_dirs = [
+        Path(value)
+        for value in scope_audit.loc[
+            scope_audit["run_scope"] == SMOKE_ORIGINAL_MERC, "run_dir"
+        ]
+    ]
+    numeric_audit = audit_run_directories_numeric_validity(formal_run_dirs)
+    smoke_numeric_audit = audit_run_directories_numeric_validity(smoke_run_dirs)
+    _write_scope_artifacts(output_dir, scope_audit, smoke_numeric_audit)
     invalid_runs = numeric_audit[
         numeric_audit["run_status"] == "NUMERICALLY_INVALID"
     ].copy()
@@ -894,12 +1161,13 @@ def analyze(runs_root: Path, output_dir: Path, paper_targets_path: Path) -> dict
     valid_run_dirs = set(
         numeric_audit.loc[numeric_audit["run_status"] == "PASS", "run_dir"].astype(str)
     )
-    collected = collect_split_metrics(runs_root, "test")
-    validation_results = collect_split_metrics(runs_root, "val")
-    collected = collected[collected["run_dir"].astype(str).isin(valid_run_dirs)].copy()
-    validation_results = validation_results[
-        validation_results["run_dir"].astype(str).isin(valid_run_dirs)
-    ].copy()
+    valid_run_paths = {Path(value) for value in valid_run_dirs}
+    collected = collect_split_metrics(
+        runs_root, "test", allowed_run_dirs=valid_run_paths
+    )
+    validation_results = collect_split_metrics(
+        runs_root, "val", allowed_run_dirs=valid_run_paths
+    )
     detailed = add_paper_gaps(collected, paper_targets)
     summary = aggregate(detailed)
     track_summaries = {
@@ -934,6 +1202,8 @@ def analyze(runs_root: Path, output_dir: Path, paper_targets_path: Path) -> dict
     result = {
         "collected_runs": len(detailed),
         "invalid_runs": len(invalid_runs),
+        "smoke_runs": len(smoke_run_dirs),
+        "excluded_runs": int((scope_audit["run_scope"] == OUT_OF_SCOPE).sum()),
         "screening_models_ranked": len(screening_ranking),
         "results_dir": str(output_dir),
     }

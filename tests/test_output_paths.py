@@ -226,3 +226,55 @@ def test_original_pipeline_discovers_dated_top2_selection_without_legacy_path(
     )
 
     assert [job["config"] for job in jobs] == ["first.yaml", "second.yaml"]
+
+
+def test_original_pipeline_marks_numeric_failure_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.baselines import run_original_merc_pipeline as pipeline
+    from scripts.baselines.original_merc_runtime import NumericValidationError
+
+    manifest_path = tmp_path / "pipeline.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "output": {"root": str(tmp_path / "outputs"), "experiment_date": None},
+                "stages": {"smoke": [{"config": "unused.yaml"}]},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_training(*_args, **_kwargs):
+        raise NumericValidationError(
+            numeric_status="NONFINITE_GRADIENT",
+            model_name="project_paper_oriented_gsmcc",
+            epoch=1,
+            batch_index=1,
+            stage="gradients_after_backward",
+            tensor_or_parameter="text_input.weight",
+            classification_loss=1.0,
+            auxiliary_losses={"contrastive_loss": 2.0},
+            total_loss=3.0,
+            learning_rate=1e-5,
+            amp_enabled=False,
+        )
+
+    monkeypatch.setattr(pipeline, "run_training", fail_training)
+    with pytest.raises(NumericValidationError):
+        pipeline.run_pipeline(
+            manifest_path,
+            "smoke",
+            True,
+            "cpu",
+            tmp_path / "outputs",
+            "20260720",
+        )
+    status_paths = list(
+        (tmp_path / "outputs" / "20260720" / "manifests").rglob("run_status.json")
+    )
+    assert len(status_paths) == 1
+    status = json.loads(status_paths[0].read_text(encoding="utf-8"))
+    assert status["run_status"] == "NUMERICALLY_INVALID"
+    assert status["numeric_status"] == "NONFINITE_GRADIENT"
+    assert status["exit_code"] == 1

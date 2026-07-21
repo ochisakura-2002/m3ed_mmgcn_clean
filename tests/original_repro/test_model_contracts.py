@@ -75,6 +75,11 @@ def test_original_model_forward_backward_contract(name: str, extra: dict) -> Non
     assert output["diagnostics"]["causal_grade"] == "noncausal_offline_full_context"
     output["loss"].backward()
     assert any(parameter.grad is not None for parameter in model.parameters())
+    assert all(
+        torch.isfinite(parameter.grad).all()
+        for parameter in model.parameters()
+        if parameter.grad is not None
+    )
 
 
 def test_gsmcc_contrastive_switch_changes_loss_contract() -> None:

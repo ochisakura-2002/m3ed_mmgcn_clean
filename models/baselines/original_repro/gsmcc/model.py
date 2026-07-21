@@ -27,10 +27,18 @@ from ..common import (
 )
 
 
-def angular_similarity(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-    """Non-negative angular similarity used by the multimodal graph."""
+def angular_similarity(
+    left: torch.Tensor,
+    right: torch.Tensor,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    """Non-negative angular similarity with finite boundary gradients."""
 
-    cosine = F.cosine_similarity(left, right, dim=-1, eps=1e-8).clamp(-1.0, 1.0)
+    if not 0.0 < eps < 0.5:
+        raise ValueError("angular similarity eps must be between 0 and 0.5")
+    cosine = F.cosine_similarity(left, right, dim=-1, eps=1e-8)
+    effective_eps = max(float(eps), float(torch.finfo(cosine.dtype).eps))
+    cosine = cosine.clamp(-1.0 + effective_eps, 1.0 - effective_eps)
     return 1.0 - torch.acos(cosine) / math.pi
 
 
@@ -39,7 +47,11 @@ def build_sliding_multimodal_graph(
     valid_mask: torch.Tensor,
     window: int,
     cross_modal_scale: float = 1.0,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    angular_eps: float = 1e-7,
+    return_diagnostics: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[
+    torch.Tensor, torch.Tensor, dict[str, torch.Tensor]
+]:
     """Build a normalized 3-modality graph with local temporal edges.
 
     Nodes are ordered ``audio, visual, text``.  Same-modality nodes connect
@@ -49,6 +61,8 @@ def build_sliding_multimodal_graph(
 
     if window < 0:
         raise ValueError("GS-MCC sliding window must be non-negative")
+    if not math.isfinite(cross_modal_scale) or cross_modal_scale < 0:
+        raise ValueError("GS-MCC cross-modal scale must be finite and non-negative")
     audio, visual, text = modality_features
     batch_size, max_length, _ = text.shape
     nodes = torch.cat((audio, visual, text), dim=1)
@@ -63,8 +77,18 @@ def build_sliding_multimodal_graph(
             for target in range(length):
                 start = max(0, target - window)
                 stop = min(length, target + window + 1)
-                targets = features[target].expand(stop - start, -1)
-                weights = angular_similarity(targets, features[start:stop])
+                neighbor_indices = torch.arange(start, stop, device=features.device)
+                non_self = neighbor_indices != target
+                # A self-loop is a structural graph edge.  Giving it a fixed
+                # weight avoids routing acos(x, x) through autograd at +/-1.
+                weights = features.new_ones(stop - start)
+                if bool(non_self.any()):
+                    targets = features[target].expand(int(non_self.sum().item()), -1)
+                    weights[non_self] = angular_similarity(
+                        targets,
+                        features[start:stop][non_self],
+                        eps=angular_eps,
+                    )
                 adjacency[batch_index, offset + target, offset + start : offset + stop] = weights
 
         for utterance in range(length):
@@ -77,14 +101,34 @@ def build_sliding_multimodal_graph(
                     weight = angular_similarity(
                         modality_features[left_modality][batch_index, utterance].unsqueeze(0),
                         modality_features[right_modality][batch_index, utterance].unsqueeze(0),
+                        eps=angular_eps,
                     ).squeeze(0)
                     adjacency[batch_index, left_node, right_node] = cross_modal_scale * weight
 
     adjacency = 0.5 * (adjacency + adjacency.transpose(1, 2))
     adjacency = adjacency * node_mask.unsqueeze(1) * node_mask.unsqueeze(2)
-    degree = adjacency.sum(dim=-1).clamp_min(1e-8)
-    inv_sqrt_degree = degree.rsqrt()
+    if not bool(torch.isfinite(adjacency).all()):
+        raise FloatingPointError("GS-MCC adjacency contains NaN or Inf")
+    degree = adjacency.sum(dim=-1)
+    valid_degrees = degree[node_mask.bool()]
+    if not bool(torch.isfinite(valid_degrees).all()):
+        raise FloatingPointError("GS-MCC degree contains NaN or Inf")
+    if bool((valid_degrees <= 0).any()):
+        raise FloatingPointError("GS-MCC valid graph node has non-positive degree")
+    # Padded nodes are deliberately isolated.  Give only those masked rows a
+    # neutral degree so rsqrt remains finite without changing valid nodes.
+    safe_degree = torch.where(node_mask.bool(), degree, torch.ones_like(degree))
+    inv_sqrt_degree = safe_degree.rsqrt()
     normalized = inv_sqrt_degree.unsqueeze(-1) * adjacency * inv_sqrt_degree.unsqueeze(-2)
+    if not bool(torch.isfinite(normalized).all()):
+        raise FloatingPointError("GS-MCC normalized adjacency contains NaN or Inf")
+    if return_diagnostics:
+        return normalized, node_mask, {
+            "raw_adjacency": adjacency,
+            "degree": degree,
+            "safe_degree": safe_degree,
+            "inv_sqrt_degree": inv_sqrt_degree,
+        }
     return normalized, node_mask
 
 
@@ -184,6 +228,7 @@ class ProjectPaperOrientedGSMCC(nn.Module):
         window: int = 10,
         dropout: float = 0.4,
         cross_modal_scale: float = 1.0,
+        angular_similarity_eps: float = 1e-7,
         use_contrastive_loss: bool = True,
         contrastive_temperature: float = 0.1,
         contrastive_loss_weight: float = 1.0,
@@ -198,6 +243,9 @@ class ProjectPaperOrientedGSMCC(nn.Module):
         self.num_classes = num_classes
         self.window = window
         self.cross_modal_scale = cross_modal_scale
+        if not 0.0 < angular_similarity_eps < 0.5:
+            raise ValueError("angular_similarity_eps must be between 0 and 0.5")
+        self.angular_similarity_eps = angular_similarity_eps
         self.use_contrastive_loss = use_contrastive_loss
         self.contrastive_temperature = contrastive_temperature
         self.contrastive_loss_weight = contrastive_loss_weight
@@ -279,11 +327,13 @@ class ProjectPaperOrientedGSMCC(nn.Module):
         mask = valid_mask.unsqueeze(-1)
         text, audio, visual = text * mask, audio * mask, visual * mask
 
-        adjacency, node_mask = build_sliding_multimodal_graph(
+        adjacency, node_mask, graph_diagnostics = build_sliding_multimodal_graph(
             (audio, visual, text),
             valid_mask,
             self.window,
             self.cross_modal_scale,
+            self.angular_similarity_eps,
+            return_diagnostics=True,
         )
         nodes = torch.cat((audio, visual, text), dim=1)
         low, high = nodes, nodes
@@ -334,8 +384,10 @@ class ProjectPaperOrientedGSMCC(nn.Module):
             },
             diagnostics={
                 "adjacency": adjacency,
+                **graph_diagnostics,
                 "node_mask": node_mask,
                 "window": self.window,
+                "angular_similarity_eps": self.angular_similarity_eps,
                 "contrastive_enabled": self.use_contrastive_loss,
                 "contrastive_temperature": self.contrastive_temperature,
                 "raw_contrastive_loss": raw_contrastive.detach(),

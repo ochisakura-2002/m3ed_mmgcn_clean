@@ -67,11 +67,13 @@
 
 ### 训练与评估
 
-1. `scripts/train_mmgcn.py`：当前 `MMGCN` 主训练入口，支持 `M3ED`、`IEMOCAP`，当前本地 smoke 版本还支持 `MMGCN_SMOKE`。
-2. `scripts/evaluate_checkpoint.py`：checkpoint 评估入口，读取 checkpoint 内保存的 config，重建模型和 dataloader。
-3. `scripts/train_simple_mlp.py`：`SimpleMLP` baseline 训练入口。
-4. `scripts/train.py`：早期最小入口，只做配置读取和 run 目录创建，不是当前正式 `MMGCN` 训练入口。
-5. `scripts/run_experiment_pipeline.py`：实验 pipeline 入口，串联训练、评估和分析。
+1. `scripts/models/mmgcn/unified/train.py`：canonical `MMGCN` 主训练入口，支持 `M3ED`、`IEMOCAP` 和本地 `MMGCN_SMOKE`。
+2. `scripts/evaluation/unified_checkpoint.py`：canonical 统一 checkpoint 评估入口。
+3. `scripts/models/multidag_cl/unified/`：MultiDAG+CL canonical 训练、评估与 smoke 入口。
+4. `scripts/models/simple_mlp/train.py`：`SimpleMLP` canonical 训练入口。
+5. `scripts/runtime/`：causal graph 与 paper-aligned 跨模型 runtime。
+6. `scripts/workflows/`：通用、causal、paper-aligned、formal benchmark 和 modality workflow。
+7. `scripts/train_mmgcn.py`、`scripts/evaluate_checkpoint.py`、`scripts/run_experiment_pipeline.py` 等迁移前路径仅为 compatibility wrapper。
 
 ### 配置
 
@@ -119,37 +121,39 @@
 
 ## 当前重构阶段
 
-模型目录重构已经完成；生产 `scripts/` 与 `configs/` 尚未迁移。下一阶段先重构 `scripts/` 中的模型专属入口与公共 runtime/workflow，再重构 `configs/`。全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构与 Script Phase 3A execution layout 已完成；旧入口保留 compatibility wrapper。Script Phase 3B 的 analysis/debug/data/maintenance scripts 与 `configs/` 尚未迁移。下一阶段先完成 Phase 3B，再重构 `configs/`；全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 入口脚本速查
 
-训练：
+canonical 训练：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\train_mmgcn_m3ed.yaml
+conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\train_mmgcn_m3ed.yaml
 ```
 
-评估：
+canonical 评估：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\evaluate_checkpoint.py --checkpoint <run_dir>\checkpoints\best_model.pt --split test
+conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint <run_dir>\checkpoints\best_model.pt --split test
 ```
 
-pipeline：
+canonical pipeline：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\run_experiment_pipeline.py --config configs\pipeline\mmgcn_pipeline_m3ed.yaml
+conda run -n m3ed_mmgcn python scripts\workflows\run_pipeline.py --config configs\pipeline\mmgcn_pipeline_m3ed.yaml
 ```
 
 本地 smoke test：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\smoke\train_mmgcn_smoke.yaml
+conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\smoke\train_mmgcn_smoke.yaml
 ```
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\evaluate_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
+conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
 ```
+
+迁移前的旧命令仍通过 compatibility wrapper 工作；新自动化与新文档应使用 canonical 路径。
 
 ## 典型 run 输出结构
 

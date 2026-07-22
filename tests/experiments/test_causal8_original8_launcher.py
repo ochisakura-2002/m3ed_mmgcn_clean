@@ -148,7 +148,7 @@ def test_prepared_commands_freeze_date_and_leave_formal_yaml_unchanged(
         date_index = item.command.index("--experiment-date")
         assert item.command[date_index + 1] == "20260722"
     for item in prepared[:8]:
-        assert item.spec.entrypoint.as_posix() == "scripts/run_experiment_pipeline.py"
+        assert item.spec.entrypoint.as_posix() == "scripts/workflows/run_pipeline.py"
         pipeline = yaml.safe_load(item.launch_config.read_text(encoding="utf-8"))
         train = yaml.safe_load(item.expected_config.read_text(encoding="utf-8"))
         assert pipeline["output"]["experiment_date"] == "20260722"
@@ -156,7 +156,7 @@ def test_prepared_commands_freeze_date_and_leave_formal_yaml_unchanged(
         assert train["output"]["root"] == str(tmp_path)
     for item in prepared[8:]:
         assert item.spec.entrypoint.as_posix() == (
-            "scripts/baselines/train_original_merc_baseline.py"
+            "scripts/workflows/paper_aligned/train.py"
         )
         assert "--device" in item.command
         assert "--output-root" in item.command

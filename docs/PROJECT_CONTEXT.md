@@ -16,7 +16,9 @@
 
 `MODEL_LAYOUT_REFACTOR=COMPLETED`
 
-`SCRIPT_LAYOUT_REFACTOR=NOT_STARTED`
+`SCRIPT_EXECUTION_LAYOUT_REFACTOR=COMPLETED`
+
+`SCRIPT_ANALYSIS_LAYOUT_REFACTOR=NOT_STARTED`
 
 `CONFIG_LAYOUT_REFACTOR=NOT_STARTED`
 
@@ -26,7 +28,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构已经完成。当前阶段结束于模型层；`configs/`、生产 `scripts/`、`datasets/`、`utils/` 和既有测试均未迁移。下一阶段是 `scripts/` 目录模型专属入口与公共 runtime/workflow 重构，随后才重构 `configs/`；两者及完整门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构和 Phase 3A 生产执行脚本重构已经完成。模型训练/评估入口、跨模型 runtime、workflow、正式 benchmark launcher 与模态缺失 workflow 已迁入 canonical script tree；旧执行路径保留 compatibility wrapper。`scripts/` 中的 analysis/debug/data/maintenance 脚本和 `configs/` 尚未迁移。下一阶段是 Script Phase 3B，之后才重构 `configs/`；全部门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 模型路线与命名边界
 
@@ -82,7 +84,7 @@ MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `m
 - `models/baselines/simple_mlp.py`
 - `models/baselines/sdt/`
 
-现有生产 scripts 和既有 tests 暂时仍通过这些旧路径运行。新 canonical 实现不得反向 import `models.baselines...`，后续新代码也必须直接使用 canonical path。
+canonical execution scripts 已直接使用模型 canonical path，不再依赖 `models.baselines...`。既有模型兼容测试与部分 Phase 3B deferred scripts 暂时保留旧 model wrapper import；新代码必须直接使用 canonical path。
 
 ## Model registries
 
@@ -104,12 +106,20 @@ MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `m
 
 ## Canonical runtime entries 与输出规则
 
-本阶段没有移动生产入口。当前入口仍为：
+Phase 3A canonical execution entries 为：
 
-- MMGCN 训练：`scripts/train_mmgcn.py`
-- checkpoint 评估：`scripts/evaluate_checkpoint.py`
-- 实验 pipeline：`scripts/run_experiment_pipeline.py`
-- SimpleMLP 训练：`scripts/train_simple_mlp.py`
+- MMGCN 训练：`scripts/models/mmgcn/unified/train.py`
+- MultiDAG+CL 训练/评估/smoke：`scripts/models/multidag_cl/unified/{train,evaluate,smoke}.py`
+- SimpleMLP 训练：`scripts/models/simple_mlp/train.py`
+- 统一 checkpoint 评估：`scripts/evaluation/unified_checkpoint.py`
+- causal 与 paper-aligned runtime：`scripts/runtime/{causal_graph,paper_aligned}.py`
+- 通用 pipeline：`scripts/workflows/run_pipeline.py`
+- causal workflow：`scripts/workflows/causal_graph/{train,evaluate}.py`
+- paper-aligned workflow：`scripts/workflows/paper_aligned/`
+- 正式 16-run benchmark：`scripts/workflows/benchmarks/run_causal8_original8.py`
+- 模态缺失/消融 workflow：`scripts/workflows/ablations/`
+
+迁移前路径继续作为 compatibility wrapper，可保持既有 CLI 与尚未迁移的 YAML 可运行；新代码不得 import 旧 script wrapper。
 
 正式实验输出按启动日期写入 `outputs/<YYYYMMDD>/`；本地 smoke 使用 `tmp/`。显式 checkpoint/run/output 路径优先，旧输出只读兼容，不移动、不改名。不要提交数据、feature pkl、checkpoint、cache 或大体积输出。
 
@@ -121,6 +131,10 @@ MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `m
 - canonical 实现的内部 import 已切换到 `models.common`、`models.registry` 和各模型 canonical package。
 - 新增 `tests/test_model_layout_compatibility.py`，验证 10 组核心新旧符号身份及 MMGCN strict state-dict 加载。
 - 模型数学、forward 契约、默认超参数和 state-dict schema 未改变。
+- Phase 3A 使用 19 个 `git mv` 建立 canonical execution tree，并在全部旧路径创建 19 个透明 module-alias wrapper。
+- canonical scripts 的模型 import 已迁移到 `models.registry`、`models.common` 与模型 canonical package；canonical `models.baselines` import 为 0。
+- pipeline、missing-modality workflow 与正式 16-run launcher 的内部 subprocess target 已指向 canonical scripts；`configs/` 内容与 runtime/checkpoint key 未改。
+- 新增 `tests/test_script_layout_compatibility.py` 与 Phase 3A legacy import CSV/Markdown 审计。
 
 ## 最近门禁结果
 
@@ -134,13 +148,20 @@ MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `m
 - 迁移后 config validation：通过。
 - canonical `models/` 内 `models.baselines` 静态引用：0。
 - 最终工作区与 staged `git diff --check`：通过。
+- Script Phase 3A 执行前完整 pytest：`187 passed, 3 skipped`。
+- Script layout compatibility：`52 passed`。
+- Script runtime/checkpoint/formal-launcher/output-path 专项：`93 passed, 3 skipped`。
+- Script Phase 3A 完整 pytest：`239 passed, 3 skipped`。
+- canonical execution legacy model imports：0；compatibility wrapper legacy model imports：0。
+- deferred scripts：10 个文件、12 条 legacy model import；tests：13 个文件、27 条 legacy model import。
+- Phase 3A 基于分支 `refactor/model-first-layout`、HEAD `1988757fffccfd50532ed4a20d15fedb017eb639`；本阶段未 commit、未 push。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
 ## 已知问题与保护边界
 
-- 生产 scripts 和既有 tests 尚未迁移 canonical import，当前依赖旧 wrapper；这是下一阶段的主要兼容风险。
-- wrapper 至少保留一个迁移周期；删除前必须先完成脚本迁移与完整门禁。
+- Phase 3A 生产 execution scripts 已迁移；analysis/debug/data/maintenance scripts 尚未迁移，是 Phase 3B 范围。
+- 旧 script wrapper 与旧 model wrapper 至少保留一个迁移周期；删除前必须完成 Phase 3B、configs 迁移和独立删除门禁。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
 
@@ -154,9 +175,9 @@ MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `m
 
 ## 下一阶段工程顺序
 
-模型目录重构已经完成。下一阶段只处理 `scripts/` 目录模型专属入口与公共 runtime/workflow 重构；其完整门禁通过后再重构 `configs/`。目录重构全部完成并通过门禁后，才部署作者官方 MultiDAG+CL 和 GS-MCC。开始 scripts 阶段前应读取上述 canonical model paths、`docs/refactors/MODEL_LAYOUT_REFACTOR_REPORT.md`、`docs/codex_workflow.md` 和 `docs/git_workflow.md`。
+模型目录重构和 Script Phase 3A 已完成。下一阶段为 Script Phase 3B，只处理 analysis/debug/data/maintenance scripts 及其 legacy model imports；通过完整门禁后再重构 `configs/`。目录重构全部完成并通过门禁后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
 
-推荐顺序：先将脚本 import 切到 canonical registry/model package，再抽取公共 runtime/workflow，最后在完整门禁通过后规划旧 wrapper 的独立删除阶段。不得同时迁移 configs 或改变 checkpoint/config schema。
+Phase 3B 不得删除 Phase 3A wrapper、改变 runtime/checkpoint/config schema，或把 `paper_aligned` 误写为 `author_official`。Phase 3B legacy import 基线见 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3A.*`。
 
 ## 下一阶段研究路线
 

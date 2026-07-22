@@ -1,15 +1,19 @@
-"""Compatibility entrypoint for the original-MERC reproduction pipeline."""
+"""Compatibility wrapper for the paper-aligned reproduction workflow."""
 
-import sys
 from pathlib import Path
+import sys
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.baselines.run_original_merc_pipeline import main
+from scripts import _load_compat_module  # noqa: E402
 
+
+_CANONICAL = _load_compat_module(
+    __name__, "scripts.workflows.paper_aligned.run_reproduction"
+)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(_CANONICAL.main())

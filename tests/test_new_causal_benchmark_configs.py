@@ -64,7 +64,8 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
 
 def test_pipeline_uses_exact_new_model_routes() -> None:
     for name in ("causal_gsmcc_inspired", "causal_dialoguegcn"):
-        assert choose_train_script(name).endswith("train_new_causal_graph_baseline.py")
-        assert choose_evaluate_script(name).endswith(
-            "evaluate_new_causal_graph_checkpoint.py"
+        assert choose_train_script(name) == "scripts/workflows/causal_graph/train.py"
+        assert (
+            choose_evaluate_script(name)
+            == "scripts/workflows/causal_graph/evaluate.py"
         )

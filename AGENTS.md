@@ -41,3 +41,12 @@
 6. 模型目录迁移已经完成；下一阶段是 `scripts/` 中模型专属入口与公共 runtime/workflow 重构，之后才重构 `configs/`。
 7. 作者官方 MultiDAG+CL 与 GS-MCC 必须等模型、scripts、configs 目录重构及门禁完成后再部署；当前不要提前移动 `scripts/` 或 `configs/`。
 8. 不要为定位模型代码扫描 `outputs/`、`data/`、`third_party/` 或 `tmp/`。
+
+## 当前脚本目录与阶段
+
+1. 生产执行脚本的 canonical 路径位于 `scripts/models/`、`scripts/runtime/`、`scripts/evaluation/` 和 `scripts/workflows/`。
+2. 迁移前的训练、评估、pipeline 与实验 launcher 路径只保留 compatibility wrapper；新代码禁止依赖这些旧 wrapper。
+3. `configs/` 尚未迁移，旧 YAML 中的 script path 继续由 compatibility wrapper 支持。
+4. Phase 3B 尚未开始；`scripts/analyze/`、`scripts/analysis/`、`scripts/debug/`、`scripts/diagnose/`、`scripts/features/`、`scripts/prepare/`、`scripts/inspect/`、`scripts/maintenance/` 和 `scripts/dev/` 暂不迁移。
+5. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不修改、不 staged。
+6. 下一阶段先处理 analysis/debug/data/maintenance scripts 的 Phase 3B，再规划 `configs/` 重构。

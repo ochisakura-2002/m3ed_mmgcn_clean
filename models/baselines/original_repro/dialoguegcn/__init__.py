@@ -1,4 +1,6 @@
-from .model import (
+"""Compatibility wrapper for :mod:`models.dialoguegcn.paper_aligned`."""
+
+from models.dialoguegcn.paper_aligned import (
     DialogueGCNRelationalGraphNetwork,
     OriginalReproDialogueGCN,
     build_dialoguegcn_graph,

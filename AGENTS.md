@@ -1,6 +1,6 @@
 # Codex 项目上下文入口
 
-本仓库是一个多模态对话情感识别项目，当前主开发 baseline 是 `MMGCN`。后续 Codex 对话进入本仓库时，先按本文档建立上下文，不要默认全量扫描仓库。
+本仓库是一个多模型多模态对话情感识别（MERC）实验平台，长期目标与机器人实时交互中的 causal MERC 有关。当前阶段正在建立作者官方复现、统一实验规程、causalization 和最终 baseline 决策；`MMGCN` 是经典锚点，但尚未确定为最终论文 baseline。后续 Codex 对话进入本仓库时，先按本文档建立上下文，不要默认全量扫描仓库。
 
 ## 任务开始规则
 
@@ -31,13 +31,13 @@
 5. 优先添加 smoke test 或最小可运行检查，再讨论模型效果优化。
 6. 不要直接安装依赖；如需依赖，建议加入 `requirements.txt` 或 `environment.yml`，但当前 checkout 未找到这两个文件。
 
-## 当前已知状态提示
+## 当前模型目录与阶段
 
-最近本地 smoke test 引入了以下工作区变化：
-
-1. 已修改：`scripts/train_mmgcn.py`
-2. 已修改：`scripts/evaluate_checkpoint.py`
-3. 未跟踪：`configs/smoke/`
-4. 未跟踪：`datasets/smoke/`
-
-这些变化用于让 `MMGCN` 在无真实 M3ED 数据时跑通最小 train -> checkpoint -> evaluate 闭环。后续任务不要误判为用户无关改动。
+1. 模型实现已迁移到模型优先的 canonical 路径：`models/<model>/<lineage>/`；公共代码位于 `models/common/`，registry 位于 `models/registry/`。
+2. `models/baselines/` 与 `models/baselines/original_repro/` 只保留一个迁移周期的兼容 re-export wrapper；新代码禁止 import 这些旧路径。
+3. `paper_aligned` 表示项目内按论文结构实现，不等于 `author_official`；当前 MultiDAG+CL 项目实现不是作者官方完整复现，GS-MCC 两套实现均为 `project_variant`。
+4. `MMGCN` 是当前经典复现锚点，不得表述为已经选定的最终 baseline；SDT 位于 `models/experimental/sdt/`，仍不进入正式 baseline 排名。
+5. 目录重构不得改变模型数学行为、forward 契约或 `state_dict` schema。
+6. 模型目录迁移已经完成；下一阶段是 `scripts/` 中模型专属入口与公共 runtime/workflow 重构，之后才重构 `configs/`。
+7. 作者官方 MultiDAG+CL 与 GS-MCC 必须等模型、scripts、configs 目录重构及门禁完成后再部署；当前不要提前移动 `scripts/` 或 `configs/`。
+8. 不要为定位模型代码扫描 `outputs/`、`data/`、`third_party/` 或 `tmp/`。

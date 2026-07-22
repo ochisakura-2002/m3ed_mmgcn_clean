@@ -1,7 +1,10 @@
-"""Isolated project causal GS-MCC-inspired baseline."""
+"""Compatibility wrapper for the causal GS-MCC project variant."""
 
-from .causal_gsmcc_losses import compute_causal_gsmcc_loss
-from .causal_gsmcc_model import CausalGSMCCConfig, CausalGSMCCInspiredBaseline
+from models.gsmcc.project_variant.causal import (
+    CausalGSMCCConfig,
+    CausalGSMCCInspiredBaseline,
+    compute_causal_gsmcc_loss,
+)
 
 __all__ = [
     "CausalGSMCCConfig",

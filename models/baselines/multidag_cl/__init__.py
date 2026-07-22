@@ -1,6 +1,6 @@
-"""Device-neutral MultiDAG+CL baseline package."""
+"""Compatibility wrapper for :mod:`models.multidag_cl.unified`."""
 
-from .multidag_cl_model import (
+from models.multidag_cl.unified import (
     CausalModalityEncoder,
     MultiDAGCLBaseline,
     build_directed_past_adjacency,

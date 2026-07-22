@@ -2,17 +2,19 @@
 
 本文档用于让后续 Codex 对话快速定位项目结构，避免每次重新全量扫描仓库。
 
+跨 Codex 对话的当前阶段、canonical 路径和最近门禁结果以 `docs/PROJECT_CONTEXT.md` 为准。
+
 ## 项目目标
 
-本项目目标是构建和复现一个多模态对话情感识别系统。当前重点不是随意添加创新模块，而是围绕 `M3ED + MMGCN` 建立稳定、可复现、可分析的 baseline 和实验闭环。
+本项目是一个多模型多模态对话情感识别（MERC）实验平台，长期目标与机器人实时交互中的 causal MERC 有关。当前重点是建立作者官方复现、统一 Original / full-context 与 causal 规程、Legacy / Clean 特征比较和最终 baseline 决策的可审计闭环。
 
 ## 数据集与 baseline
 
-当前主数据集是 `M3ED`。
+近期正式实验与 baseline 决策主要围绕 `IEMOCAP`；当前正式批次 `causal8_original8_formal_20260722_012904` 包含 8 个 causal run 和 8 个 Original run，共 16 个实验，全部 PASS 且数值状态均为 FINITE。
 
-辅助复现数据集是 `IEMOCAP official MMGCN-style features`，用于对齐和检查官方 `MMGCN` 风格特征读取与训练流程。
+`M3ED` 仍是长期数据资产，用于后续扩展到机器人代理和 causal MERC 场景。
 
-当前主 baseline 是 `MMGCN`。项目中也保留了 `SimpleMLP`，主要用于 sanity baseline 和性能对照。
+当前模型池包括 MMGCN、MultiDAG-inspired + Curriculum Learning、DialogueGCN、GS-MCC Project Variant、Causal-MMGCN 和 Causal-MultiDAG-inspired；`SimpleMLP` 用作 sanity baseline。MMGCN Legacy 是复现较稳定的经典锚点，但最终论文 baseline 尚未选定。
 
 ## 本地与远程分工
 
@@ -42,7 +44,7 @@
 2. `datasets/`：M3ED、IEMOCAP、通用 feature dataset、collate、smoke dataset。
 3. `docs/`：项目记录、设计说明和 Codex 上下文文档。
 4. `losses/`：当前主要是占位和说明。
-5. `models/`：`SimpleMLP` 和 `MMGCN` 模型实现。
+5. `models/`：按模型与实现 lineage 组织的多模型实现、公共组件和 registry。
 6. `scripts/`：训练、评估、调试、诊断、分析、pipeline、实验辅助脚本。
 7. `tmp/`：本地临时输出，已被 `.gitignore` 忽略。
 8. `trainers/`：当前主要是占位和说明。
@@ -93,9 +95,17 @@
 
 ### 模型
 
-1. `models/baselines/mmgcn/mm_gcn.py`：当前 `MMGCN` 模型主体。
-2. `models/baselines/mmgcn/dense_graph.py`：构建 dense multimodal adjacency。
-3. `models/baselines/simple_mlp.py`：简单三模态拼接 MLP baseline。
+1. `models/mmgcn/unified/`：统一训练/评估接口下的 `MMGCN`，主体仍为 `mm_gcn.py`，dense graph 位于 `dense_graph.py`。
+2. `models/mmgcn/paper_aligned/`：项目内按论文结构实现的 full-context MMGCN，不是作者官方源码目录。
+3. `models/multidag_cl/{unified,paper_aligned}/`：MultiDAG+CL；其中 CL 表示 Curriculum Learning。
+4. `models/dialoguegcn/{unified,paper_aligned}/`：DialogueGCN 的统一接口与论文对齐实现。
+5. `models/gsmcc/project_variant/{causal,full_context}/`：两套 GS-MCC Project Variant，均不是 author-official 实现。
+6. `models/common/` 与 `models/registry/`：共享图/论文对齐工具和 canonical registry。
+7. `models/simple_mlp/model.py`：简单三模态拼接 MLP sanity baseline。
+8. `models/experimental/sdt/`：实验 SDT，不进入正式 baseline 排名。
+9. `models/baselines/`：旧 import 的临时兼容 wrapper；新代码不得依赖该目录。
+
+`unified` 表示项目统一训练/评价接口下的实现；`paper_aligned` 表示项目内按论文结构实现，不等于 `author_official`；`project_variant` 表示与作者官方实现存在明确差异。当前 MultiDAG 项目实现不是作者官方完整复现，GS-MCC 两套实现均为 `project_variant`。
 
 ### 工具与分析
 
@@ -106,6 +116,10 @@
 5. `scripts/debug/`：轻量调试脚本。
 6. `scripts/inspect/`：数据和官方代码结构检查脚本。
 7. `scripts/maintenance/check_env.py`：环境检查脚本。
+
+## 当前重构阶段
+
+模型目录重构已经完成；生产 `scripts/` 与 `configs/` 尚未迁移。下一阶段先重构 `scripts/` 中的模型专属入口与公共 runtime/workflow，再重构 `configs/`。全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 入口脚本速查
 

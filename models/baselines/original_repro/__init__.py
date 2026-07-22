@@ -1,10 +1,10 @@
-"""Paper-oriented, noncausal MERC baseline reproductions."""
+"""Compatibility wrapper for canonical paper-aligned model paths."""
 
-from .dialoguegcn import OriginalReproDialogueGCN
-from .gsmcc import ProjectPaperOrientedGSMCC
-from .mmgcn import OriginalReproMMGCN
-from .multidag_cl import OriginalReproMultiDAGCL
-from .registry import (
+from models.dialoguegcn.paper_aligned import OriginalReproDialogueGCN
+from models.gsmcc.project_variant.full_context import ProjectPaperOrientedGSMCC
+from models.mmgcn.paper_aligned import OriginalReproMMGCN
+from models.multidag_cl.paper_aligned import OriginalReproMultiDAGCL
+from models.registry.paper_aligned import (
     ORIGINAL_REPRO_MODEL_KEYS,
     build_original_repro_model,
     get_model_constructor_args,

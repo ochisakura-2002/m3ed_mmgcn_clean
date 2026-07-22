@@ -1,5 +1,5 @@
-"""Device-neutral SDT baseline package."""
+"""Compatibility wrapper for :mod:`models.experimental.sdt`."""
 
-from .sdt_model import SDTBaseline
+from models.experimental.sdt import SDTBaseline
 
 __all__ = ["SDTBaseline"]

@@ -1,8 +1,5 @@
-"""Isolated DialogueGCN-derived strict-causal project baseline."""
+"""Compatibility wrapper for :mod:`models.dialoguegcn.unified`."""
 
-from .causal_dialoguegcn_model import (
-    CausalDialogueGCNBaseline,
-    CausalDialogueGCNConfig,
-)
+from models.dialoguegcn.unified import CausalDialogueGCNBaseline, CausalDialogueGCNConfig
 
 __all__ = ["CausalDialogueGCNBaseline", "CausalDialogueGCNConfig"]

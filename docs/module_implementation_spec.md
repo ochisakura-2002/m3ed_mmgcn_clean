@@ -100,7 +100,7 @@ logits:                    [B, T, C]
 2. `models/baselines/mmgcn/dense_graph.py`
 3. `scripts/train_mmgcn.py`
 4. `scripts/evaluate_checkpoint.py`
-5. `configs/train_mmgcn_m3ed.yaml`
+5. `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml`
 
 ## YAML 配置开关
 

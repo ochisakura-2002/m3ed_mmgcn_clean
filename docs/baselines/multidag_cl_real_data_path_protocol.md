@@ -29,15 +29,15 @@ Checked from the project root on local Windows.
 
 | Dataset | Config | Key | Path | Exists locally | Note |
 |---|---|---|---|---|---|
-| M3ED | `configs/train_mmgcn_m3ed.yaml` | `dataset.feature_pkl_path` | `data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl` | No | Required before M3ED dataloader construction. |
-| M3ED | `configs/train_mmgcn_m3ed.yaml` | `dataset.metadata_path` | `data/metadata/m3ed_metadata.csv` | No | Required for dialogue metadata and split/sample alignment. |
-| M3ED | `configs/train_mmgcn_m3ed.yaml` | `dataset.label_mapping_path` | `data/metadata/m3ed_label_mapping.csv` | No | Required for label mapping. |
-| IEMOCAP | `configs/train_mmgcn_iemocap_official.yaml` | `dataset.feature_pkl_path` | `third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl` | No | Required before IEMOCAP dataloader construction. |
+| M3ED | `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml` | `dataset.feature_pkl_path` | `data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl` | No | Required before M3ED dataloader construction. |
+| M3ED | `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml` | `dataset.metadata_path` | `data/metadata/m3ed_metadata.csv` | No | Required for dialogue metadata and split/sample alignment. |
+| M3ED | `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml` | `dataset.label_mapping_path` | `data/metadata/m3ed_label_mapping.csv` | No | Required for label mapping. |
+| IEMOCAP | `configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml` | `dataset.feature_pkl_path` | `third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl` | No | Required before IEMOCAP dataloader construction. |
 
 ## 4. Required files before real one-batch dry run
 
 For M3ED, the machine running the dry run must have these files at the relative
-paths declared by `configs/train_mmgcn_m3ed.yaml`:
+paths declared by `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml`:
 
 ```text
 data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl
@@ -46,7 +46,7 @@ data/metadata/m3ed_label_mapping.csv
 ```
 
 For IEMOCAP, the machine running the dry run must have this file at the relative
-path declared by `configs/train_mmgcn_iemocap_official.yaml`:
+path declared by `configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml`:
 
 ```text
 third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
@@ -62,13 +62,13 @@ Run from the project root. Use the project environment, keep the command to one
 batch, and keep the split to `train` or `val`.
 
 ```powershell
-conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\train_mmgcn_m3ed.yaml --dataset M3ED --split train --batch-size-override 2 --device cpu
+conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\m3ed\full_context\m3ed_features\skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device cpu
 ```
 
 Optional IEMOCAP path check and one-batch dry run:
 
 ```powershell
-conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\train_mmgcn_iemocap_official.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device cpu
+conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\iemocap\full_context\legacy_mmgcn_features\val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device cpu
 ```
 
 Do not run a full epoch or formal training on local Windows for this task.
@@ -79,13 +79,13 @@ After syncing the code to the remote V100 machine and confirming the data files
 exist at the config-declared relative paths, run from the project root:
 
 ```bash
-conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/train_mmgcn_m3ed.yaml --dataset M3ED --split train --batch-size-override 2 --device config
+conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device config
 ```
 
 Optional IEMOCAP fallback:
 
 ```bash
-conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/train_mmgcn_iemocap_official.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device config
+conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device config
 ```
 
 Record the remote git commit hash before running:

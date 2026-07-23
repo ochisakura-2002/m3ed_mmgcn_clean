@@ -1,0 +1,18 @@
+old_path,new_path,byte_identical,semantic_identical,changed_keys,change_allowed,status,notes
+configs/baselines/mmgcn/iemocap/causal_benchmark/official_prefix.yaml,configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses01.yaml,configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses02.yaml,configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses03.yaml,configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses04.yaml,configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml,configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses01.yaml,configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses01.yaml,NO,NO,source_config,YES,PASS,Only the planned Batch 2 source_config path changed.
+configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses02.yaml,configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses02.yaml,NO,NO,source_config,YES,PASS,Only the planned Batch 2 source_config path changed.
+configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses03.yaml,configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses03.yaml,NO,NO,source_config,YES,PASS,Only the planned Batch 2 source_config path changed.
+configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses04.yaml,configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses04.yaml,NO,NO,source_config,YES,PASS,Only the planned Batch 2 source_config path changed.
+configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/experiments/original_merc/clean_screening/mmgcn_clean.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/experiments/original_merc/legacy_fold_bases/mmgcn_legacy.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/experiments/original_merc/screening/mmgcn_legacy.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/train_mmgcn_iemocap_official.yaml,configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/train_mmgcn_m3ed.yaml,configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.
+configs/train_mmgcn_m3ed_causal.yaml,configs/mmgcn/unified/m3ed/causal_context/m3ed_features/skeleton.yaml,YES,YES,,YES,PASS,Byte and recursive YAML semantics are identical.

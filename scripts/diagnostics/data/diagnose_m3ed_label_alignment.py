@@ -169,7 +169,7 @@ def main() -> None:
     print("Diagnose M3ED label alignment")
     print("=" * 80)
 
-    config = load_yaml("configs/train_mmgcn_m3ed.yaml")
+    config = load_yaml("configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml")
     feature_pkl_path = config["dataset"]["feature_pkl_path"]
 
     print("Project root:", PROJECT_ROOT)

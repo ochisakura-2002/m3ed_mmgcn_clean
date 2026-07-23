@@ -85,7 +85,7 @@ def main() -> None:
     print("Debug simple multimodal MLP one training step")
     print("=" * 80)
 
-    config = load_yaml("configs/train_mmgcn_m3ed.yaml")
+    config = load_yaml("configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml")
 
     seed = int(config["system"]["seed"])
     set_seed(seed)

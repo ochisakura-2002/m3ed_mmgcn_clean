@@ -43,7 +43,7 @@ def main() -> None:
 
     print("Project root:", get_project_root())
 
-    config_path = "configs/train_mmgcn_m3ed.yaml"
+    config_path = "configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml"
     config = load_yaml(config_path)
 
     print("\nConfig loaded successfully.")

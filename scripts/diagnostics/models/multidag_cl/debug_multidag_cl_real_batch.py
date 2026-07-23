@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default="configs/train_mmgcn_m3ed.yaml",
+        default="configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml",
         help="Path to an existing M3ED or IEMOCAP YAML config.",
     )
     parser.add_argument(

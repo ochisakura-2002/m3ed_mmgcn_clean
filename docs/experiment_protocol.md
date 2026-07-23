@@ -203,7 +203,7 @@ find outputs/20260716/analysis -maxdepth 2 -type f
 显式指定日期的示例：
 
 ```bash
-python scripts/train_mmgcn.py --config configs/train_mmgcn_m3ed.yaml --experiment-date 20260716
+python scripts/train_mmgcn.py --config configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml --experiment-date 20260716
 MERC_EXPERIMENT_DATE=20260716 python scripts/run_experiment_pipeline.py --config configs/pipeline/mmgcn_pipeline_m3ed.yaml
 ```
 

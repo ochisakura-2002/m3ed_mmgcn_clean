@@ -20,7 +20,7 @@ run_control:
 
 train:
   enabled: true
-  train_config_path: configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses02.yaml
+  train_config_path: configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml
 
 evaluation:
   enabled: true

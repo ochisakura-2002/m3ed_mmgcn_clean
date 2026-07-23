@@ -265,20 +265,35 @@ def build_run_plan() -> list[RunSpec]:
             index += 1
 
     original: list[RunSpec] = []
+    mmgcn_original_configs = {
+        "legacy": Path(
+            "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/screening.yaml"
+        ),
+        "clean": Path(
+            "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/mmgcn_clean.yaml"
+        ),
+    }
     for track, config_dir in (
         ("legacy", "screening"),
         ("clean", "clean_screening"),
     ):
         for model in ("mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"):
+            config = (
+                mmgcn_original_configs[track]
+                if model == "mmgcn"
+                else Path(
+                    "configs/experiments/original_merc/"
+                    f"{config_dir}/{model}_{track}.yaml"
+                )
+            )
             original.append(
                 RunSpec(
                     index=index,
                     family="original",
                     label=f"original_{model}_{track}",
-                    config=Path(
-                        "configs/experiments/original_merc/"
-                        f"{config_dir}/{model}_{track}.yaml"
-                    ),
+                    config=config,
                     entrypoint=Path(
                         "scripts/workflows/paper_aligned/train.py"
                     ),

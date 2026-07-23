@@ -105,7 +105,7 @@ def main() -> None:
     print("Debug MMGCN forward")
     print("=" * 80)
 
-    config = load_yaml("configs/train_mmgcn_m3ed.yaml")
+    config = load_yaml("configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml")
 
     set_seed(int(config["system"]["seed"]))
 

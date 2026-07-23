@@ -1,0 +1,2750 @@
+{
+  "schema_version": 1,
+  "migration_batch": 2,
+  "snapshot_source": "working_tree",
+  "git_head": "3e9cafbbae409b08c4f1607dae93072648a80990",
+  "yaml_count": 17,
+  "entries": [
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/causal_benchmark/official_prefix.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml",
+      "sha256": "77abb028d8050f2df192a2fc7e14931ee1878be4fe3633876f430d092b458930",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_causal_benchmark_official_prefix"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "official_prefix",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "official_prefix"
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses01.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml",
+      "sha256": "84a431c259d74f89aae3123d0392681bbab17d9f7df28b17ab4adfb49adc7987",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_causal_benchmark_val_ses01"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses01",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses01",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout"
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses01"
+        },
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses02.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml",
+      "sha256": "02c76009c782a6c92774959c9cddbafe868ecb11d53ffbc9a0e6b6280cc977db",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_causal_benchmark_val_ses02"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses02",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses02",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout"
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses02"
+        },
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses03.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml",
+      "sha256": "33d1be485446c72d68404f66b062222cd0512957c661a448c6c42dc82ff94630",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_causal_benchmark_val_ses03"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses03",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses03",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout"
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses03"
+        },
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/causal_benchmark/val_ses04.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml",
+      "sha256": "ad93361e0e3397f1410362eaa18d12dd8a2614a62fbda3e1f376ab69e2cebafe",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_causal_benchmark_val_ses04"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses04",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses04",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout"
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses04"
+        },
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
+      "sha256": "9a3502716fe23edc01a5341537ec8274d90d2067ed27b02c6187a7c25720501c",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_clean_roberta_v1_smoke_real_2epoch"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 2,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "official_prefix",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "official_prefix"
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 2
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses01.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses01.yaml",
+      "sha256": "50d0ef3953fe65b89ed26da9b45fc93301f9a7ef38564bb4c3b4a017683bafff",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph",
+        "protocol",
+        "provenance"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_clean_roberta_v1_val_ses01"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses01",
+          "test_session_id": "Ses05",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        },
+        "protocol": {
+          "run_type": "formal",
+          "checkpoint_selection_metric": "val_weighted_f1",
+          "test_split_used_for_selection": false,
+          "future_context_allowed": false
+        },
+        "provenance": {
+          "source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml",
+          "feature_registry_key": "clean_roberta_v1",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses01",
+          "dataset.test_session_id": "Ses05",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout",
+          "protocol.test_split_used_for_selection": false
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses01"
+        },
+        "test_session_fields": {
+          "dataset.test_session_id": "Ses05"
+        },
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {
+          "provenance.source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml"
+        },
+        "config_references": [
+          "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml"
+        ],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses02.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses02.yaml",
+      "sha256": "052d6c68832254a9e251f49af94c093e771a8eb40f4ac42cf353512a04f81760",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph",
+        "protocol",
+        "provenance"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_clean_roberta_v1_val_ses02"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses02",
+          "test_session_id": "Ses05",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        },
+        "protocol": {
+          "run_type": "formal",
+          "checkpoint_selection_metric": "val_weighted_f1",
+          "test_split_used_for_selection": false,
+          "future_context_allowed": false
+        },
+        "provenance": {
+          "source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml",
+          "feature_registry_key": "clean_roberta_v1",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses02",
+          "dataset.test_session_id": "Ses05",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout",
+          "protocol.test_split_used_for_selection": false
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses02"
+        },
+        "test_session_fields": {
+          "dataset.test_session_id": "Ses05"
+        },
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {
+          "provenance.source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml"
+        },
+        "config_references": [
+          "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml"
+        ],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses03.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses03.yaml",
+      "sha256": "6d33c74111d5dbc26f8b6f17c1a777a4f761825c3dbfc8752d546624e8f53fc0",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph",
+        "protocol",
+        "provenance"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_clean_roberta_v1_val_ses03"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses03",
+          "test_session_id": "Ses05",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        },
+        "protocol": {
+          "run_type": "formal",
+          "checkpoint_selection_metric": "val_weighted_f1",
+          "test_split_used_for_selection": false,
+          "future_context_allowed": false
+        },
+        "provenance": {
+          "source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml",
+          "feature_registry_key": "clean_roberta_v1",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses03",
+          "dataset.test_session_id": "Ses05",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout",
+          "protocol.test_split_used_for_selection": false
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses03"
+        },
+        "test_session_fields": {
+          "dataset.test_session_id": "Ses05"
+        },
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {
+          "provenance.source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml"
+        },
+        "config_references": [
+          "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml"
+        ],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses04.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses04.yaml",
+      "sha256": "4b0b645f1fe4e75821686621ea2e4f8f892a1609fd2e2043609c954ac1b75969",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph",
+        "protocol",
+        "provenance"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_clean_roberta_v1_val_ses04"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses04",
+          "test_session_id": "Ses05",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        },
+        "protocol": {
+          "run_type": "formal",
+          "checkpoint_selection_metric": "val_weighted_f1",
+          "test_split_used_for_selection": false,
+          "future_context_allowed": false
+        },
+        "provenance": {
+          "source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml",
+          "feature_registry_key": "clean_roberta_v1",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "session_holdout",
+          "dataset.val_session_id": "Ses04",
+          "dataset.test_session_id": "Ses05",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "session_holdout",
+          "protocol.test_split_used_for_selection": false
+        },
+        "validation_session_fields": {
+          "dataset.val_session_id": "Ses04"
+        },
+        "test_session_fields": {
+          "dataset.test_session_id": "Ses05"
+        },
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {
+          "provenance.source_config": "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml"
+        },
+        "config_references": [
+          "configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml"
+        ],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml",
+      "new_path": "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
+      "sha256": "6b92ddc69210c730934548f191d3a093dc121a5c60b745c5ed5cc47901979b22",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_mmgcn_clean_fold",
+        "profile": "formal_clean_fold_base",
+        "model": {
+          "name": "original_repro_mmgcn",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 200,
+          "graph_layers": 4,
+          "dropout": 0.4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 1.0,
+          "num_speakers": 2,
+          "use_speaker": true,
+          "use_modal": false,
+          "use_residual": true,
+          "class_weight": [
+            11.52777618,
+            6.92492002,
+            4.38821676,
+            6.22723168,
+            7.83017908,
+            3.95776276
+          ]
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_protocol": "clean_roberta_v1",
+          "feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "usage": "fair_main_experiment",
+          "experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 20,
+          "batch_size": 16,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "Adam",
+          "learning_rate": 0.0003,
+          "weight_decay": 3e-05
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "original_repro_mmgcn"
+        },
+        "implementation": "paper_aligned",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_protocol": "clean_roberta_v1",
+          "dataset.feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "dataset.usage": "fair_main_experiment",
+          "dataset.experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "dataset.protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.outer_test_session": "Ses05",
+          "dataset.inner_val_ratio": 0.1,
+          "dataset.split_seed": 42
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "frozen_self_supervised_utterance_only",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.split_seed": 42
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {
+          "dataset.outer_test_session": "Ses05"
+        },
+        "seed_fields": {
+          "dataset.split_seed": 42,
+          "training.seed": 42,
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "training.epochs": 20
+        },
+        "batch_size_fields": {
+          "training.batch_size": 16
+        },
+        "optimizer_fields": {
+          "optimizer.name": "Adam",
+          "optimizer.learning_rate": 0.0003,
+          "optimizer.weight_decay": 3e-05
+        },
+        "learning_rate_fields": {
+          "optimizer.learning_rate": 0.0003
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [],
+        "output_roots": [],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/experiments/original_merc/clean_screening/mmgcn_clean.yaml",
+      "new_path": "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml",
+      "sha256": "cacfca0deec35961282494234633ef52bbc788ec6a5928a0e308fe82167fc0c1",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_mmgcn_clean_screening",
+        "profile": "clean_screening",
+        "model": {
+          "name": "original_repro_mmgcn",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 200,
+          "graph_layers": 4,
+          "dropout": 0.4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 1.0,
+          "num_speakers": 2,
+          "use_speaker": true,
+          "use_modal": false,
+          "use_residual": true,
+          "class_weight": [
+            11.52777618,
+            6.92492002,
+            4.38821676,
+            6.22723168,
+            7.83017908,
+            3.95776276
+          ]
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_protocol": "clean_roberta_v1",
+          "feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "usage": "fair_main_experiment",
+          "experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 20,
+          "batch_size": 16,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "Adam",
+          "learning_rate": 0.0003,
+          "weight_decay": 3e-05
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "original_repro_mmgcn"
+        },
+        "implementation": "paper_aligned",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "feature_set": "clean_roberta_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "dataset.feature_protocol": "clean_roberta_v1",
+          "dataset.feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "dataset.usage": "fair_main_experiment",
+          "dataset.experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "dataset.protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "dataset.feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "dataset.feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.outer_test_session": "Ses05",
+          "dataset.inner_val_ratio": 0.1,
+          "dataset.split_seed": 42
+        },
+        "feature_paths": [
+          1582,
+          342,
+          768,
+          "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "clean_roberta_v1",
+          "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "frozen_self_supervised_utterance_only",
+          "iemocap_clean_roberta_base_utterance_mean_v1"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.split_seed": 42
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {
+          "dataset.outer_test_session": "Ses05"
+        },
+        "seed_fields": {
+          "dataset.split_seed": 42,
+          "training.seed": 42,
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "training.epochs": 20
+        },
+        "batch_size_fields": {
+          "training.batch_size": 16
+        },
+        "optimizer_fields": {
+          "optimizer.name": "Adam",
+          "optimizer.learning_rate": 0.0003,
+          "optimizer.weight_decay": 3e-05
+        },
+        "learning_rate_fields": {
+          "optimizer.learning_rate": 0.0003
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [],
+        "output_roots": [],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/experiments/original_merc/legacy_fold_bases/mmgcn_legacy.yaml",
+      "new_path": "configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml",
+      "sha256": "633917950349e03a8b0f13a773beb52e848b99794d22a4694f631a49e4954415",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_mmgcn_legacy_fivefold",
+        "profile": "formal_legacy_fivefold_base",
+        "model": {
+          "name": "original_repro_mmgcn",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 200,
+          "graph_layers": 4,
+          "dropout": 0.4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 1.0,
+          "num_speakers": 2,
+          "use_speaker": true,
+          "use_modal": false,
+          "use_residual": true,
+          "class_weight": [
+            11.52777618,
+            6.92492002,
+            4.38821676,
+            6.22723168,
+            7.83017908,
+            3.95776276
+          ]
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "legacy_mmgcn_textcnn",
+          "feature_protocol": "legacy_mmgcn_features_v1",
+          "feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "usage": "fair_legacy_feature_comparison",
+          "experiment_track": "legacy_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 20,
+          "batch_size": 16,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "Adam",
+          "learning_rate": 0.0003,
+          "weight_decay": 3e-05
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "original_repro_mmgcn"
+        },
+        "implementation": "paper_aligned",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_set_name": "legacy_mmgcn_textcnn",
+          "dataset.feature_protocol": "legacy_mmgcn_features_v1",
+          "dataset.feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "dataset.usage": "fair_legacy_feature_comparison",
+          "dataset.experiment_track": "legacy_fivefold_fair_comparison",
+          "dataset.protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.outer_test_session": "Ses05",
+          "dataset.inner_val_ratio": 0.1,
+          "dataset.split_seed": 42
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "legacy_emotion_supervised_text_features",
+          "legacy_mmgcn_features_v1",
+          "legacy_mmgcn_textcnn",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "outer_session_stratified",
+          "dataset.split_seed": 42
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {
+          "dataset.outer_test_session": "Ses05"
+        },
+        "seed_fields": {
+          "dataset.split_seed": 42,
+          "training.seed": 42,
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "training.epochs": 20
+        },
+        "batch_size_fields": {
+          "training.batch_size": 16
+        },
+        "optimizer_fields": {
+          "optimizer.name": "Adam",
+          "optimizer.learning_rate": 0.0003,
+          "optimizer.weight_decay": 3e-05
+        },
+        "learning_rate_fields": {
+          "optimizer.learning_rate": 0.0003
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [],
+        "output_roots": [],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/experiments/original_merc/screening/mmgcn_legacy.yaml",
+      "new_path": "configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
+      "sha256": "04e845b15586f9ee4262f0f0760cb193003bd400b6b46e53cc7bbac9ffd441b6",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_mmgcn_legacy_screening",
+        "profile": "screening",
+        "model": {
+          "name": "original_repro_mmgcn",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 200,
+          "graph_layers": 4,
+          "dropout": 0.4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 1.0,
+          "num_speakers": 2,
+          "use_speaker": true,
+          "use_modal": false,
+          "use_residual": true,
+          "class_weight": [
+            11.52777618,
+            6.92492002,
+            4.38821676,
+            6.22723168,
+            7.83017908,
+            3.95776276
+          ]
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "legacy_mmgcn_textcnn",
+          "feature_protocol": "legacy_mmgcn_features_v1",
+          "feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "usage": "reproduction_diagnostic",
+          "experiment_track": "legacy_official_split_safe_selection",
+          "protocol_comparability": "paper_adjacent_not_exact",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "official_train_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 20,
+          "batch_size": 16,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "Adam",
+          "learning_rate": 0.0003,
+          "weight_decay": 3e-05
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "original_repro_mmgcn"
+        },
+        "implementation": "paper_aligned",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "screening",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_set_name": "legacy_mmgcn_textcnn",
+          "dataset.feature_protocol": "legacy_mmgcn_features_v1",
+          "dataset.feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "dataset.usage": "reproduction_diagnostic",
+          "dataset.experiment_track": "legacy_official_split_safe_selection",
+          "dataset.protocol_comparability": "paper_adjacent_not_exact",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.val_split_strategy": "official_train_stratified",
+          "dataset.outer_test_session": "Ses05",
+          "dataset.inner_val_ratio": 0.1,
+          "dataset.split_seed": 42
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "legacy_emotion_supervised_text_features",
+          "legacy_mmgcn_features_v1",
+          "legacy_mmgcn_textcnn",
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "official_train_stratified",
+          "dataset.split_seed": 42
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {
+          "dataset.outer_test_session": "Ses05"
+        },
+        "seed_fields": {
+          "dataset.split_seed": 42,
+          "training.seed": 42,
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "training.epochs": 20
+        },
+        "batch_size_fields": {
+          "training.batch_size": 16
+        },
+        "optimizer_fields": {
+          "optimizer.name": "Adam",
+          "optimizer.learning_rate": 0.0003,
+          "optimizer.weight_decay": 3e-05
+        },
+        "learning_rate_fields": {
+          "optimizer.learning_rate": 0.0003
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [],
+        "output_roots": [],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/train_mmgcn_iemocap_official.yaml",
+      "new_path": "configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml",
+      "sha256": "f0ac6e231a554b1d48360474c21ffe5dbd6fe4f81eee0edacd099d95082df9d1",
+      "top_level_keys": [
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_iemocap_official_full_GCN4_noresidual"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": 0.0001,
+          "weight_decay": 0.0001,
+          "max_epochs": 30,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_weighted_f1"
+        },
+        "graph": {
+          "context_mode": "full",
+          "window_past": null,
+          "window_future": null,
+          "num_layers": 4,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": false
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "feature_set": "legacy_mmgcn_features",
+        "purpose": "formal",
+        "dataset_fields": {
+          "dataset.name": "IEMOCAP",
+          "dataset.feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "dataset.num_classes": 6,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Sad",
+          "dataset.label_list[2]": "Neutral",
+          "dataset.label_list[3]": "Angry",
+          "dataset.label_list[4]": "Excited",
+          "dataset.label_list[5]": "Frustrated",
+          "dataset.valid_ratio": 0.1,
+          "dataset.val_split_strategy": "official_prefix",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          100,
+          1582,
+          342,
+          "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+        ],
+        "split_fields": {
+          "dataset.val_split_strategy": "official_prefix"
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 30
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": 0.0001
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_weighted_f1"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/train_mmgcn_m3ed.yaml",
+      "new_path": "configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml",
+      "sha256": "1235dbbbfa5558a0e138a4dd9f30ae50a33812280182e8407bf7a624a257de27",
+      "top_level_keys": [
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "notes",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_m3ed_baseline_paper"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "M3ED",
+          "raw_dir": "data/raw/M3ED",
+          "processed_dir": "data/processed",
+          "metadata_dir": "data/metadata",
+          "metadata_path": "data/metadata/m3ed_metadata.csv",
+          "label_mapping_path": "data/metadata/m3ed_label_mapping.csv",
+          "feature_pkl_path": "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "feature_split_order": "m3ed_official_val_test_swapped",
+          "num_classes": 7,
+          "label_list": [
+            "Happy",
+            "Neutral",
+            "Sad",
+            "Disgust",
+            "Anger",
+            "Fear",
+            "Surprise"
+          ],
+          "split_strategy": "movie_level",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1024,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": "1e-4",
+          "weight_decay": "1e-4",
+          "max_epochs": 10,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_uar"
+        },
+        "notes": {
+          "stage": "skeleton_only",
+          "description": "This is a placeholder config for the M3ED + MMGCN baseline. Do not assume class number, feature dimensions, or split strategy before inspecting the official dataset and baseline code.\n"
+        },
+        "graph": {
+          "context_mode": "full",
+          "window_past": null,
+          "window_future": null,
+          "num_layers": 2,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": true
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "m3ed",
+        "context_mode": "full_context",
+        "feature_set": "m3ed_features",
+        "purpose": "development",
+        "dataset_fields": {
+          "dataset.name": "M3ED",
+          "dataset.raw_dir": "data/raw/M3ED",
+          "dataset.processed_dir": "data/processed",
+          "dataset.metadata_dir": "data/metadata",
+          "dataset.metadata_path": "data/metadata/m3ed_metadata.csv",
+          "dataset.label_mapping_path": "data/metadata/m3ed_label_mapping.csv",
+          "dataset.feature_pkl_path": "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "dataset.feature_split_order": "m3ed_official_val_test_swapped",
+          "dataset.num_classes": 7,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Neutral",
+          "dataset.label_list[2]": "Sad",
+          "dataset.label_list[3]": "Disgust",
+          "dataset.label_list[4]": "Anger",
+          "dataset.label_list[5]": "Fear",
+          "dataset.label_list[6]": "Surprise",
+          "dataset.split_strategy": "movie_level",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1024,
+          342,
+          768,
+          "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "m3ed_official_val_test_swapped"
+        ],
+        "split_fields": {
+          "dataset.feature_split_order": "m3ed_official_val_test_swapped",
+          "dataset.split_strategy": "movie_level"
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 10
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": "1e-4"
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_uar"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree",
+      "old_path": "configs/train_mmgcn_m3ed_causal.yaml",
+      "new_path": "configs/mmgcn/unified/m3ed/causal_context/m3ed_features/skeleton.yaml",
+      "sha256": "17f6d217e64f58cee1c56d2f2d70cddc21158b12e35af57285e79ec26cb1ddbb",
+      "top_level_keys": [
+        "project",
+        "system",
+        "dataset",
+        "model",
+        "train",
+        "logging",
+        "notes",
+        "graph"
+      ],
+      "parsed_yaml": {
+        "project": {
+          "name": "m3ed_mmgcn_clean",
+          "experiment_name": "mmgcn_m3ed_causal_paper"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda",
+          "output_dir": "outputs"
+        },
+        "dataset": {
+          "name": "M3ED",
+          "raw_dir": "data/raw/M3ED",
+          "processed_dir": "data/processed",
+          "metadata_dir": "data/metadata",
+          "metadata_path": "data/metadata/m3ed_metadata.csv",
+          "label_mapping_path": "data/metadata/m3ed_label_mapping.csv",
+          "feature_pkl_path": "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "feature_split_order": "m3ed_official_val_test_swapped",
+          "num_classes": 7,
+          "label_list": [
+            "Happy",
+            "Neutral",
+            "Sad",
+            "Disgust",
+            "Anger",
+            "Fear",
+            "Surprise"
+          ],
+          "split_strategy": "movie_level",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "MMGCN",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1024,
+          "visual_feature_dim": 342,
+          "hidden_dim": 256,
+          "dropout": 0.5
+        },
+        "train": {
+          "batch_size": 8,
+          "learning_rate": "1e-4",
+          "weight_decay": "1e-4",
+          "max_epochs": 10,
+          "num_workers": 0
+        },
+        "logging": {
+          "save_best": true,
+          "save_last": true,
+          "monitor_metric": "val_uar"
+        },
+        "notes": {
+          "stage": "skeleton_only",
+          "description": "This is a placeholder config for the M3ED + MMGCN baseline. Do not assume class number, feature dimensions, or split strategy before inspecting the official dataset and baseline code.\n"
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": null,
+          "window_future": 0,
+          "num_layers": 2,
+          "lamda": 0.5,
+          "alpha": 0.1,
+          "gamma": 0.7,
+          "use_speaker": true,
+          "use_modal": true,
+          "use_residual": true
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/models/mmgcn/unified/train.py",
+        "entrypoint_exists": "YES",
+        "model_classification": "mmgcn",
+        "model_key_fields": {
+          "model.name": "MMGCN"
+        },
+        "implementation": "unified",
+        "dataset_classification": "m3ed",
+        "context_mode": "causal_context",
+        "feature_set": "m3ed_features",
+        "purpose": "development",
+        "dataset_fields": {
+          "dataset.name": "M3ED",
+          "dataset.raw_dir": "data/raw/M3ED",
+          "dataset.processed_dir": "data/processed",
+          "dataset.metadata_dir": "data/metadata",
+          "dataset.metadata_path": "data/metadata/m3ed_metadata.csv",
+          "dataset.label_mapping_path": "data/metadata/m3ed_label_mapping.csv",
+          "dataset.feature_pkl_path": "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "dataset.feature_split_order": "m3ed_official_val_test_swapped",
+          "dataset.num_classes": 7,
+          "dataset.label_list[0]": "Happy",
+          "dataset.label_list[1]": "Neutral",
+          "dataset.label_list[2]": "Sad",
+          "dataset.label_list[3]": "Disgust",
+          "dataset.label_list[4]": "Anger",
+          "dataset.label_list[5]": "Fear",
+          "dataset.label_list[6]": "Surprise",
+          "dataset.split_strategy": "movie_level",
+          "dataset.sample_unit": "dialogue"
+        },
+        "feature_paths": [
+          1024,
+          342,
+          768,
+          "data/processed/M3ED/features/Asent_wav2vec_zh2chmed2e5last-Vsent_avg_affectdenseface-Lsent_cls_robert_wwm_base_chinese4chmed.pkl",
+          "m3ed_official_val_test_swapped"
+        ],
+        "split_fields": {
+          "dataset.feature_split_order": "m3ed_official_val_test_swapped",
+          "dataset.split_strategy": "movie_level"
+        },
+        "validation_session_fields": {},
+        "test_session_fields": {},
+        "seed_fields": {
+          "system.seed": 42
+        },
+        "epoch_fields": {
+          "train.max_epochs": 10
+        },
+        "batch_size_fields": {
+          "train.batch_size": 8
+        },
+        "optimizer_fields": {},
+        "learning_rate_fields": {
+          "train.learning_rate": "1e-4"
+        },
+        "loss_fields": {},
+        "modality_fields": {},
+        "checkpoint_paths": [
+          "val_uar"
+        ],
+        "output_roots": [
+          "outputs"
+        ],
+        "source_config_fields": {},
+        "config_references": [],
+        "other_config_references": [],
+        "script_references": []
+      }
+    }
+  ],
+  "byte_representation": "git_canonical_text"
+}

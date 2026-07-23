@@ -142,10 +142,10 @@ def check_config() -> None:
     print("Config path:", config_path)
 
     if not config_path.exists():
-        print("[MISS] configs/train_mmgcn_m3ed.yaml")
+        print("[MISS] configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml")
         return
 
-    print("[OK] configs/train_mmgcn_m3ed.yaml exists")
+    print("[OK] configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml exists")
 
     try:
         import yaml

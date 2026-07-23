@@ -6,7 +6,7 @@ model:
   name: MMGCN
 train:
   enabled: true
-  train_config_path: configs/train_mmgcn_iemocap_official.yaml
+  train_config_path: configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml
 evaluation:
   enabled: true
   splits:

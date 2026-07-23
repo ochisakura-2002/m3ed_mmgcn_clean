@@ -29,22 +29,22 @@ stages:
     - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml}
     - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml}
   legacy_paper_adjacent_screening:
-    - {config: configs/experiments/original_merc/screening/mmgcn_legacy.yaml}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml}
     - {config: configs/experiments/original_merc/screening/multidag_cl_legacy.yaml}
     - {config: configs/experiments/original_merc/screening/gsmcc_legacy.yaml}
     - {config: configs/experiments/original_merc/screening/dialoguegcn_legacy.yaml}
   clean_screening:
-    - {config: configs/experiments/original_merc/clean_screening/mmgcn_clean.yaml}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml}
     - {config: configs/experiments/original_merc/clean_screening/multidag_cl_clean.yaml}
     - {config: configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml}
     - {config: configs/experiments/original_merc/clean_screening/dialoguegcn_clean.yaml}
   legacy_folds:
-    - {config: configs/experiments/original_merc/legacy_fold_bases/mmgcn_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/legacy_fold_bases/multidag_cl_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/legacy_fold_bases/gsmcc_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/legacy_fold_bases/dialoguegcn_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
   clean_folds:
-    - {config: configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/clean_fold_bases/multidag_cl_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
@@ -64,7 +64,7 @@ top2_policy:
   status: pending_screening_results
 top2_selection_file: null
 clean_fold_candidates:
-  - configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml
+  - configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml
   - configs/experiments/original_merc/clean_fold_bases/multidag_cl_clean.yaml
   - configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml
   - configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml

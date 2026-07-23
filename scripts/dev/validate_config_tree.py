@@ -20,7 +20,15 @@ STABILIZE_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap"
 LOSS_STABILITY_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "loss_stability"
 
 CAUSAL_BENCHMARK_TRAIN_DIRS = {
-    "mmgcn": ROOT / "configs" / "baselines" / "mmgcn" / "iemocap" / "causal_benchmark",
+    "mmgcn": (
+        ROOT
+        / "configs"
+        / "mmgcn"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "legacy_mmgcn_features"
+    ),
     "multidag_cl": ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "causal_benchmark",
     "gsmcc": ROOT / "configs" / "baselines" / "gsmcc" / "iemocap" / "causal_benchmark",
     "dialoguegcn": ROOT / "configs" / "baselines" / "dialoguegcn" / "iemocap" / "causal_benchmark",
@@ -32,8 +40,24 @@ CAUSAL_BENCHMARK_PIPELINE_DIRS = {
     "dialoguegcn": ROOT / "configs" / "pipeline" / "dialoguegcn" / "iemocap" / "causal_benchmark",
 }
 CLEAN_ROBERTA_V1_TRAIN_DIRS = {
-    family: ROOT / "configs" / "baselines" / family / "iemocap" / "clean_roberta_v1"
-    for family in ("mmgcn", "multidag_cl", "gsmcc", "dialoguegcn")
+    "mmgcn": (
+        ROOT
+        / "configs"
+        / "mmgcn"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "clean_roberta_features"
+    ),
+    **{
+        family: ROOT
+        / "configs"
+        / "baselines"
+        / family
+        / "iemocap"
+        / "clean_roberta_v1"
+        for family in ("multidag_cl", "gsmcc", "dialoguegcn")
+    },
 }
 CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
 CLEAN_ROBERTA_V1_PIPELINE_DIRS = {
@@ -59,6 +83,28 @@ IEMOCAP_FEATURE_REGISTRY = (
 )
 ORIGINAL_REPRO_LEGACY_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
 ORIGINAL_MERC_EXPERIMENT_DIR = ROOT / "configs" / "experiments" / "original_merc"
+ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS = {
+    "screening": (
+        ROOT
+        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/screening.yaml"
+    ),
+    "clean_screening": (
+        ROOT
+        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/mmgcn_clean.yaml"
+    ),
+    "legacy_fold_bases": (
+        ROOT
+        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/fivefold_base.yaml"
+    ),
+    "clean_fold_bases": (
+        ROOT
+        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/fivefold_base.yaml"
+    ),
+}
 ORIGINAL_REPRO_MODELS = {
     "mmgcn": "original_repro_mmgcn",
     "multidag_cl": "original_repro_multidag_cl",
@@ -150,6 +196,20 @@ CAUSAL_BENCHMARK_VARIANTS = {
     "val_ses03.yaml": ("session_holdout", "Ses03"),
     "val_ses04.yaml": ("session_holdout", "Ses04"),
 }
+
+
+def causal_training_name(family: str, pipeline_name: str) -> str:
+    if family == "mmgcn" and pipeline_name == "official_prefix.yaml":
+        return "val_official_prefix.yaml"
+    return pipeline_name
+
+
+def causal_pipeline_name(family: str, training_name: str) -> str:
+    if family == "mmgcn" and training_name == "val_official_prefix.yaml":
+        return "official_prefix.yaml"
+    return training_name
+
+
 CLEAN_ROBERTA_V1_FORMAL_VARIANTS = {
     name: split
     for name, split in CAUSAL_BENCHMARK_VARIANTS.items()
@@ -531,7 +591,9 @@ def validate_causal_benchmark_training(
     config = load_yaml(path)
     validate_causal_benchmark_common(path, config, errors)
 
-    expected_split = CAUSAL_BENCHMARK_VARIANTS.get(path.name)
+    expected_split = CAUSAL_BENCHMARK_VARIANTS.get(
+        causal_pipeline_name(family, path.name)
+    )
     if expected_split is None:
         errors.append(f"unexpected causal benchmark training YAML {rel(path)}")
         return
@@ -685,7 +747,10 @@ def validate_causal_benchmark_pipeline(
     config = load_yaml(path)
     validate_causal_benchmark_common(path, config, errors)
 
-    expected_train_path = CAUSAL_BENCHMARK_TRAIN_DIRS[family] / path.name
+    expected_train_path = (
+        CAUSAL_BENCHMARK_TRAIN_DIRS[family]
+        / causal_training_name(family, path.name)
+    )
     train_path_text = str(config.get("train", {}).get("train_config_path", ""))
     train_path = ROOT / train_path_text
     expected_model_names = {
@@ -725,24 +790,32 @@ def validate_causal_benchmark_pipeline(
 
 
 def validate_causal_benchmark_tree(errors: list[str]) -> None:
-    expected_names = set(CAUSAL_BENCHMARK_VARIANTS)
+    pipeline_names_expected = set(CAUSAL_BENCHMARK_VARIANTS)
     for family, train_dir in CAUSAL_BENCHMARK_TRAIN_DIRS.items():
         pipeline_dir = CAUSAL_BENCHMARK_PIPELINE_DIRS[family]
+        train_names_expected = {
+            causal_training_name(family, name)
+            for name in pipeline_names_expected
+        }
         train_names = {path.name for path in train_dir.glob("*.yaml")}
         pipeline_names = {path.name for path in pipeline_dir.glob("*.yaml")}
         require(
-            train_names == expected_names,
-            f"{rel(train_dir)} must contain exactly {sorted(expected_names)}; got {sorted(train_names)}",
+            train_names == train_names_expected,
+            f"{rel(train_dir)} must contain exactly "
+            f"{sorted(train_names_expected)}; got {sorted(train_names)}",
             errors,
         )
         require(
-            pipeline_names == expected_names,
-            f"{rel(pipeline_dir)} must contain exactly {sorted(expected_names)}; got {sorted(pipeline_names)}",
+            pipeline_names == pipeline_names_expected,
+            f"{rel(pipeline_dir)} must contain exactly "
+            f"{sorted(pipeline_names_expected)}; got {sorted(pipeline_names)}",
             errors,
         )
-        for name in sorted(expected_names):
-            train_path = train_dir / name
-            pipeline_path = pipeline_dir / name
+        for pipeline_name in sorted(pipeline_names_expected):
+            train_path = train_dir / causal_training_name(
+                family, pipeline_name
+            )
+            pipeline_path = pipeline_dir / pipeline_name
             if train_path.exists():
                 validate_causal_benchmark_training(train_path, family, errors)
             if pipeline_path.exists():
@@ -1368,17 +1441,30 @@ def validate_original_merc_tree(errors: list[str]) -> None:
     clean_screening_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_screening"
     legacy_fold_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "legacy_fold_bases"
     clean_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_fold_bases"
-    expected_screening = {f"{family}_legacy.yaml" for family in ORIGINAL_REPRO_MODELS}
-    expected_clean = {f"{family}_clean.yaml" for family in ORIGINAL_REPRO_MODELS}
+    legacy_families = set(ORIGINAL_REPRO_MODELS) - {"mmgcn"}
+    expected_screening = {
+        f"{family}_legacy.yaml" for family in legacy_families
+    }
+    expected_clean = {f"{family}_clean.yaml" for family in legacy_families}
     require({path.name for path in screening_dir.glob("*.yaml")} == expected_screening, "original screening matrix mismatch", errors)
     require({path.name for path in clean_screening_dir.glob("*.yaml")} == expected_clean, "original clean screening matrix mismatch", errors)
     require({path.name for path in legacy_fold_dir.glob("*.yaml")} == expected_screening, "original legacy fold-base matrix mismatch", errors)
     require({path.name for path in clean_dir.glob("*.yaml")} == expected_clean, "original clean fold-base matrix mismatch", errors)
     for family in ORIGINAL_REPRO_MODELS:
-        screening = screening_dir / f"{family}_legacy.yaml"
-        clean_screening = clean_screening_dir / f"{family}_clean.yaml"
-        legacy_fold = legacy_fold_dir / f"{family}_legacy.yaml"
-        clean = clean_dir / f"{family}_clean.yaml"
+        if family == "mmgcn":
+            screening = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS["screening"]
+            clean_screening = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS[
+                "clean_screening"
+            ]
+            legacy_fold = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS[
+                "legacy_fold_bases"
+            ]
+            clean = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS["clean_fold_bases"]
+        else:
+            screening = screening_dir / f"{family}_legacy.yaml"
+            clean_screening = clean_screening_dir / f"{family}_clean.yaml"
+            legacy_fold = legacy_fold_dir / f"{family}_legacy.yaml"
+            clean = clean_dir / f"{family}_clean.yaml"
         if screening.exists():
             validate_original_merc_config(screening, family, "legacy", "legacy_official_split_safe_selection", True, errors)
         if clean_screening.exists():

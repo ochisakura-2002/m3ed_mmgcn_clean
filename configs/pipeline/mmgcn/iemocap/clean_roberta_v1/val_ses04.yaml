@@ -35,7 +35,7 @@ run_control:
 
 train:
   enabled: true
-  train_config_path: configs/baselines/mmgcn/iemocap/clean_roberta_v1/val_ses04.yaml
+  train_config_path: configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses04.yaml
 
 evaluation:
   enabled: true

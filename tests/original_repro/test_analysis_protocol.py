@@ -642,7 +642,7 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
         runs_root,
         run_name="causal_history",
         protocol_version="causal_baseline_v1",
-        config_source="configs/train_mmgcn_m3ed_causal.yaml",
+        config_source="configs/mmgcn/unified/m3ed/causal_context/m3ed_features/skeleton.yaml",
         nan_probability=True,
     )
     _write_numeric_audit_run(

@@ -55,7 +55,7 @@ notes:
     - text
     - audio
     - visual
-    base_config: configs/train_mmgcn_m3ed.yaml
+    base_config: configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml
     description: Training-time modality ablation config.
 graph:
   context_mode: full

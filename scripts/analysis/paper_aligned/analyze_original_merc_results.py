@@ -603,7 +603,7 @@ def write_top2_selection(
     )
 
     config_by_model = {
-        "original_repro_mmgcn": "configs/experiments/original_merc/clean_fold_bases/mmgcn_clean.yaml",
+        "original_repro_mmgcn": "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
         "original_repro_multidag_cl": "configs/experiments/original_merc/clean_fold_bases/multidag_cl_clean.yaml",
         "project_paper_oriented_gsmcc": "configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml",
         "original_repro_dialoguegcn": "configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml",

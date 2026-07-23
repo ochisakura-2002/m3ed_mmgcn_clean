@@ -62,7 +62,7 @@ CLEAN_FEATURE_PATH = (
 CLEAN_FEATURE_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
 CLEAN_CONFIGS = (
     ROOT / "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
-    ROOT / "configs/baselines/multidag_cl/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+    ROOT / "configs/multidag_cl/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
     ROOT / "configs/baselines/gsmcc/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
     ROOT / "configs/baselines/dialoguegcn/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
 )
@@ -77,8 +77,8 @@ CLEAN_FORMAL_TRAIN_CONFIGS = tuple(
         f"configs/mmgcn/unified/iemocap/causal_context/"
         f"clean_roberta_features/val_ses0{session}.yaml"
         if family == "mmgcn"
-        else f"configs/baselines/{family}/iemocap/"
-        f"clean_roberta_v1/val_ses0{session}.yaml"
+        else f"configs/multidag_cl/unified/iemocap/causal_context/"
+        f"clean_roberta_features/val_ses0{session}.yaml"
     )
     for family in ("mmgcn", "multidag_cl")
     for session in range(1, 5)

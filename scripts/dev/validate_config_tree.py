@@ -29,7 +29,15 @@ CAUSAL_BENCHMARK_TRAIN_DIRS = {
         / "causal_context"
         / "legacy_mmgcn_features"
     ),
-    "multidag_cl": ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "causal_benchmark",
+    "multidag_cl": (
+        ROOT
+        / "configs"
+        / "multidag_cl"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "legacy_mmgcn_features"
+    ),
     "gsmcc": ROOT / "configs" / "baselines" / "gsmcc" / "iemocap" / "causal_benchmark",
     "dialoguegcn": ROOT / "configs" / "baselines" / "dialoguegcn" / "iemocap" / "causal_benchmark",
 }
@@ -49,6 +57,15 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
         / "causal_context"
         / "clean_roberta_features"
     ),
+    "multidag_cl": (
+        ROOT
+        / "configs"
+        / "multidag_cl"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "clean_roberta_features"
+    ),
     **{
         family: ROOT
         / "configs"
@@ -56,7 +73,7 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
         / family
         / "iemocap"
         / "clean_roberta_v1"
-        for family in ("multidag_cl", "gsmcc", "dialoguegcn")
+        for family in ("gsmcc", "dialoguegcn")
     },
 }
 CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
@@ -83,27 +100,51 @@ IEMOCAP_FEATURE_REGISTRY = (
 )
 ORIGINAL_REPRO_LEGACY_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
 ORIGINAL_MERC_EXPERIMENT_DIR = ROOT / "configs" / "experiments" / "original_merc"
-ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS = {
-    "screening": (
-        ROOT
-        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
-        "legacy_mmgcn_features/screening.yaml"
-    ),
-    "clean_screening": (
-        ROOT
-        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
-        "clean_roberta_features/mmgcn_clean.yaml"
-    ),
-    "legacy_fold_bases": (
-        ROOT
-        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
-        "legacy_mmgcn_features/fivefold_base.yaml"
-    ),
-    "clean_fold_bases": (
-        ROOT
-        / "configs/mmgcn/paper_aligned/iemocap/full_context/"
-        "clean_roberta_features/fivefold_base.yaml"
-    ),
+ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS = {
+    "mmgcn": {
+        "screening": (
+            ROOT
+            / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/screening.yaml"
+        ),
+        "clean_screening": (
+            ROOT
+            / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/mmgcn_clean.yaml"
+        ),
+        "legacy_fold_bases": (
+            ROOT
+            / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/fivefold_base.yaml"
+        ),
+        "clean_fold_bases": (
+            ROOT
+            / "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/fivefold_base.yaml"
+        ),
+    },
+    "multidag_cl": {
+        "screening": (
+            ROOT
+            / "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/screening.yaml"
+        ),
+        "clean_screening": (
+            ROOT
+            / "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/multidag_cl_clean.yaml"
+        ),
+        "legacy_fold_bases": (
+            ROOT
+            / "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/fivefold_base.yaml"
+        ),
+        "clean_fold_bases": (
+            ROOT
+            / "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/fivefold_base.yaml"
+        ),
+    },
 }
 ORIGINAL_REPRO_MODELS = {
     "mmgcn": "original_repro_mmgcn",
@@ -196,16 +237,29 @@ CAUSAL_BENCHMARK_VARIANTS = {
     "val_ses03.yaml": ("session_holdout", "Ses03"),
     "val_ses04.yaml": ("session_holdout", "Ses04"),
 }
+CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
+    "multidag_cl": {
+        "context_past_all_causal_tav_smoke.yaml",
+        "context_w5_tav_quick.yaml",
+        "context_w5_tav_smoke.yaml",
+    },
+}
 
 
 def causal_training_name(family: str, pipeline_name: str) -> str:
-    if family == "mmgcn" and pipeline_name == "official_prefix.yaml":
+    if (
+        family in {"mmgcn", "multidag_cl"}
+        and pipeline_name == "official_prefix.yaml"
+    ):
         return "val_official_prefix.yaml"
     return pipeline_name
 
 
 def causal_pipeline_name(family: str, training_name: str) -> str:
-    if family == "mmgcn" and training_name == "val_official_prefix.yaml":
+    if (
+        family in {"mmgcn", "multidag_cl"}
+        and training_name == "val_official_prefix.yaml"
+    ):
         return "official_prefix.yaml"
     return training_name
 
@@ -797,6 +851,9 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
             causal_training_name(family, name)
             for name in pipeline_names_expected
         }
+        train_names_expected.update(
+            CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS.get(family, set())
+        )
         train_names = {path.name for path in train_dir.glob("*.yaml")}
         pipeline_names = {path.name for path in pipeline_dir.glob("*.yaml")}
         require(
@@ -1441,7 +1498,8 @@ def validate_original_merc_tree(errors: list[str]) -> None:
     clean_screening_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_screening"
     legacy_fold_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "legacy_fold_bases"
     clean_dir = ORIGINAL_MERC_EXPERIMENT_DIR / "clean_fold_bases"
-    legacy_families = set(ORIGINAL_REPRO_MODELS) - {"mmgcn"}
+    canonical_families = set(ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS)
+    legacy_families = set(ORIGINAL_REPRO_MODELS) - canonical_families
     expected_screening = {
         f"{family}_legacy.yaml" for family in legacy_families
     }
@@ -1451,15 +1509,16 @@ def validate_original_merc_tree(errors: list[str]) -> None:
     require({path.name for path in legacy_fold_dir.glob("*.yaml")} == expected_screening, "original legacy fold-base matrix mismatch", errors)
     require({path.name for path in clean_dir.glob("*.yaml")} == expected_clean, "original clean fold-base matrix mismatch", errors)
     for family in ORIGINAL_REPRO_MODELS:
-        if family == "mmgcn":
-            screening = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS["screening"]
-            clean_screening = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS[
+        if family in ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS:
+            canonical = ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS[family]
+            screening = canonical["screening"]
+            clean_screening = canonical[
                 "clean_screening"
             ]
-            legacy_fold = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS[
+            legacy_fold = canonical[
                 "legacy_fold_bases"
             ]
-            clean = ORIGINAL_MERC_MMGCN_FORMAL_CONFIGS["clean_fold_bases"]
+            clean = canonical["clean_fold_bases"]
         else:
             screening = screening_dir / f"{family}_legacy.yaml"
             clean_screening = clean_screening_dir / f"{family}_clean.yaml"

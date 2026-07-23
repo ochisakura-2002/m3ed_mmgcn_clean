@@ -112,11 +112,11 @@ def test_plan_has_causal_first_original_second_in_exact_order() -> None:
         "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses03.yaml",
         "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses04.yaml",
         "configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
-        "configs/experiments/original_merc/screening/multidag_cl_legacy.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/experiments/original_merc/screening/dialoguegcn_legacy.yaml",
         "configs/experiments/original_merc/screening/gsmcc_legacy.yaml",
         "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml",
-        "configs/experiments/original_merc/clean_screening/multidag_cl_clean.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/multidag_cl_clean.yaml",
         "configs/experiments/original_merc/clean_screening/dialoguegcn_clean.yaml",
         "configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml",
     ]

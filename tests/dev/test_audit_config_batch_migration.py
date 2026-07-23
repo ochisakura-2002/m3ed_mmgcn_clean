@@ -7,9 +7,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.dev.audit_config_batch_migration import (
+    BATCH3_MOVE_COLUMNS,
+    BATCH3_REFERENCE_COLUMNS,
+    BATCH3_SEMANTIC_DIFF_COLUMNS,
     MOVE_COLUMNS,
     REFERENCE_COLUMNS,
     SEMANTIC_DIFF_COLUMNS,
@@ -199,32 +203,52 @@ def _semantic_row(plan_row: dict[str, str]) -> dict[str, str]:
 
 def _persist(fixture: Fixture) -> None:
     _write_csv(fixture.plan_path, MAPPING_COLUMNS, fixture.plan_rows)
-    _write_csv(fixture.moves_path, MOVE_COLUMNS, fixture.move_rows)
+    move_columns = (
+        BATCH3_MOVE_COLUMNS if fixture.batch == 3 else MOVE_COLUMNS
+    )
+    reference_columns = (
+        BATCH3_REFERENCE_COLUMNS if fixture.batch == 3 else REFERENCE_COLUMNS
+    )
+    semantic_columns = (
+        BATCH3_SEMANTIC_DIFF_COLUMNS
+        if fixture.batch == 3
+        else SEMANTIC_DIFF_COLUMNS
+    )
+    _write_csv(fixture.moves_path, move_columns, fixture.move_rows)
     if fixture.batch == 2:
         for entry in fixture.before_entries:
             entry["snapshot_source"] = "git_head"
+        for entry in fixture.after_entries:
+            entry["snapshot_source"] = "working_tree"
+    elif fixture.batch == 3:
+        for entry in fixture.before_entries:
+            entry["snapshot_source"] = "working_tree_pre_move"
         for entry in fixture.after_entries:
             entry["snapshot_source"] = "working_tree"
     _write_json(
         fixture.before_path,
         fixture.before_entries,
         batch=fixture.batch,
-        snapshot_source="git_head" if fixture.batch == 2 else None,
+        snapshot_source=(
+            "git_head"
+            if fixture.batch == 2
+            else "working_tree_pre_move"
+            if fixture.batch == 3
+            else None
+        ),
         git_head=fixture.git_head_commit,
     )
     _write_json(
         fixture.after_path,
         fixture.after_entries,
         batch=fixture.batch,
-        snapshot_source="working_tree" if fixture.batch == 2 else None,
+        snapshot_source=(
+            "working_tree" if fixture.batch in {2, 3} else None
+        ),
         git_head=fixture.git_head_commit,
     )
-    _write_csv(
-        fixture.semantic_path, SEMANTIC_DIFF_COLUMNS, fixture.semantic_rows
-    )
-    _write_csv(
-        fixture.reference_path, REFERENCE_COLUMNS, fixture.reference_rows
-    )
+    _write_csv(fixture.semantic_path, semantic_columns, fixture.semantic_rows)
+    _write_csv(fixture.reference_path, reference_columns, fixture.reference_rows)
 
 
 def _make_fixture(tmp_path: Path) -> Fixture:
@@ -418,6 +442,200 @@ def _make_batch2_fixture(tmp_path: Path) -> Fixture:
     return fixture
 
 
+def _make_batch3_fixture(tmp_path: Path) -> Fixture:
+    batch_plans: list[dict[str, str]] = []
+    for index in range(17):
+        implementation = "unified" if index < 13 else "paper_aligned"
+        context_mode = (
+            "causal_context"
+            if implementation == "unified"
+            else "full_context"
+        )
+        plan_row = _plan_row(
+            f"configs/batch3/old_{index:02d}.yaml",
+            f"configs/multidag_cl/{implementation}/iemocap/"
+            f"{context_mode}/legacy_mmgcn_features/new_{index:02d}.yaml",
+            batch="Batch 3",
+        )
+        plan_row.update(
+            {
+                "model": "multidag_cl",
+                "implementation": implementation,
+                "dataset": "iemocap",
+                "context_mode": context_mode,
+                "feature_set": "legacy_mmgcn_features",
+                "purpose": "formal",
+            }
+        )
+        batch_plans.append(plan_row)
+
+    earlier_batch1 = _plan_row(
+        "configs/batch1/old.yaml",
+        "configs/mmgcn/unified/synthetic/causal_context/synthetic/batch1.yaml",
+        batch="Batch 1",
+    )
+    earlier_batch2 = _plan_row(
+        "configs/batch2/old.yaml",
+        "configs/mmgcn/unified/synthetic/causal_context/synthetic/batch2.yaml",
+        batch="Batch 2",
+    )
+    later_batch4 = _plan_row(
+        "configs/batch4/old.yaml",
+        "configs/dialoguegcn/unified/iemocap/causal_context/"
+        "legacy_mmgcn_features/batch4.yaml",
+        batch="Batch 4",
+    )
+    manual_batch7 = _plan_row(
+        "configs/batch7/manual.yaml",
+        "configs/benchmarks/ablations/missing_modality/manual.yaml",
+        batch="Batch 7",
+        manual_review="YES",
+        collision_status="MANUAL_REVIEW",
+    )
+
+    before_payloads: list[dict[str, object]] = []
+    after_payloads: list[dict[str, object]] = []
+    for index, plan_row in enumerate(batch_plans):
+        unified = plan_row["implementation"] == "unified"
+        payload: dict[str, object] = {
+            "seed": index,
+            "model": {
+                "name": (
+                    "MultiDAGCL"
+                    if unified
+                    else "original_repro_multidag_cl"
+                ),
+                "curriculum": {"enabled": True, "warmup_epochs": 2},
+                "context": {
+                    "window_past": 5,
+                    "window_future": 0 if unified else 5,
+                    "causal": unified,
+                },
+                "graph": {"layers": 2, "speaker_edges": True},
+            },
+            "training": {"epochs": 3, "batch_size": 2},
+        }
+        if index < 4:
+            payload["provenance"] = {
+                "source_config": batch_plans[index + 4]["old_path"]
+            }
+        before_payloads.append(payload)
+        after_payload = copy.deepcopy(payload)
+        if index < 4:
+            provenance = after_payload["provenance"]
+            assert isinstance(provenance, dict)
+            provenance["source_config"] = batch_plans[index + 4][
+                "candidate_new_path"
+            ]
+        after_payloads.append(after_payload)
+
+    before_raw = [_yaml_bytes(payload) for payload in before_payloads]
+    after_raw = [_yaml_bytes(payload) for payload in after_payloads]
+    for plan_row, raw in zip(batch_plans, after_raw):
+        target = tmp_path / plan_row["candidate_new_path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+    for plan_row in (
+        earlier_batch1,
+        earlier_batch2,
+        later_batch4,
+        manual_batch7,
+    ):
+        target_path = (
+            plan_row["candidate_new_path"]
+            if plan_row["migration_batch"] in {"Batch 1", "Batch 2"}
+            else plan_row["old_path"]
+        )
+        target = tmp_path / target_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(_yaml_bytes({"seed": target_path}))
+
+    move_rows = [
+        _move_row(plan_row, raw)
+        for plan_row, raw in zip(batch_plans, before_raw)
+    ]
+    semantic_rows = [_semantic_row(plan_row) for plan_row in batch_plans]
+    for plan_row, move_row, semantic_row in zip(
+        batch_plans, move_rows, semantic_rows
+    ):
+        move_row.update(
+            {
+                "is_smoke": "NO",
+                "is_formal": "YES",
+                "is_paper_aligned": (
+                    "YES"
+                    if plan_row["implementation"] == "paper_aligned"
+                    else "NO"
+                ),
+                "is_official": "NO",
+                "yaml_reference_count": "0",
+            }
+        )
+        semantic_row["implementation"] = plan_row["implementation"]
+    for index in range(4):
+        move_rows[index].update(
+            {
+                "post_move_sha256": _sha(after_raw[index]),
+                "yaml_content_changed": "YES",
+                "approved_changed_keys": "source_config",
+            }
+        )
+        semantic_rows[index].update(
+            {
+                "byte_identical": "NO",
+                "semantic_identical": "NO",
+                "changed_keys": "source_config",
+                "change_allowed": "YES",
+                "status": "PASS",
+            }
+        )
+
+    tracked = {
+        *(row["candidate_new_path"] for row in batch_plans),
+        earlier_batch1["candidate_new_path"],
+        earlier_batch2["candidate_new_path"],
+        later_batch4["old_path"],
+        manual_batch7["old_path"],
+    }
+    fixture = Fixture(
+        batch=3,
+        root=tmp_path,
+        plan_path=tmp_path / "plan.csv",
+        moves_path=tmp_path / "CONFIG_BATCH3_MOVES.csv",
+        before_path=tmp_path / "CONFIG_BATCH3_BEFORE_SNAPSHOT.json",
+        after_path=tmp_path / "CONFIG_BATCH3_AFTER_SNAPSHOT.json",
+        semantic_path=tmp_path / "CONFIG_BATCH3_SEMANTIC_DIFF.csv",
+        reference_path=tmp_path / "CONFIG_BATCH3_REFERENCE_AUDIT.csv",
+        tracked=tracked,
+        plan_rows=[
+            earlier_batch1,
+            earlier_batch2,
+            *batch_plans,
+            later_batch4,
+            manual_batch7,
+        ],
+        move_rows=move_rows,
+        before_entries=[
+            _snapshot_entry(plan_row, payload, raw)
+            for plan_row, payload, raw in zip(
+                batch_plans, before_payloads, before_raw
+            )
+        ],
+        after_entries=[
+            _snapshot_entry(plan_row, payload, raw)
+            for plan_row, payload, raw in zip(
+                batch_plans, after_payloads, after_raw
+            )
+        ],
+        semantic_rows=semantic_rows,
+        reference_rows=[],
+        git_head_bytes={},
+        git_head_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    _persist(fixture)
+    return fixture
+
+
 def _audit(
     fixture: Fixture,
     *,
@@ -455,9 +673,12 @@ def _change_after_values(
     *,
     values: dict[str, object],
     approved_keys: set[str] | None,
+    index: int = 0,
 ) -> None:
     payload = yaml.safe_load(
-        yaml.safe_dump(fixture.after_entries[0]["parsed_yaml"], sort_keys=True)
+        yaml.safe_dump(
+            fixture.after_entries[index]["parsed_yaml"], sort_keys=True
+        )
     )
     for path, value in values.items():
         current: dict[str, object] = payload
@@ -466,15 +687,18 @@ def _change_after_values(
             current = current[part]  # type: ignore[assignment]
         current[parts[-1]] = value
     raw = _yaml_bytes(payload)
-    (fixture.root / NEW_A).write_bytes(raw)
-    fixture.after_entries[0]["parsed_yaml"] = payload
-    fixture.after_entries[0]["sha256"] = _sha(raw)
-    fixture.move_rows[0]["post_move_sha256"] = _sha(raw)
+    new_path = fixture.move_rows[index]["new_path"]
+    (fixture.root / new_path).write_bytes(raw)
+    fixture.after_entries[index]["parsed_yaml"] = payload
+    fixture.after_entries[index]["sha256"] = _sha(raw)
+    fixture.move_rows[index]["post_move_sha256"] = _sha(raw)
     declared = approved_keys is not None
     changed_keys = "|".join(sorted(approved_keys or set()))
-    fixture.move_rows[0]["yaml_content_changed"] = "YES" if declared else "NO"
-    fixture.move_rows[0]["approved_changed_keys"] = changed_keys
-    fixture.semantic_rows[0].update(
+    fixture.move_rows[index]["yaml_content_changed"] = (
+        "YES" if declared else "NO"
+    )
+    fixture.move_rows[index]["approved_changed_keys"] = changed_keys
+    fixture.semantic_rows[index].update(
         {
             "byte_identical": "NO",
             "semantic_identical": "NO",
@@ -492,11 +716,13 @@ def _change_after(
     path: str,
     value: object,
     declared: bool,
+    index: int = 0,
 ) -> None:
     _change_after_values(
         fixture,
         values={path: value},
         approved_keys={path.rsplit(".", 1)[-1]} if declared else None,
+        index=index,
     )
 
 
@@ -510,6 +736,36 @@ def test_valid_source_config_migration_passes(tmp_path: Path) -> None:
     _change_after(
         fixture,
         path="provenance.source_config",
+        value=NEW_B,
+        declared=True,
+    )
+    assert _audit(fixture) == []
+
+
+def test_valid_train_config_migration_passes(tmp_path: Path) -> None:
+    fixture = _make_fixture(tmp_path)
+    for entries in (fixture.before_entries, fixture.after_entries):
+        parsed = entries[0]["parsed_yaml"]
+        assert isinstance(parsed, dict)
+        provenance = parsed["provenance"]
+        assert isinstance(provenance, dict)
+        provenance["train_config"] = OLD_B
+        raw = _yaml_bytes(parsed)
+        entries[0]["sha256"] = _sha(raw)
+    before_raw = _yaml_bytes(
+        fixture.before_entries[0]["parsed_yaml"]  # type: ignore[arg-type]
+    )
+    after_raw = _yaml_bytes(
+        fixture.after_entries[0]["parsed_yaml"]  # type: ignore[arg-type]
+    )
+    fixture.move_rows[0]["pre_move_sha256"] = _sha(before_raw)
+    fixture.move_rows[0]["post_move_sha256"] = _sha(after_raw)
+    (fixture.root / NEW_A).write_bytes(after_raw)
+    _persist(fixture)
+
+    _change_after(
+        fixture,
+        path="provenance.train_config",
         value=NEW_B,
         declared=True,
     )
@@ -584,6 +840,8 @@ def test_preview_does_not_pollute_actual_change_counts(tmp_path: Path) -> None:
         "ACTUAL_FILE_CHANGES": 0,
         "APPROVED_ACTUAL_CHANGES": 0,
         "UNAPPROVED_ACTUAL_CHANGES": 0,
+        "ACTUAL_YAML_CONTENT_MODIFICATIONS": 0,
+        "ACTUAL_UNAPPROVED_SEMANTIC_CHANGES": 0,
     }
 
 
@@ -657,6 +915,70 @@ def test_unchanged_paper_aligned_configs_remain_identical(tmp_path: Path) -> Non
     assert _audit(fixture) == []
 
 
+def test_later_documented_reference_update_preserves_batch_regression(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    payload = copy.deepcopy(fixture.after_entries[0]["parsed_yaml"])
+    payload["provenance"]["source_config"] = NEW_B  # type: ignore[index]
+    (fixture.root / NEW_A).write_bytes(_yaml_bytes(payload))
+    later_reference_path = (
+        fixture.root / "docs/refactors/CONFIG_BATCH3_REFERENCE_AUDIT.csv"
+    )
+    later_reference_path.parent.mkdir(parents=True, exist_ok=True)
+    row = {column: "" for column in BATCH3_REFERENCE_COLUMNS}
+    row.update(
+        {
+            "old_config_path": OLD_B,
+            "new_config_path": NEW_B,
+            "source_file": NEW_A,
+            "source_line": "1",
+            "reference_type": "yaml_reference",
+            "historical_reference": "NO",
+            "requires_update": "YES",
+            "updated": "YES",
+            "remaining_reference_allowed": "NO",
+            "notes": "later batch active reference rewrite",
+        }
+    )
+    _write_csv(later_reference_path, BATCH3_REFERENCE_COLUMNS, [row])
+
+    assert _audit(fixture) == []
+
+
+def test_later_reference_record_does_not_allow_unrelated_semantic_drift(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_fixture(tmp_path)
+    payload = copy.deepcopy(fixture.after_entries[0]["parsed_yaml"])
+    payload["seed"] = 99  # type: ignore[index]
+    (fixture.root / NEW_A).write_bytes(_yaml_bytes(payload))
+    later_reference_path = (
+        fixture.root / "docs/refactors/CONFIG_BATCH3_REFERENCE_AUDIT.csv"
+    )
+    later_reference_path.parent.mkdir(parents=True, exist_ok=True)
+    row = {column: "" for column in BATCH3_REFERENCE_COLUMNS}
+    row.update(
+        {
+            "old_config_path": OLD_B,
+            "new_config_path": NEW_B,
+            "source_file": NEW_A,
+            "source_line": "1",
+            "reference_type": "yaml_reference",
+            "historical_reference": "NO",
+            "requires_update": "YES",
+            "updated": "YES",
+            "remaining_reference_allowed": "NO",
+            "notes": "later batch active reference rewrite",
+        }
+    )
+    _write_csv(later_reference_path, BATCH3_REFERENCE_COLUMNS, [row])
+
+    errors = _audit(fixture)
+    assert any("post-move SHA does not match disk/snapshot" in error for error in errors)
+    assert any("after snapshot semantics do not match disk" in error for error in errors)
+
+
 def test_batch2_git_head_baseline_supports_post_move_audit(tmp_path: Path) -> None:
     fixture = _make_batch2_fixture(tmp_path)
 
@@ -698,6 +1020,163 @@ def test_batch2_snapshot_identity_mismatch_fails(tmp_path: Path) -> None:
 
     assert any(
         "snapshot identity mismatch on feature_set" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_valid_batch3_multidag_fixture_passes(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+
+    assert sum(
+        row["implementation"] == "unified" for row in fixture.move_rows
+    ) == 13
+    assert sum(
+        row["implementation"] == "paper_aligned"
+        for row in fixture.move_rows
+    ) == 4
+    assert sum(
+        row["yaml_content_changed"] == "YES"
+        and row["approved_changed_keys"] == "source_config"
+        for row in fixture.move_rows
+    ) == 4
+    assert _audit(fixture, expected_total=len(fixture.tracked)) == []
+
+
+def test_batch3_non_multidag_config_fails(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    batch_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 3"
+    )
+    batch_row["model"] = "dialoguegcn"
+    fixture.move_rows[0]["model"] = "dialoguegcn"
+    _persist(fixture)
+
+    assert any(
+        "Batch 3 must contain only MultiDAG" in error
+        or "Batch 3 model must be multidag_cl" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch3_author_official_fails(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    batch_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 3"
+    )
+    batch_row["implementation"] = "author_official"
+    fixture.move_rows[0]["implementation"] = "author_official"
+    _persist(fixture)
+
+    assert any(
+        "author_official is forbidden" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch3_paper_aligned_marked_official_fails(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    paper_index = next(
+        index
+        for index, row in enumerate(fixture.move_rows)
+        if row["implementation"] == "paper_aligned"
+    )
+    fixture.move_rows[paper_index]["is_official"] = "YES"
+    _persist(fixture)
+
+    assert any(
+        "must be non-official" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch3_wrong_lineage_placement_fails(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    batch_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 3"
+    )
+    batch_row["implementation"] = "paper_aligned"
+    fixture.move_rows[0]["implementation"] = "paper_aligned"
+    fixture.move_rows[0]["is_paper_aligned"] = "YES"
+    _persist(fixture)
+
+    assert any(
+        "wrong canonical lineage" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("model.curriculum.warmup_epochs", 99),
+        ("model.context.window_past", 99),
+        ("model.context.causal", False),
+        ("model.graph.layers", 9),
+    ],
+)
+def test_batch3_training_semantics_change_fails(
+    tmp_path: Path,
+    path: str,
+    value: object,
+) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    _change_after(
+        fixture,
+        path=path,
+        value=value,
+        declared=True,
+        index=5,
+    )
+
+    assert any(
+        "non-approved semantic keys" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch3_fails_if_batch2_canonical_config_is_missing(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    batch2_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 2"
+    )
+    candidate = batch2_row["candidate_new_path"]
+    (fixture.root / candidate).unlink()
+    fixture.tracked.remove(candidate)
+
+    assert any(
+        "earlier-batch canonical YAML is missing" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch3_fails_if_batch4_yaml_is_moved(tmp_path: Path) -> None:
+    fixture = _make_batch3_fixture(tmp_path)
+    batch4_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 4"
+    )
+    old_path = batch4_row["old_path"]
+    new_path = batch4_row["candidate_new_path"]
+    (fixture.root / old_path).unlink()
+    target = fixture.root / new_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_yaml_bytes({"seed": "moved"}))
+    fixture.tracked.remove(old_path)
+    fixture.tracked.add(new_path)
+
+    assert any(
+        "non-Batch 3 YAML was moved or is missing" in error
         for error in _audit(fixture, expected_total=len(fixture.tracked))
     )
 

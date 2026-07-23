@@ -265,15 +265,27 @@ def build_run_plan() -> list[RunSpec]:
             index += 1
 
     original: list[RunSpec] = []
-    mmgcn_original_configs = {
-        "legacy": Path(
-            "configs/mmgcn/paper_aligned/iemocap/full_context/"
-            "legacy_mmgcn_features/screening.yaml"
-        ),
-        "clean": Path(
-            "configs/mmgcn/paper_aligned/iemocap/full_context/"
-            "clean_roberta_features/mmgcn_clean.yaml"
-        ),
+    canonical_original_configs = {
+        "mmgcn": {
+            "legacy": Path(
+                "configs/mmgcn/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+            "clean": Path(
+                "configs/mmgcn/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/mmgcn_clean.yaml"
+            ),
+        },
+        "multidag_cl": {
+            "legacy": Path(
+                "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+            "clean": Path(
+                "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/multidag_cl_clean.yaml"
+            ),
+        },
     }
     for track, config_dir in (
         ("legacy", "screening"),
@@ -281,8 +293,8 @@ def build_run_plan() -> list[RunSpec]:
     ):
         for model in ("mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"):
             config = (
-                mmgcn_original_configs[track]
-                if model == "mmgcn"
+                canonical_original_configs[model][track]
+                if model in canonical_original_configs
                 else Path(
                     "configs/experiments/original_merc/"
                     f"{config_dir}/{model}_{track}.yaml"

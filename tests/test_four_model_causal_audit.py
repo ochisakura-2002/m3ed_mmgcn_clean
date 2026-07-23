@@ -26,7 +26,7 @@ def test_four_model_synthetic_audit_passes_and_preserves_legacy_models(
 ) -> None:
     configs = {
         "mmgcn": _load("configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml"),
-        "multidag": _load("configs/baselines/multidag_cl/iemocap/causal_benchmark/official_prefix.yaml"),
+        "multidag": _load("configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml"),
         "gsmcc": _load("configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml"),
         "dialoguegcn": _load("configs/baselines/dialoguegcn/iemocap/causal_benchmark/official_prefix.yaml"),
     }

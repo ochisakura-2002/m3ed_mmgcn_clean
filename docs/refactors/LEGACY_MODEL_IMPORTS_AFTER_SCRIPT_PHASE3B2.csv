@@ -1,0 +1,11 @@
+source_file,line_number,imported_module,import_kind,scope,is_compatibility_test,action
+tests/test_model_layout_compatibility.py,7,models.baselines.causal_baseline_registry,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,10,models.baselines.dialoguegcn,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,11,models.baselines.gsmcc,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,12,models.baselines.mmgcn.mm_gcn,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,13,models.baselines.multidag_cl,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,14,models.baselines.original_repro,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,17,models.baselines.original_repro,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,18,models.baselines.original_repro,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,21,models.baselines.original_repro,from,test,true,retain_dedicated_compatibility_test
+tests/test_model_layout_compatibility.py,24,models.baselines.original_repro.registry,from,test,true,retain_dedicated_compatibility_test

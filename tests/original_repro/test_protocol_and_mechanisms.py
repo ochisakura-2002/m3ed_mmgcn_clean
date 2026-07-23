@@ -11,17 +11,17 @@ from datasets.iemocap.original_repro_split import (
     build_official_train_split,
     build_outer_session_split,
 )
-from models.baselines.original_repro.dialoguegcn import (
+from models.dialoguegcn.paper_aligned import (
     DialogueGCNRelationalGraphNetwork,
     build_dialoguegcn_graph,
     dialoguegcn_relation_id,
 )
 from scripts.baselines.original_merc_runtime import curriculum_train_loader
-from models.baselines.original_repro.gsmcc.model import (
+from models.gsmcc.project_variant.full_context.model import (
     build_sliding_multimodal_graph,
     cross_frequency_contrastive_loss,
 )
-from models.baselines.original_repro.multidag_cl import (
+from models.multidag_cl.paper_aligned import (
     build_get_adj_v1,
     curriculum_baby_step_indices,
     dialogue_difficulty_from_sequences,

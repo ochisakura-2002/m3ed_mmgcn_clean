@@ -6,7 +6,7 @@ import pytest
 import torch
 import yaml
 
-from models.baselines.original_repro import build_original_repro_model
+from models.registry.paper_aligned import build_original_repro_model
 
 
 def _batch() -> dict[str, torch.Tensor]:

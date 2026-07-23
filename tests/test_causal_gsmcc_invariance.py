@@ -5,8 +5,8 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
-from models.baselines.causal_graph_common import assert_no_future_edges
-from models.baselines.gsmcc import (
+from models.common.causal_graph import assert_no_future_edges
+from models.gsmcc.project_variant.causal import (
     CausalGSMCCConfig,
     CausalGSMCCInspiredBaseline,
     compute_causal_gsmcc_loss,

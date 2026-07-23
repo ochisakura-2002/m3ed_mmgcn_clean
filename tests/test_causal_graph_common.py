@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from models.baselines.causal_graph_common import (
+from models.common.causal_graph import (
     assert_no_future_edges,
     build_causal_multimodal_adjacency,
     build_causal_utterance_adjacency,

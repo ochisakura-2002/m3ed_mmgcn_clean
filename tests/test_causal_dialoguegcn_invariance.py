@@ -5,8 +5,8 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
-from models.baselines.causal_graph_common import assert_no_future_edges
-from models.baselines.dialoguegcn import (
+from models.common.causal_graph import assert_no_future_edges
+from models.dialoguegcn.unified import (
     CausalDialogueGCNBaseline,
     CausalDialogueGCNConfig,
 )

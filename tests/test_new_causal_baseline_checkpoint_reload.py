@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from models.baselines.causal_baseline_registry import build_new_causal_baseline
+from models.registry.causal import build_new_causal_baseline
 from scripts.analyze.audit_model_causality import build_synthetic_batch
 from scripts.baselines.evaluate_new_causal_graph_checkpoint import evaluate_checkpoint
 from scripts.baselines.new_causal_graph_runtime import (

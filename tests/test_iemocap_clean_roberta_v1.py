@@ -15,15 +15,15 @@ import pytest
 import torch
 import yaml
 
-from models.baselines.causal_baseline_registry import build_new_causal_baseline
+from models.registry.causal import build_new_causal_baseline
 import scripts.baselines.train_multidag_cl as train_multidag_module
 import scripts.baselines.train_new_causal_graph_baseline as train_causal_module
 import scripts.train_mmgcn as train_mmgcn_module
-from scripts.analyze.audit_iemocap_feature_pkl import (
+from scripts.diagnostics.data.audit_iemocap_feature_pkl import (
     audit_feature_pkls,
     write_audit_outputs,
 )
-from scripts.analyze.probe_iemocap_text_features import run_probes
+from scripts.diagnostics.data.probe_iemocap_text_features import run_probes
 from scripts.baselines.train_multidag_cl import build_model as build_multidag
 from scripts.dev.validate_config_tree import (
     validate_clean_roberta_v1_formal_pipeline,
@@ -32,7 +32,7 @@ from scripts.dev.validate_config_tree import (
     validate_clean_roberta_v1_smoke_config,
     validate_clean_roberta_v1_tree,
 )
-from scripts.features.build_iemocap_clean_text_features import (
+from scripts.data.build.build_iemocap_clean_text_features import (
     FEATURE_SET_NAME,
     TEXT_FEATURE_DIM,
     build_clean_feature_pkl,

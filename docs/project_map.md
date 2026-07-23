@@ -45,7 +45,7 @@
 3. `docs/`：项目记录、设计说明和 Codex 上下文文档。
 4. `losses/`：当前主要是占位和说明。
 5. `models/`：按模型与实现 lineage 组织的多模型实现、公共组件和 registry。
-6. `scripts/`：训练、评估、调试、诊断、分析、pipeline、实验辅助脚本。
+6. `scripts/`：按职责组织的模型入口、runtime、评估、workflow、分析、数据支持、诊断、维护与开发门禁脚本。
 7. `tmp/`：本地临时输出，已被 `.gitignore` 忽略。
 8. `trainers/`：当前主要是占位和说明。
 9. `utils/`：路径、seed、metrics 等共享工具。
@@ -118,14 +118,19 @@
 5. `scripts/analysis/causal/`：causal 模型审计与 benchmark 汇总。
 6. `scripts/analysis/paper_aligned/`：Original MERC / paper-aligned 结果分析。
 7. `scripts/analysis/models/`：模型专属结果分析；当前包含 MultiDAG+CL 稳定性对比。
-8. `scripts/analyze/`：迁移前 tracked 分析入口的 compatibility wrapper，以及仍等待 Phase 3B2 的 diagnose/feature/data 文件；新代码不得依赖其中的 wrapper。
-9. `scripts/debug/`：轻量调试脚本。
-10. `scripts/inspect/`：数据和官方代码结构检查脚本。
-11. `scripts/maintenance/check_env.py`：环境检查脚本。
+8. `scripts/data/build/`：生成特征、缓存和模型输入资产。
+9. `scripts/data/prepare/`：数据集整理、标准化与训练前预处理。
+10. `scripts/data/inspect/`：只读数据查看、统计和清单导出。
+11. `scripts/diagnostics/data/`：split、标签、特征与泄漏诊断。
+12. `scripts/diagnostics/models/`：模型 forward、梯度、数值、因果性与 checkpoint 诊断。
+13. `scripts/diagnostics/experiments/`：run、训练曲线、配置与输出异常诊断。
+14. `scripts/maintenance/`：可更新仓库或汇总资产的维护工具。
+15. `scripts/dev/`：配置验证、结构审计和开发门禁。
+16. 迁移前的 `scripts/analyze/`、`scripts/debug/`、`scripts/diagnose/`、`scripts/features/`、`scripts/prepare/`、`scripts/inspect/` 及相关旧 support 路径只保留 compatibility wrapper；新代码不得依赖这些 wrapper。
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout 与 Phase 3B1 analysis layout 已完成；旧入口保留 compatibility wrapper。debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 尚未完成 Phase 3B2，`configs/` 尚未迁移。下一阶段先完成 Phase 3B2，再重构 `configs/`；全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。`configs/` 尚未迁移，下一阶段是 model-first config layout refactor；配置重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 入口脚本速查
 

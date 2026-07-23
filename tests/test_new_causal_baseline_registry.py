@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from models.baselines.causal_baseline_registry import (
+from models.registry.causal import (
     build_new_causal_baseline,
     get_new_causal_model_family,
     normalize_new_causal_model_name,

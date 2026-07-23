@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from models.baselines.mmgcn.mm_gcn import M3EDMMGCN
+from models.mmgcn.unified.mm_gcn import M3EDMMGCN
 
 
 TARGET = 2
@@ -139,4 +139,3 @@ def test_full_context_negative_control_is_not_strict_causal() -> None:
         original = forward(model, batch)["logits"][:, TARGET]
         perturbed = forward(model, changed)["logits"][:, TARGET]
     assert float((original - perturbed).abs().max()) > 1e-6
-

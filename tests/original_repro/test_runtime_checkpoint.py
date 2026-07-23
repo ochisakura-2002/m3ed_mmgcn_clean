@@ -7,7 +7,7 @@ import torch
 import yaml
 import pytest
 
-from models.baselines.original_repro import build_original_repro_model
+from models.registry.paper_aligned import build_original_repro_model
 from scripts.baselines.original_merc_runtime import (
     SyntheticDialogueDataset,
     load_checkpoint,

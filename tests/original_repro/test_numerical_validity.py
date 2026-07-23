@@ -9,8 +9,8 @@ import pytest
 import torch
 from torch.nn import functional as F
 
-from models.baselines.original_repro import build_original_repro_model
-from models.baselines.original_repro.gsmcc.model import (
+from models.registry.paper_aligned import build_original_repro_model
+from models.gsmcc.project_variant.full_context.model import (
     angular_similarity,
     build_sliding_multimodal_graph,
 )
@@ -34,7 +34,7 @@ from scripts.baselines.original_merc_runtime import (
     verify_feature_sha256,
 )
 import scripts.baselines.train_original_merc_baseline as train_module
-from scripts.dev.diagnose_gsmcc_numerics import diagnose_mode
+from scripts.diagnostics.models.gsmcc.diagnose_gsmcc_numerics import diagnose_mode
 
 
 def test_closed_interval_acos_reproduces_nonfinite_boundary_gradient() -> None:

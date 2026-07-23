@@ -22,7 +22,25 @@
 
 `SCRIPT_SUPPORT_LAYOUT_REFACTOR=COMPLETED`
 
+`CONFIG_LAYOUT_AUDIT=COMPLETED`
+
+`CONFIG_PHASE4A_CORRECTION_STATUS=PASS`
+
 `CONFIG_LAYOUT_REFACTOR=NOT_STARTED`
+
+`CONFIG_BATCH_1=NOT_STARTED`
+
+`CONFIG_BATCH_2=NOT_STARTED`
+
+`CONFIG_BATCH_3=NOT_STARTED`
+
+`CONFIG_BATCH_4=NOT_STARTED`
+
+`CONFIG_BATCH_5=NOT_STARTED`
+
+`CONFIG_BATCH_6=NOT_STARTED`
+
+`CONFIG_BATCH_7=NOT_STARTED`
 
 `OFFICIAL_MULTIDAG_REPRODUCTION=NOT_STARTED`
 
@@ -30,7 +48,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。`configs/` 尚未迁移，下一阶段是 model-first config layout refactor；配置门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划；9 个 smoke flag 已按 YAML 内容修正，当前剩余 2 行 manual review 和 1 个 candidate collision group。`configs/` 没有移动或修改；下一阶段只执行 Config Batch 1。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 模型路线与命名边界
 
@@ -199,6 +217,13 @@ Phase 3B2 canonical support paths 为：
 - Script Phase 3B2 执行后完整 pytest：`348 passed, 3 skipped`；config validation 与 diff check 通过。
 - canonical support legacy model imports：0；tracked production script legacy model imports：0；剩余 10 条 test import 全部属于专用 model-layout compatibility test。
 - Phase 3B2 基于分支 `refactor/model-first-layout`、HEAD `63dfe55fca2e3883af7736aeb081423b147b3d26`；本阶段未 commit、未 push。
+- Config Phase 4A 基于分支 `refactor/model-first-layout`、HEAD `4f97adf513882d90457c17e49c622ad0682413f2`；执行前完整 pytest 为 `348 passed, 3 skipped`，config validation 与 diff check 通过。
+- Phase 4A 盘点 183 个 tracked YAML，解析失败 0；分类 183，引用边 767，exact duplicate groups 0，semantic duplicate groups 0，近重复对 716。
+- Phase 4A correction 将两组错误 candidate-path collision 拆成独立 context/modality path；当前迁移计划包含 7 个 batch、1 个 candidate collision group、2 行 manual review、28 个 high-risk config。
+- Phase 4A correction 审计了 9 个 smoke-name mismatch，全部按 YAML 预算、identity、consumer 与用途改为 `is_smoke=YES`；`purpose` 与 Batch 1--7 数量不变，Batch 1 仍为 16。
+- Phase 4A 审计工具新增完整 manual-review collision PASS 测试；plan audit PASS 只表示停止点标记完整，不表示 collision 已解决。
+- Phase 4A 最终完整 pytest：`356 passed, 3 skipped`；最终 config validation、strict migration-plan audit 与 diff check 通过。
+- Phase 4A correction targeted audit tests：`9 passed`；完整 pytest：`357 passed, 3 skipped`；config validation、strict audit 与 `git diff --check` 通过；strict audit 报告 `tracked_yaml=183 candidate_collisions=1`。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
@@ -209,6 +234,9 @@ Phase 3B2 canonical support paths 为：
 - `prepare_m3ed_metadata.py`、真实 batch/model 诊断与 summary rebuild 工具具有数据或资产写入风险；Phase 3B2 只做 import、CLI help、synthetic 或静态安全检查，没有执行这些真实动作。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
+- Phase 4A 没有移动、重命名或修改任何 YAML；历史 outputs 内冻结的配置快照不在迁移范围。
+- 当前只剩 1 个 candidate collision group，涉及两份 missing-modality pipeline。active docs 区分 original formal 与 stable-candidate source run，但 YAML 没有机器可读 source-run 字段；必须在 Config Batch 7 前决定合并为一份 canonical 配置，或由后续独立任务补足机器可读语义。该 collision 不属于 Batch 1。
+- 配置 provenance 不得按旧路径或文件名猜测；`paper_aligned` 不是 `author_official`，全部 GS-MCC 配置均为 `project_variant`。
 
 已知论文叙事风险：
 
@@ -220,9 +248,19 @@ Phase 3B2 canonical support paths 为：
 
 ## 下一阶段工程顺序
 
-模型目录重构与 Script Phase 3A、3B1、3B2 已完成。下一阶段为 model-first config layout refactor；配置重构及完整门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
+模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 也已完成。下一阶段只执行 `CONFIG_BATCH_1`：`_shared/data`、SimpleMLP、synthetic 与经确认的低风险 smoke。每次只执行一个 batch；剩余 collision 属于 Batch 7，不阻塞 Batch 1，但必须在 Batch 7 前解决。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
 
 Phase 3B2 结果见 `docs/refactors/SCRIPT_SUPPORT_LAYOUT_REFACTOR_REPORT.md`、`docs/refactors/SCRIPT_SUPPORT_CLASSIFICATION_PHASE3B2.csv` 与 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3B2.*`。后续 config 重构不得删除 Phase 3A/3B1/3B2 wrapper、改变 runtime/checkpoint schema，或把 `paper_aligned` 误写为 `author_official`。
+
+Config Phase 4A 的唯一迁移依据为：
+
+- `docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv`
+- `docs/refactors/CONFIG_REFERENCE_GRAPH_PHASE4A.csv`
+- `docs/refactors/CONFIG_ENTRYPOINT_AUDIT_PHASE4A.csv`
+- `docs/refactors/CONFIG_DUPLICATES_AND_CONFLICTS_PHASE4A.csv`
+- `docs/refactors/CONFIG_MIGRATION_PLAN_PHASE4A.csv`
+- `docs/refactors/CONFIG_MIGRATION_BATCHES_PHASE4A.csv`
+- `docs/refactors/CONFIG_LAYOUT_PHASE4A_REPORT.md`
 
 ## 下一阶段研究路线
 

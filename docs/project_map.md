@@ -84,6 +84,7 @@
 5. `configs/pipeline/`：pipeline 配置。
 6. `configs/modality_ablation/`：模态消融配置。
 7. `configs/smoke/train_mmgcn_smoke.yaml`：本地 fake dialogue smoke 配置。
+8. Config Phase 4A audit/correction 已覆盖全部 183 个 tracked YAML：9 个 smoke flag 已按内容修正，当前剩余 2 行 manual review 和 1 个 candidate collision group；没有移动或修改 YAML。精确 old-path mapping 见 `docs/refactors/CONFIG_MIGRATION_PLAN_PHASE4A.csv`。
 
 ### 数据读取
 
@@ -130,7 +131,14 @@
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。`configs/` 尚未迁移，下一阶段是 model-first config layout refactor；配置重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 已完成：183 个 tracked YAML 全部分类，生成引用图、entrypoint 审计、重复/冲突审计、7-batch 迁移计划与只读 strict audit 工具；两组 path-generation collision 已修正，剩余 1 组只属于 Batch 7。`configs/` 尚未迁移或修改。下一阶段只执行 Config Batch 1，且配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+
+Config migration 规则：
+
+1. provenance 依据 YAML 内容、registry 和真实 consumer，不依据旧文件名猜测。
+2. `paper_aligned` 不等于 `author_official`；当前 GS-MCC 配置一律为 `project_variant`。
+3. 不创建旧 YAML wrapper，不保留新旧两份 YAML 真相。
+4. 后续每次只执行一个 migration batch；剩余 missing-modality candidate collision 不属于 Batch 1，但必须在 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
 
 ## 入口脚本速查
 

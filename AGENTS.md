@@ -47,6 +47,8 @@
 1. 生产执行脚本的 canonical 路径位于 `scripts/models/`、`scripts/runtime/`、`scripts/evaluation/` 和 `scripts/workflows/`。
 2. 迁移前的训练、评估、pipeline 与实验 launcher 路径只保留 compatibility wrapper；新代码禁止依赖这些旧 wrapper。
 3. `configs/` 尚未迁移，旧 YAML 中的 script path 继续由 compatibility wrapper 支持。
-4. Phase 3B 尚未开始；`scripts/analyze/`、`scripts/analysis/`、`scripts/debug/`、`scripts/diagnose/`、`scripts/features/`、`scripts/prepare/`、`scripts/inspect/`、`scripts/maintenance/` 和 `scripts/dev/` 暂不迁移。
-5. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不修改、不 staged。
-6. 下一阶段先处理 analysis/debug/data/maintenance scripts 的 Phase 3B，再规划 `configs/` 重构。
+4. Phase 3B1 analysis layout 已完成；canonical 分析实现位于 `scripts/analysis/{common,causal,paper_aligned,models}/`。
+5. 被迁移的 tracked `scripts/analyze/` 入口只保留 compatibility wrapper；新代码禁止 import 这些旧 analysis wrapper。
+6. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不读取其内容作为生产依据、不修改、不 staged。
+7. debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 尚未完成 Phase 3B2；`configs/` 也尚未迁移。
+8. 下一阶段先完成 Script Phase 3B2，再规划 `configs/` 重构。

@@ -114,14 +114,18 @@
 1. `utils/seed.py`：随机种子设置。
 2. `utils/metrics.py`：分类指标计算。
 3. `utils/io.py`：路径、YAML、run 目录工具。
-4. `scripts/analyze/`：训练曲线、最终指标、多 run 汇总、缺失模态图表。
-5. `scripts/debug/`：轻量调试脚本。
-6. `scripts/inspect/`：数据和官方代码结构检查脚本。
-7. `scripts/maintenance/check_env.py`：环境检查脚本。
+4. `scripts/analysis/common/`：跨模型训练曲线、最终指标、多 run 汇总、缺失模态图表与论文产物导出。
+5. `scripts/analysis/causal/`：causal 模型审计与 benchmark 汇总。
+6. `scripts/analysis/paper_aligned/`：Original MERC / paper-aligned 结果分析。
+7. `scripts/analysis/models/`：模型专属结果分析；当前包含 MultiDAG+CL 稳定性对比。
+8. `scripts/analyze/`：迁移前 tracked 分析入口的 compatibility wrapper，以及仍等待 Phase 3B2 的 diagnose/feature/data 文件；新代码不得依赖其中的 wrapper。
+9. `scripts/debug/`：轻量调试脚本。
+10. `scripts/inspect/`：数据和官方代码结构检查脚本。
+11. `scripts/maintenance/check_env.py`：环境检查脚本。
 
 ## 当前重构阶段
 
-模型目录重构与 Script Phase 3A execution layout 已完成；旧入口保留 compatibility wrapper。Script Phase 3B 的 analysis/debug/data/maintenance scripts 与 `configs/` 尚未迁移。下一阶段先完成 Phase 3B，再重构 `configs/`；全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout 与 Phase 3B1 analysis layout 已完成；旧入口保留 compatibility wrapper。debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 尚未完成 Phase 3B2，`configs/` 尚未迁移。下一阶段先完成 Phase 3B2，再重构 `configs/`；全部目录重构和门禁完成前，不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 入口脚本速查
 

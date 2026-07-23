@@ -18,7 +18,9 @@
 
 `SCRIPT_EXECUTION_LAYOUT_REFACTOR=COMPLETED`
 
-`SCRIPT_ANALYSIS_LAYOUT_REFACTOR=NOT_STARTED`
+`SCRIPT_ANALYSIS_LAYOUT_REFACTOR=COMPLETED`
+
+`SCRIPT_SUPPORT_LAYOUT_REFACTOR=NOT_STARTED`
 
 `CONFIG_LAYOUT_REFACTOR=NOT_STARTED`
 
@@ -28,7 +30,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构和 Phase 3A 生产执行脚本重构已经完成。模型训练/评估入口、跨模型 runtime、workflow、正式 benchmark launcher 与模态缺失 workflow 已迁入 canonical script tree；旧执行路径保留 compatibility wrapper。`scripts/` 中的 analysis/debug/data/maintenance 脚本和 `configs/` 尚未迁移。下一阶段是 Script Phase 3B，之后才重构 `configs/`；全部门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构、Phase 3A 生产执行脚本重构和 Phase 3B1 analysis layout 已经完成。模型训练/评估入口、跨模型 runtime、workflow、正式 benchmark launcher、模态缺失 workflow 与结果分析实现均已有 canonical script tree；旧执行和旧分析路径保留 compatibility wrapper。debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 尚未完成 Phase 3B2，`configs/` 也尚未迁移。下一阶段是 Script Phase 3B2，之后才重构 `configs/`；全部门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 模型路线与命名边界
 
@@ -119,6 +121,15 @@ Phase 3A canonical execution entries 为：
 - 正式 16-run benchmark：`scripts/workflows/benchmarks/run_causal8_original8.py`
 - 模态缺失/消融 workflow：`scripts/workflows/ablations/`
 
+Phase 3B1 canonical analysis paths 为：
+
+- 通用结果表格、绘图与论文产物：`scripts/analysis/common/`
+- causal 模型与 benchmark 分析：`scripts/analysis/causal/`
+- Original MERC / paper-aligned 分析：`scripts/analysis/paper_aligned/`
+- 模型专属分析：`scripts/analysis/models/<model>/`
+
+迁移前的 tracked `scripts/analyze/` 分析入口继续作为 module-alias compatibility wrapper；`scripts/analysis/analyze_original_merc_results.py` 与 `scripts/analyze/export_original_merc_reproduction_report.py` 也直接委派最终 canonical Original-MERC module。新代码不得 import 这些旧 analysis wrapper。
+
 迁移前路径继续作为 compatibility wrapper，可保持既有 CLI 与尚未迁移的 YAML 可运行；新代码不得 import 旧 script wrapper。
 
 正式实验输出按启动日期写入 `outputs/<YYYYMMDD>/`；本地 smoke 使用 `tmp/`。显式 checkpoint/run/output 路径优先，旧输出只读兼容，不移动、不改名。不要提交数据、feature pkl、checkpoint、cache 或大体积输出。
@@ -135,6 +146,9 @@ Phase 3A canonical execution entries 为：
 - canonical scripts 的模型 import 已迁移到 `models.registry`、`models.common` 与模型 canonical package；canonical `models.baselines` import 为 0。
 - pipeline、missing-modality workflow 与正式 16-run launcher 的内部 subprocess target 已指向 canonical scripts；`configs/` 内容与 runtime/checkpoint key 未改。
 - 新增 `tests/test_script_layout_compatibility.py` 与 Phase 3A legacy import CSV/Markdown 审计。
+- Phase 3B1 使用 13 个 `git mv` 将真实分析实现迁入 `scripts/analysis/`，并在 13 个旧 tracked 路径建立薄 module-alias wrapper；另将 2 个既有分析别名直接指向最终 canonical module。
+- canonical analysis 的旧 model/script/analysis wrapper import 为 0；5 个 feature/data 或 diagnose 文件保留原位，等待 Phase 3B2。
+- 新增 `tests/test_analysis_layout_compatibility.py`，覆盖新旧 import identity、CLI help、repo-root 解析和 synthetic missing-modality 输出等价。
 
 ## 最近门禁结果
 
@@ -155,12 +169,17 @@ Phase 3A canonical execution entries 为：
 - canonical execution legacy model imports：0；compatibility wrapper legacy model imports：0。
 - deferred scripts：10 个文件、12 条 legacy model import；tests：13 个文件、27 条 legacy model import。
 - Phase 3A 基于分支 `refactor/model-first-layout`、HEAD `1988757fffccfd50532ed4a20d15fedb017eb639`；本阶段未 commit、未 push。
+- Script Phase 3B1 执行前完整 pytest：`239 passed, 3 skipped`；config validation 与 diff check 通过。
+- Analysis layout compatibility：`31 passed`；既有 analysis consumer 专项：`41 passed`。
+- Script Phase 3B1 执行后完整 pytest：`270 passed, 3 skipped`；config validation 与 diff check 通过。
+- canonical analysis legacy imports：0；compatibility wrappers：15；deferred analysis files：5；tests 中 legacy analysis import：5 个文件、6 条边；旧 CLI path 文本引用：139。
+- Phase 3B1 基于分支 `refactor/model-first-layout`、HEAD `46af77a64b1a7347c46904a9710692a31576bf2f`；本阶段未 commit、未 push。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
 ## 已知问题与保护边界
 
-- Phase 3A 生产 execution scripts 已迁移；analysis/debug/data/maintenance scripts 尚未迁移，是 Phase 3B 范围。
+- Phase 3A production execution 与 Phase 3B1 analysis scripts 已迁移；debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 尚未迁移，是 Phase 3B2 范围。
 - 旧 script wrapper 与旧 model wrapper 至少保留一个迁移周期；删除前必须完成 Phase 3B、configs 迁移和独立删除门禁。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
@@ -175,9 +194,9 @@ Phase 3A canonical execution entries 为：
 
 ## 下一阶段工程顺序
 
-模型目录重构和 Script Phase 3A 已完成。下一阶段为 Script Phase 3B，只处理 analysis/debug/data/maintenance scripts 及其 legacy model imports；通过完整门禁后再重构 `configs/`。目录重构全部完成并通过门禁后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
+模型目录重构、Script Phase 3A 和 Script Phase 3B1 已完成。下一阶段为 Script Phase 3B2，只处理 debug、diagnose、feature/data、inspect、maintenance 与 dev/support scripts 及其 legacy imports；通过完整门禁后再重构 `configs/`。目录重构全部完成并通过门禁后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
 
-Phase 3B 不得删除 Phase 3A wrapper、改变 runtime/checkpoint/config schema，或把 `paper_aligned` 误写为 `author_official`。Phase 3B legacy import 基线见 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3A.*`。
+Phase 3B2 不得删除 Phase 3A/3B1 wrapper、改变 runtime/checkpoint/config schema，或把 `paper_aligned` 误写为 `author_official`。Phase 3B1 结果见 `docs/refactors/SCRIPT_ANALYSIS_LAYOUT_REFACTOR_REPORT.md` 与 `docs/refactors/LEGACY_ANALYSIS_IMPORTS_AFTER_PHASE3B1.*`。
 
 ## 下一阶段研究路线
 

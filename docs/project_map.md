@@ -80,11 +80,12 @@
 1. `configs/train_mmgcn_m3ed.yaml`：默认 `M3ED + MMGCN` 配置。
 2. `configs/train_mmgcn_m3ed_causal.yaml`：causal context 版本配置。
 3. `configs/train_mmgcn_iemocap_official.yaml`：IEMOCAP official feature 配置。
-4. `configs/train_simple_mlp_m3ed.yaml`：`SimpleMLP` baseline 配置。
+4. `configs/simple_mlp/unified/m3ed/full_context/m3ed_features/development.yaml`：`SimpleMLP` baseline 配置。
 5. `configs/pipeline/`：pipeline 配置。
 6. `configs/modality_ablation/`：模态消融配置。
-7. `configs/smoke/train_mmgcn_smoke.yaml`：本地 fake dialogue smoke 配置。
-8. Config Phase 4A audit/correction 已覆盖全部 183 个 tracked YAML：9 个 smoke flag 已按内容修正，当前剩余 2 行 manual review 和 1 个 candidate collision group；没有移动或修改 YAML。精确 old-path mapping 见 `docs/refactors/CONFIG_MIGRATION_PLAN_PHASE4A.csv`。
+7. `configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml`：本地 fake dialogue smoke 配置。
+8. Config Phase 4A audit/correction 已覆盖全部 183 个 tracked YAML；Config Batch 1 已将 16 个 YAML 移入 `_shared/data`、各模型 canonical tree 与 `benchmarks/`，字节内容不变。精确 old/new mapping 见 `docs/refactors/CONFIG_BATCH1_MOVES.csv`。
+9. Batch 1 旧 YAML 路径已失效且没有 wrapper；Config Batch 2--7 尚未开始，当前仍有 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group。
 
 ### 数据读取
 
@@ -131,14 +132,14 @@
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 已完成：183 个 tracked YAML 全部分类，生成引用图、entrypoint 审计、重复/冲突审计、7-batch 迁移计划与只读 strict audit 工具；两组 path-generation collision 已修正，剩余 1 组只属于 Batch 7。`configs/` 尚未迁移或修改。下一阶段只执行 Config Batch 1，且配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 与 Config Batch 1 已完成：183 个 tracked YAML 全部分类，Batch 1 的 16 个 YAML 已迁移、活动引用已更新、YAML 字节与语义未改变；剩余 1 个 collision group 只属于 Batch 7。下一阶段只执行 Config Batch 2，且完整配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 Config migration 规则：
 
 1. provenance 依据 YAML 内容、registry 和真实 consumer，不依据旧文件名猜测。
 2. `paper_aligned` 不等于 `author_official`；当前 GS-MCC 配置一律为 `project_variant`。
 3. 不创建旧 YAML wrapper，不保留新旧两份 YAML 真相。
-4. 后续每次只执行一个 migration batch；剩余 missing-modality candidate collision 不属于 Batch 1，但必须在 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
+4. 后续每次只执行一个 migration batch；Config Batch 2 尚未开始，剩余 missing-modality candidate collision 必须在 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
 
 ## 入口脚本速查
 
@@ -163,7 +164,7 @@ conda run -n m3ed_mmgcn python scripts\workflows\run_pipeline.py --config config
 本地 smoke test：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\smoke\train_mmgcn_smoke.yaml
+conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
 ```
 
 ```powershell

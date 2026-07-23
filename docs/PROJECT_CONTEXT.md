@@ -26,9 +26,9 @@
 
 `CONFIG_PHASE4A_CORRECTION_STATUS=PASS`
 
-`CONFIG_LAYOUT_REFACTOR=NOT_STARTED`
+`CONFIG_LAYOUT_REFACTOR=IN_PROGRESS`
 
-`CONFIG_BATCH_1=NOT_STARTED`
+`CONFIG_BATCH_1=COMPLETED`
 
 `CONFIG_BATCH_2=NOT_STARTED`
 
@@ -48,7 +48,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划；9 个 smoke flag 已按 YAML 内容修正，当前剩余 2 行 manual review 和 1 个 candidate collision group。`configs/` 没有移动或修改；下一阶段只执行 Config Batch 1。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划。Config Batch 1 已完成：16 个 YAML 迁移到 canonical 路径，字节与递归 YAML 语义均不变；活动引用已更新，历史引用保留审计标记。当前剩余 2 行 manual review 和 1 个 candidate collision group；下一阶段只执行 Config Batch 2。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 模型路线与命名边界
 
@@ -92,6 +92,22 @@
 - SDT experimental：`models/experimental/sdt/`
 
 MMGCN unified 的实现文件继续命名为 `mm_gcn.py`，本阶段未改为 `model.py`，以降低整模型 pickle/module-path 兼容风险。
+
+## Config Batch 1 canonical paths
+
+Config Batch 1 已迁移以下 16 个 YAML；旧路径无 wrapper 且已经失效，完整 old/new 映射与 SHA 见 `docs/refactors/CONFIG_BATCH1_MOVES.csv`。
+
+- `configs/_shared/data/iemocap/feature_sets.yaml`
+- `configs/benchmarks/causal_unified/analysis/four_model_audit_synthetic.yaml`
+- `configs/dialoguegcn/paper_aligned/iemocap/full_context/{clean_roberta_features,legacy_mmgcn_features}/smoke.yaml`
+- `configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml`
+- `configs/dialoguegcn/unified/synthetic/causal_context/synthetic/{audit_fixture,smoke_end_to_end}.yaml`
+- `configs/gsmcc/project_variant/synthetic/causal_context/synthetic/{audit_fixture,smoke_end_to_end}.yaml`
+- `configs/mmgcn/paper_aligned/iemocap/full_context/{clean_roberta_features,legacy_mmgcn_features}/smoke.yaml`
+- `configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml`
+- `configs/multidag_cl/paper_aligned/iemocap/full_context/{clean_roberta_features,legacy_mmgcn_features}/smoke.yaml`
+- `configs/multidag_cl/unified/synthetic/causal_context/synthetic/smoke.yaml`
+- `configs/simple_mlp/unified/m3ed/full_context/m3ed_features/development.yaml`
 
 ## Compatibility paths
 
@@ -224,6 +240,12 @@ Phase 3B2 canonical support paths 为：
 - Phase 4A 审计工具新增完整 manual-review collision PASS 测试；plan audit PASS 只表示停止点标记完整，不表示 collision 已解决。
 - Phase 4A 最终完整 pytest：`356 passed, 3 skipped`；最终 config validation、strict migration-plan audit 与 diff check 通过。
 - Phase 4A correction targeted audit tests：`9 passed`；完整 pytest：`357 passed, 3 skipped`；config validation、strict audit 与 `git diff --check` 通过；strict audit 报告 `tracked_yaml=183 candidate_collisions=1`。
+- Config Batch 1 基于分支 `refactor/model-first-layout`、HEAD `870ac7dd5d58b6e0a1f4012cf10335db836b2f1c`；迁移前完整 pytest 为 `357 passed, 3 skipped`，迁移后为 `369 passed, 3 skipped`。
+- Batch 1 使用 16 个 `git mv`；旧路径剩余 0、新路径存在 16、tracked YAML 总数 183、YAML 内容变化 0、未批准语义变化 0。
+- Batch 1 reference audit 记录 28 条已更新活动引用、20 条保留历史引用，以及 1 条仍只指向未迁移 GS-MCC smoke 的获准活动目录模式；活动代码、测试和 YAML 中 Batch 1 旧文件路径剩余 0。
+- Batch 1 targeted consumer/audit tests：`70 passed`；新增 Batch audit synthetic tests：`10 passed`；Phase 4A plan audit tests：`10 passed`。
+- Batch 1 config validation、Phase 4A strict plan audit、Batch 1 strict audit、Original-MERC smoke command-generation dry plan、6 个 CLI help 与 `git diff --check` 均通过。
+- Phase 4A plan audit 已保持向后兼容并支持迁移后的 candidate path 单一真相；Batch strict audit 发现并修正了 `utils/iemocap_features.py` 的旧 feature-registry 活动路径漏项。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
@@ -234,7 +256,7 @@ Phase 3B2 canonical support paths 为：
 - `prepare_m3ed_metadata.py`、真实 batch/model 诊断与 summary rebuild 工具具有数据或资产写入风险；Phase 3B2 只做 import、CLI help、synthetic 或静态安全检查，没有执行这些真实动作。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
-- Phase 4A 没有移动、重命名或修改任何 YAML；历史 outputs 内冻结的配置快照不在迁移范围。
+- Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1 仅移动 16 个 YAML 且字节不变。历史 outputs 内冻结的配置快照不在迁移范围。
 - 当前只剩 1 个 candidate collision group，涉及两份 missing-modality pipeline。active docs 区分 original formal 与 stable-candidate source run，但 YAML 没有机器可读 source-run 字段；必须在 Config Batch 7 前决定合并为一份 canonical 配置，或由后续独立任务补足机器可读语义。该 collision 不属于 Batch 1。
 - 配置 provenance 不得按旧路径或文件名猜测；`paper_aligned` 不是 `author_official`，全部 GS-MCC 配置均为 `project_variant`。
 
@@ -248,7 +270,7 @@ Phase 3B2 canonical support paths 为：
 
 ## 下一阶段工程顺序
 
-模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 也已完成。下一阶段只执行 `CONFIG_BATCH_1`：`_shared/data`、SimpleMLP、synthetic 与经确认的低风险 smoke。每次只执行一个 batch；剩余 collision 属于 Batch 7，不阻塞 Batch 1，但必须在 Batch 7 前解决。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
+模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 与 Config Batch 1 也已完成。下一阶段只执行 `CONFIG_BATCH_2`。每次只执行一个 batch；剩余 collision 属于 Batch 7，不阻塞 Batch 2，但必须在 Batch 7 前解决。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
 
 Phase 3B2 结果见 `docs/refactors/SCRIPT_SUPPORT_LAYOUT_REFACTOR_REPORT.md`、`docs/refactors/SCRIPT_SUPPORT_CLASSIFICATION_PHASE3B2.csv` 与 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3B2.*`。后续 config 重构不得删除 Phase 3A/3B1/3B2 wrapper、改变 runtime/checkpoint schema，或把 `paper_aligned` 误写为 `author_official`。
 
@@ -261,6 +283,16 @@ Config Phase 4A 的唯一迁移依据为：
 - `docs/refactors/CONFIG_MIGRATION_PLAN_PHASE4A.csv`
 - `docs/refactors/CONFIG_MIGRATION_BATCHES_PHASE4A.csv`
 - `docs/refactors/CONFIG_LAYOUT_PHASE4A_REPORT.md`
+
+Config Batch 1 的执行与审计依据为：
+
+- `docs/refactors/CONFIG_BATCH1_MOVES.csv`
+- `docs/refactors/CONFIG_BATCH1_BEFORE_SNAPSHOT.json`
+- `docs/refactors/CONFIG_BATCH1_AFTER_SNAPSHOT.json`
+- `docs/refactors/CONFIG_BATCH1_SEMANTIC_DIFF.csv`
+- `docs/refactors/CONFIG_BATCH1_REFERENCE_AUDIT.csv`
+- `docs/refactors/CONFIG_BATCH1_REFACTOR_REPORT.md`
+- `scripts/dev/audit_config_batch_migration.py`
 
 ## 下一阶段研究路线
 

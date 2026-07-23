@@ -92,7 +92,7 @@ python scripts/baselines/evaluate_new_causal_graph_checkpoint.py \
 
 ```bash
 python scripts/baselines/train_new_causal_graph_baseline.py \
-  --config configs/smoke/train_causal_dialoguegcn_iemocap_real_2epoch.yaml
+  --config configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml
 DIALOGUEGCN_RUN_ID=$(awk -F= '$1=="run_id" {print $2}' outputs/dev/latest_run.txt)
 ```
 

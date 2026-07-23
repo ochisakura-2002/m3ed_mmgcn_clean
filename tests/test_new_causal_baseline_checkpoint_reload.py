@@ -22,7 +22,12 @@ def test_checkpoint_rebuild_preserves_eval_logits_and_writes_outputs(
     tmp_path: Path,
 ) -> None:
     config = normalized_training_config(
-        load_yaml_config(Path("configs/smoke/train_causal_dialoguegcn_end_to_end.yaml"))
+        load_yaml_config(
+            Path(
+                "configs/dialoguegcn/unified/synthetic/causal_context/"
+                "synthetic/smoke_end_to_end.yaml"
+            )
+        )
     )
     torch.manual_seed(77)
     model = build_new_causal_baseline(config).eval()

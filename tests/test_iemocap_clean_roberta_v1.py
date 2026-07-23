@@ -493,7 +493,7 @@ def test_formal_validator_rejects_drift_caps_and_test_selection() -> None:
 
 
 def test_config_tree_rejects_wrong_registry_sha() -> None:
-    registry = load_yaml(ROOT / "configs/data/iemocap_feature_sets.yaml")
+    registry = load_yaml(ROOT / "configs/_shared/data/iemocap/feature_sets.yaml")
     registry["clean_roberta_v1"]["sha256"] = "0" * 64
     errors = []
     validate_clean_roberta_v1_registry(registry, errors)
@@ -584,7 +584,7 @@ def test_smoke_and_formal_validation_both_hash_actual_pkl(tmp_path: Path) -> Non
     feature_path.write_bytes(b"audited-clean-feature-test-double")
     actual_sha256 = compute_file_sha256(feature_path)
 
-    registry_path = tmp_path / "configs/data/iemocap_feature_sets.yaml"
+    registry_path = tmp_path / "configs/_shared/data/iemocap/feature_sets.yaml"
     registry_path.parent.mkdir(parents=True)
     registry_path.write_text(
         yaml.safe_dump(

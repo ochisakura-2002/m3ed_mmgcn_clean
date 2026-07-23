@@ -51,7 +51,7 @@ Train one verified smoke after placing the pinned feature PKL:
 
 ```powershell
 conda run -n m3ed_mmgcn python scripts/baselines/train_original_merc_baseline.py `
-  --config configs/smoke/original_repro/mmgcn_legacy.yaml
+  --config configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml
 ```
 
 Evaluate a saved checkpoint:

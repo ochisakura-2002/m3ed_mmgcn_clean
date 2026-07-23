@@ -1,0 +1,17 @@
+old_path,new_path,byte_identical,semantic_identical,changed_keys,change_allowed,status,notes
+configs/analysis/four_model_causal_audit_synthetic.yaml,configs/benchmarks/causal_unified/analysis/four_model_audit_synthetic.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/data/iemocap_feature_sets.yaml,configs/_shared/data/iemocap/feature_sets.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/causal_dialoguegcn_iemocap_synthetic.yaml,configs/dialoguegcn/unified/synthetic/causal_context/synthetic/audit_fixture.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/causal_gsmcc_iemocap_synthetic.yaml,configs/gsmcc/project_variant/synthetic/causal_context/synthetic/audit_fixture.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/dialoguegcn_clean.yaml,configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/dialoguegcn_legacy.yaml,configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/mmgcn_clean.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/mmgcn_legacy.yaml,configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/multidag_cl_clean.yaml,configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/original_repro/multidag_cl_legacy.yaml,configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/train_causal_dialoguegcn_end_to_end.yaml,configs/dialoguegcn/unified/synthetic/causal_context/synthetic/smoke_end_to_end.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/train_causal_dialoguegcn_iemocap_real_2epoch.yaml,configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/train_causal_gsmcc_end_to_end.yaml,configs/gsmcc/project_variant/synthetic/causal_context/synthetic/smoke_end_to_end.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/train_mmgcn_smoke.yaml,configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/smoke/train_multidag_cl_smoke.yaml,configs/multidag_cl/unified/synthetic/causal_context/synthetic/smoke.yaml,YES,YES,,YES,PASS,Byte-identical git mv.
+configs/train_simple_mlp_m3ed.yaml,configs/simple_mlp/unified/m3ed/full_context/m3ed_features/development.yaml,YES,YES,,YES,PASS,Byte-identical git mv.

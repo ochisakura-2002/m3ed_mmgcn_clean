@@ -14,8 +14,14 @@ from scripts.baselines.train_new_causal_graph_baseline import (
 @pytest.mark.parametrize(
     "config_path",
     [
-        Path("configs/smoke/train_causal_gsmcc_end_to_end.yaml"),
-        Path("configs/smoke/train_causal_dialoguegcn_end_to_end.yaml"),
+        Path(
+            "configs/gsmcc/project_variant/synthetic/causal_context/"
+            "synthetic/smoke_end_to_end.yaml"
+        ),
+        Path(
+            "configs/dialoguegcn/unified/synthetic/causal_context/"
+            "synthetic/smoke_end_to_end.yaml"
+        ),
     ],
 )
 def test_synthetic_training_writes_complete_reloadable_run(

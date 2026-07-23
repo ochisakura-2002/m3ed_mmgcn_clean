@@ -124,6 +124,16 @@ def test_valid_plan_passes(tmp_path: Path) -> None:
     assert errors == []
 
 
+def test_valid_executed_move_passes(tmp_path: Path) -> None:
+    errors = _run(
+        tmp_path,
+        [_classification(OLD_A, CANDIDATE_A)],
+        [_mapping(OLD_A, CANDIDATE_A)],
+        {CANDIDATE_A},
+    )
+    assert errors == []
+
+
 def test_missing_tracked_yaml_fails(tmp_path: Path) -> None:
     errors = _run(
         tmp_path,

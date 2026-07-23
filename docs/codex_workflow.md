@@ -51,7 +51,7 @@ Git、本地/远程同步、实验执行：
 本地 smoke test：
 
 1. `docs/smoke_test_protocol.md`
-2. `configs/smoke/train_mmgcn_smoke.yaml`
+2. `configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml`
 3. `datasets/smoke/mmgcn_smoke_dataset.py`
 
 ## 本地 Windows 工作流

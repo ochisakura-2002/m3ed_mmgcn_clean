@@ -20,14 +20,14 @@ protocol:
       protocol_comparability: fair_comparison_not_paper_reproduction
 stages:
   smoke:
-    - {config: configs/smoke/original_repro/mmgcn_legacy.yaml}
-    - {config: configs/smoke/original_repro/mmgcn_clean.yaml}
-    - {config: configs/smoke/original_repro/multidag_cl_legacy.yaml}
-    - {config: configs/smoke/original_repro/multidag_cl_clean.yaml}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml}
+    - {config: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml}
+    - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml}
+    - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml}
     - {config: configs/smoke/original_repro/gsmcc_legacy.yaml}
     - {config: configs/smoke/original_repro/gsmcc_clean.yaml}
-    - {config: configs/smoke/original_repro/dialoguegcn_legacy.yaml}
-    - {config: configs/smoke/original_repro/dialoguegcn_clean.yaml}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/smoke.yaml}
   legacy_paper_adjacent_screening:
     - {config: configs/experiments/original_merc/screening/mmgcn_legacy.yaml}
     - {config: configs/experiments/original_merc/screening/multidag_cl_legacy.yaml}

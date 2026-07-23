@@ -43,6 +43,22 @@ SMOKE_ORIGINAL_MERC = "smoke_original_merc"
 OUT_OF_SCOPE = "out_of_scope"
 FORMAL_CONFIG_PREFIX = "configs/experiments/original_merc/"
 SMOKE_CONFIG_PREFIX = "configs/smoke/original_repro/"
+CANONICAL_SMOKE_CONFIG_PATHS = frozenset(
+    {
+        "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/smoke.yaml",
+        "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/smoke.yaml",
+        "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/smoke.yaml",
+        "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/smoke.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/smoke.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/smoke.yaml",
+    }
+)
 GENERATED_CONFIG_PREFIX = "tmp/original_merc_pipeline_configs/"
 
 
@@ -139,6 +155,14 @@ def _path_belongs_to(path_text: str | None, prefix: str) -> bool:
     )
 
 
+def _path_matches_any(path_text: str | None, candidates: set[str] | frozenset[str]) -> bool:
+    normalized = _normalized_source_path(path_text)
+    return any(
+        normalized == candidate or normalized.endswith(f"/{candidate}")
+        for candidate in candidates
+    )
+
+
 def _feature_track(config: dict[str, Any]) -> str | None:
     dimension = config.get("model", {}).get("text_feature_dim")
     if dimension is None:
@@ -199,7 +223,9 @@ def classify_run_scope(run_dir: Path) -> dict[str, Any]:
     ) or "unknown"
     exact_protocol = protocol_version == ORIGINAL_MERC_PROTOCOL_VERSION
     formal_source = _path_belongs_to(config_path, FORMAL_CONFIG_PREFIX)
-    smoke_source = _path_belongs_to(config_path, SMOKE_CONFIG_PREFIX)
+    smoke_source = _path_belongs_to(
+        config_path, SMOKE_CONFIG_PREFIX
+    ) or _path_matches_any(config_path, CANONICAL_SMOKE_CONFIG_PATHS)
     generated_source = _path_belongs_to(config_path, GENERATED_CONFIG_PREFIX)
     generated_formal_fold = generated_source and str(profile or "").startswith(
         "formal_"

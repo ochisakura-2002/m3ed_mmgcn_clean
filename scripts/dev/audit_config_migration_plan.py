@@ -207,14 +207,39 @@ def audit_plan(
 
     classification_set = set(classification_paths)
     mapping_set = set(mapping_paths)
-    for path in sorted(tracked - mapping_set):
+    for path in sorted(mapping_set - classification_set):
+        errors.append(f"mapping old_path is missing from classification: {path}")
+    for path in sorted(classification_set - mapping_set):
+        errors.append(f"classification old_path is missing from mapping: {path}")
+
+    resolved_mapping_paths: dict[str, str] = {}
+    for row in mapping:
+        old_path = row["old_path"]
+        candidate = row["candidate_new_path"]
+        old_tracked = old_path in tracked
+        candidate_tracked = candidate in tracked
+        if old_tracked and candidate_tracked:
+            errors.append(
+                f"mapping has old/new dual truth in Git index: "
+                f"{old_path} and {candidate}"
+            )
+        elif old_tracked:
+            resolved_mapping_paths[old_path] = old_path
+        elif candidate_tracked:
+            resolved_mapping_paths[old_path] = candidate
+        else:
+            errors.append(
+                f"mapping contains neither tracked old nor candidate YAML: "
+                f"{old_path} -> {candidate}"
+            )
+
+    resolved_set = set(resolved_mapping_paths.values())
+    for path in sorted(tracked - resolved_set):
         errors.append(f"tracked YAML is missing from mapping: {path}")
-    for path in sorted(mapping_set - tracked):
-        errors.append(f"mapping contains non-tracked YAML: {path}")
-    for path in sorted(tracked - classification_set):
-        errors.append(f"tracked YAML is missing from classification: {path}")
-    for path in sorted(classification_set - tracked):
-        errors.append(f"classification contains non-tracked YAML: {path}")
+    resolved_duplicates = Counter(resolved_mapping_paths.values())
+    for path, count in sorted(resolved_duplicates.items()):
+        if count > 1:
+            errors.append(f"multiple mapping rows resolve to tracked YAML: {path}")
 
     classification_by_path = {
         row["old_path"]: row for row in classification if row.get("old_path")

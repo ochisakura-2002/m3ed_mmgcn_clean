@@ -46,7 +46,10 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config",
-        default="configs/smoke/train_multidag_cl_smoke.yaml",
+        default=(
+            "configs/multidag_cl/unified/synthetic/causal_context/"
+            "synthetic/smoke.yaml"
+        ),
         help="Path to the smoke YAML config.",
     )
     parser.add_argument("--experiment-date", default=None)

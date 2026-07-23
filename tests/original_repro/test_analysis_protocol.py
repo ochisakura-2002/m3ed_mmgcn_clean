@@ -13,6 +13,7 @@ from scripts.analyze.analyze_original_merc_results import (
     FORMAL_ORIGINAL_MERC,
     LEGACY_FIVEFOLD_TRACK,
     LEGACY_OFFICIAL_TRACK,
+    SMOKE_ORIGINAL_MERC,
     aggregate,
     analyze,
     audit_run_numeric_validity,
@@ -309,6 +310,22 @@ def test_generated_formal_fold_config_is_in_formal_scope() -> None:
         ),
     )
     assert classify_run_scope(run_dir)["run_scope"] == FORMAL_ORIGINAL_MERC
+
+
+def test_canonical_smoke_config_is_in_smoke_scope(tmp_path: Path) -> None:
+    test_root = tmp_path / "canonical_smoke_scope"
+    run_dir = _write_numeric_audit_run(
+        test_root,
+        run_name="mmgcn_legacy_config_path_only",
+        profile="unexpected_profile",
+        config_source=(
+            "configs/mmgcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/smoke.yaml"
+        ),
+    )
+    scope = classify_run_scope(run_dir)
+    assert scope["run_scope"] == SMOKE_ORIGINAL_MERC
+    assert scope["scope_reason"] == "smoke_config_source"
 
 
 def test_invalid_screening_candidate_blocks_top2() -> None:

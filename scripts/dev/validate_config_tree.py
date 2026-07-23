@@ -54,14 +54,80 @@ CLEAN_ROBERTA_V1_PATH = (
 )
 CLEAN_ROBERTA_V1_NAME = "iemocap_clean_roberta_base_utterance_mean_v1"
 CLEAN_ROBERTA_V1_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
-IEMOCAP_FEATURE_REGISTRY = ROOT / "configs" / "data" / "iemocap_feature_sets.yaml"
-ORIGINAL_REPRO_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
+IEMOCAP_FEATURE_REGISTRY = (
+    ROOT / "configs" / "_shared" / "data" / "iemocap" / "feature_sets.yaml"
+)
+ORIGINAL_REPRO_LEGACY_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
 ORIGINAL_MERC_EXPERIMENT_DIR = ROOT / "configs" / "experiments" / "original_merc"
 ORIGINAL_REPRO_MODELS = {
     "mmgcn": "original_repro_mmgcn",
     "multidag_cl": "original_repro_multidag_cl",
     "gsmcc": "project_paper_oriented_gsmcc",
     "dialoguegcn": "original_repro_dialoguegcn",
+}
+ORIGINAL_REPRO_SMOKE_CONFIGS = {
+    ("mmgcn", "legacy"): (
+        ROOT
+        / "configs"
+        / "mmgcn"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "legacy_mmgcn_features"
+        / "smoke.yaml"
+    ),
+    ("mmgcn", "clean"): (
+        ROOT
+        / "configs"
+        / "mmgcn"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "clean_roberta_features"
+        / "smoke.yaml"
+    ),
+    ("multidag_cl", "legacy"): (
+        ROOT
+        / "configs"
+        / "multidag_cl"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "legacy_mmgcn_features"
+        / "smoke.yaml"
+    ),
+    ("multidag_cl", "clean"): (
+        ROOT
+        / "configs"
+        / "multidag_cl"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "clean_roberta_features"
+        / "smoke.yaml"
+    ),
+    ("dialoguegcn", "legacy"): (
+        ROOT
+        / "configs"
+        / "dialoguegcn"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "legacy_mmgcn_features"
+        / "smoke.yaml"
+    ),
+    ("dialoguegcn", "clean"): (
+        ROOT
+        / "configs"
+        / "dialoguegcn"
+        / "paper_aligned"
+        / "iemocap"
+        / "full_context"
+        / "clean_roberta_features"
+        / "smoke.yaml"
+    ),
+    ("gsmcc", "legacy"): ORIGINAL_REPRO_LEGACY_SMOKE_DIR / "gsmcc_legacy.yaml",
+    ("gsmcc", "clean"): ORIGINAL_REPRO_LEGACY_SMOKE_DIR / "gsmcc_clean.yaml",
 }
 ORIGINAL_MERC_TRACKS = {
     "legacy_official_split_safe_selection": (
@@ -1265,16 +1331,29 @@ def validate_original_merc_config(
 
 
 def validate_original_merc_tree(errors: list[str]) -> None:
-    expected_smoke = {
-        f"{family}_{track}.yaml"
-        for family in ORIGINAL_REPRO_MODELS
-        for track in ("legacy", "clean")
+    missing_smoke = [
+        rel(path)
+        for path in ORIGINAL_REPRO_SMOKE_CONFIGS.values()
+        if not path.exists()
+    ]
+    require(
+        not missing_smoke,
+        f"original reproduction smoke config matrix missing {missing_smoke}",
+        errors,
+    )
+    expected_legacy_smoke = {"gsmcc_legacy.yaml", "gsmcc_clean.yaml"}
+    actual_legacy_smoke = {
+        path.name for path in ORIGINAL_REPRO_LEGACY_SMOKE_DIR.glob("*.yaml")
     }
-    actual_smoke = {path.name for path in ORIGINAL_REPRO_SMOKE_DIR.glob("*.yaml")}
-    require(actual_smoke == expected_smoke, "original reproduction smoke config matrix mismatch", errors)
+    require(
+        actual_legacy_smoke == expected_legacy_smoke,
+        "legacy original reproduction smoke directory must contain only "
+        "unmigrated GS-MCC configs",
+        errors,
+    )
     for family in ORIGINAL_REPRO_MODELS:
         for track in ("legacy", "clean"):
-            path = ORIGINAL_REPRO_SMOKE_DIR / f"{family}_{track}.yaml"
+            path = ORIGINAL_REPRO_SMOKE_CONFIGS[(family, track)]
             if path.exists():
                 experiment_track = (
                     "legacy_official_split_safe_selection"

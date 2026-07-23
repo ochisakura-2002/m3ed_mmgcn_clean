@@ -61,7 +61,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/train_simple_mlp_m3ed.yaml",
+        default=(
+            "configs/simple_mlp/unified/m3ed/full_context/"
+            "m3ed_features/development.yaml"
+        ),
         help="Path to YAML config file.",
     )
     parser.add_argument(

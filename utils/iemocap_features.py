@@ -12,7 +12,7 @@ from utils.run_metadata import compute_file_sha256
 
 
 UNPINNED_SHA256 = "TO_BE_FILLED_AFTER_GENERATION"
-DEFAULT_REGISTRY_PATH = Path("configs/data/iemocap_feature_sets.yaml")
+DEFAULT_REGISTRY_PATH = Path("configs/_shared/data/iemocap/feature_sets.yaml")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 

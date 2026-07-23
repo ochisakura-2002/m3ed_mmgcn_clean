@@ -150,14 +150,18 @@ def test_original_repro_mmgcn_defaults_and_formal_configs_keep_residual_enabled(
     )
     assert model.graph_net.use_residual is True
 
-    roots = [
-        Path("configs/smoke/original_repro"),
+    named_roots = [
         Path("configs/experiments/original_merc/screening"),
         Path("configs/experiments/original_merc/clean_screening"),
         Path("configs/experiments/original_merc/legacy_fold_bases"),
         Path("configs/experiments/original_merc/clean_fold_bases"),
     ]
-    configs = [path for root in roots for path in root.glob("mmgcn_*.yaml")]
+    configs = [
+        *Path(
+            "configs/mmgcn/paper_aligned/iemocap/full_context"
+        ).glob("*/smoke.yaml"),
+        *(path for root in named_roots for path in root.glob("mmgcn_*.yaml")),
+    ]
     assert len(configs) == 6
     for path in configs:
         config = yaml.safe_load(path.read_text(encoding="utf-8"))

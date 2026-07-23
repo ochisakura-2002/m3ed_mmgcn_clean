@@ -36,7 +36,7 @@
 根据当前上下文和本地 `tmp/smoke_outputs/latest_run.txt`，最近一次 smoke test 使用了 fake dialogue 配置：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\smoke\train_mmgcn_smoke.yaml
+conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
 ```
 
 生成的 checkpoint 随 run id 变化。最近一次已知 run id 是：
@@ -84,7 +84,7 @@ conda run -n m3ed_mmgcn python -m py_compile <changed_python_files>
 4. fake dialogue smoke train：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\smoke\train_mmgcn_smoke.yaml
+conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
 ```
 
 5. 读取最新 run：
@@ -132,7 +132,7 @@ outputs/
 本地 smoke 配置使用：
 
 ```text
-configs/smoke/train_mmgcn_smoke.yaml
+configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml
 ```
 
 它应满足：

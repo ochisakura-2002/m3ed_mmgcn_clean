@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--manifest",
-        default="configs/experiments/original_merc/pipeline_manifest.yaml",
+        default="configs/benchmarks/original_merc/pipeline_manifest.yaml",
     )
     parser.add_argument(
         "--stage",

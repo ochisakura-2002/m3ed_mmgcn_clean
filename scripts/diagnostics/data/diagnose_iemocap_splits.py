@@ -7,7 +7,7 @@ help interpret validation-test gaps.
 
 Usage:
     python scripts/diagnostics/data/diagnose_iemocap_splits.py \
-      --config configs/baselines/multidag_cl/iemocap/formal/context_w5_tav.yaml \
+      --config configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/context_w5_tav.yaml \
       --experiment-date 20260716
 """
 

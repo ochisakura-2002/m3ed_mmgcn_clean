@@ -15,7 +15,7 @@ run_control:
 
 train:
   enabled: true
-  train_config_path: configs/baselines/multidag_cl/iemocap/stabilize/context_w5_tav_linear_encoder.yaml
+  train_config_path: configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/context_w5_tav_linear_encoder.yaml
 
 evaluation:
   enabled: true

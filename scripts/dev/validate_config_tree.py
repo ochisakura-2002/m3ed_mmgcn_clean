@@ -15,9 +15,18 @@ ROOT = Path(__file__).resolve().parents[2]
 FORMAL_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "formal"
 STABILIZE_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "stabilize"
 LOSS_STABILITY_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "loss_stability"
-FORMAL_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "formal"
-STABILIZE_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "stabilize"
-LOSS_STABILITY_TRAIN_DIR = ROOT / "configs" / "baselines" / "multidag_cl" / "iemocap" / "loss_stability"
+MULTIDAG_ABLATION_TRAIN_DIR = (
+    ROOT
+    / "configs"
+    / "multidag_cl"
+    / "unified"
+    / "iemocap"
+    / "causal_context"
+    / "legacy_mmgcn_features"
+)
+FORMAL_TRAIN_DIR = MULTIDAG_ABLATION_TRAIN_DIR
+STABILIZE_TRAIN_DIR = MULTIDAG_ABLATION_TRAIN_DIR
+LOSS_STABILITY_TRAIN_DIR = MULTIDAG_ABLATION_TRAIN_DIR
 
 CAUSAL_BENCHMARK_TRAIN_DIRS = {
     "mmgcn": (
@@ -107,7 +116,11 @@ CLEAN_ROBERTA_V1_PIPELINE_DIRS = {
     for family in CLEAN_ROBERTA_V1_FORMAL_FAMILIES
 }
 CLEAN_ROBERTA_V1_MANIFEST = (
-    ROOT / "configs" / "experiments" / "iemocap_clean_roberta_v1_8run.yaml"
+    ROOT
+    / "configs"
+    / "benchmarks"
+    / "causal_unified"
+    / "iemocap_clean_roberta_eight_run.yaml"
 )
 
 CAUSAL_CONTRACT_VERSION = "1.0"
@@ -125,6 +138,9 @@ IEMOCAP_FEATURE_REGISTRY = (
 )
 ORIGINAL_REPRO_LEGACY_SMOKE_DIR = ROOT / "configs" / "smoke" / "original_repro"
 ORIGINAL_MERC_EXPERIMENT_DIR = ROOT / "configs" / "experiments" / "original_merc"
+ORIGINAL_MERC_PIPELINE_MANIFEST = (
+    ROOT / "configs" / "benchmarks" / "original_merc" / "pipeline_manifest.yaml"
+)
 ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS = {
     "mmgcn": {
         "screening": (
@@ -322,6 +338,35 @@ CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
         "context_w5_tav_quick.yaml",
         "context_w5_tav_smoke.yaml",
     },
+}
+MULTIDAG_BATCH6_ABLATION_NAMES = {
+    "context_past_all_causal_tav.yaml",
+    "context_past_all_causal_tav_stable_candidate.yaml",
+    "context_w0_tav.yaml",
+    "context_w0_tav_stable_candidate.yaml",
+    "context_w1_tav.yaml",
+    "context_w3_tav.yaml",
+    "context_w3_tav_stable_candidate.yaml",
+    "context_w5_tav.yaml",
+    "context_w5_tav_dropout01.yaml",
+    "context_w5_tav_dropout02.yaml",
+    "context_w5_tav_graph1.yaml",
+    "context_w5_tav_linear_encoder.yaml",
+    "context_w5_tav_lr3e4.yaml",
+    "context_w5_tav_lr5e4.yaml",
+    "context_w5_tav_stable_candidate.yaml",
+    "context_w5_tav_stable_lr3e4_cosine.yaml",
+    "context_w5_tav_stable_lr3e4_earlystop_valloss.yaml",
+    "context_w5_tav_stable_lr3e4_label_smoothing005.yaml",
+    "context_w5_tav_stable_lr3e4_plateau_valloss.yaml",
+    "context_w5_tav_stable_lr5e4_plateau_valloss.yaml",
+    "modality_w5_a.yaml",
+    "modality_w5_av.yaml",
+    "modality_w5_t.yaml",
+    "modality_w5_ta.yaml",
+    "modality_w5_tav.yaml",
+    "modality_w5_tv.yaml",
+    "modality_w5_v.yaml",
 }
 
 
@@ -631,7 +676,7 @@ def validate_training(path: Path, errors: list[str]) -> None:
         require(graph.get("context_mode") == expected_mode, f"{rel(path)} stable context_mode mismatch", errors)
         require(graph.get("window_past") == expected_window, f"{rel(path)} stable window_past mismatch", errors)
 
-    if path.parent == LOSS_STABILITY_TRAIN_DIR:
+    if path.name in LOSS_STABILITY_CONFIGS:
         validate_loss_stability_training(path, config, errors)
 
 
@@ -933,6 +978,8 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
         train_names_expected.update(
             CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS.get(family, set())
         )
+        if family == "multidag_cl":
+            train_names_expected.update(MULTIDAG_BATCH6_ABLATION_NAMES)
         train_names = {path.name for path in train_dir.glob("*.yaml")}
         pipeline_names = {path.name for path in pipeline_dir.glob("*.yaml")}
         require(
@@ -1612,7 +1659,7 @@ def validate_original_merc_tree(errors: list[str]) -> None:
         if clean.exists():
             validate_original_merc_config(clean, family, "clean", "clean_roberta_fivefold_fair_comparison", True, errors)
 
-    manifest_path = ORIGINAL_MERC_EXPERIMENT_DIR / "pipeline_manifest.yaml"
+    manifest_path = ORIGINAL_MERC_PIPELINE_MANIFEST
     require(manifest_path.exists(), "missing original MERC pipeline manifest", errors)
     if manifest_path.exists():
         manifest = load_yaml(manifest_path)
@@ -1642,12 +1689,11 @@ def main() -> None:
     for path in sorted(LOSS_STABILITY_PIPELINE_DIR.glob("*.yaml")):
         validate_pipeline(path, errors)
 
-    for path in sorted(FORMAL_TRAIN_DIR.glob("*.yaml")):
-        validate_training(path, errors)
-    for path in sorted(STABILIZE_TRAIN_DIR.glob("*.yaml")):
-        validate_training(path, errors)
-    for path in sorted(LOSS_STABILITY_TRAIN_DIR.glob("*.yaml")):
-        validate_training(path, errors)
+    for name in sorted(MULTIDAG_BATCH6_ABLATION_NAMES):
+        path = MULTIDAG_ABLATION_TRAIN_DIR / name
+        require(path.exists(), f"missing Batch 6 training YAML {name}", errors)
+        if path.exists():
+            validate_training(path, errors)
 
     for name in STABLE_CONTEXTS:
         require((STABILIZE_TRAIN_DIR / name).exists(), f"missing stable training YAML {name}", errors)

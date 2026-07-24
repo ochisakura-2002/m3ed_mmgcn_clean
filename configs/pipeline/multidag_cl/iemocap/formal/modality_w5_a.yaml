@@ -15,7 +15,7 @@ run_control:
 
 train:
   enabled: true
-  train_config_path: configs/baselines/multidag_cl/iemocap/formal/modality_w5_a.yaml
+  train_config_path: configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/modality_w5_a.yaml
 
 evaluation:
   enabled: true

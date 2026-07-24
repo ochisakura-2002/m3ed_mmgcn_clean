@@ -16,9 +16,19 @@ from scripts.dev.audit_config_batch_migration import (
     BATCH3_SEMANTIC_DIFF_COLUMNS,
     BATCH5_MOVE_COLUMNS,
     BATCH5_SEMANTIC_DIFF_COLUMNS,
+    BATCH6_MODEL_MEMBERSHIP_COLUMNS,
+    BATCH6_MOVE_COLUMNS,
+    BATCH6_SEMANTIC_DIFF_COLUMNS,
     MOVE_COLUMNS,
     REFERENCE_COLUMNS,
     SEMANTIC_DIFF_COLUMNS,
+    _batch6_ablation_variable,
+    _batch6_controlled_variables,
+    _batch6_layout,
+    _batch6_provenance,
+    _benchmark_membership,
+    _canonical_json,
+    _json_sha256,
     audit_batch_migration,
     preview_batch_migration,
 )
@@ -206,7 +216,9 @@ def _semantic_row(plan_row: dict[str, str]) -> dict[str, str]:
 def _persist(fixture: Fixture) -> None:
     _write_csv(fixture.plan_path, MAPPING_COLUMNS, fixture.plan_rows)
     move_columns = (
-        BATCH5_MOVE_COLUMNS
+        BATCH6_MOVE_COLUMNS
+        if fixture.batch == 6
+        else BATCH5_MOVE_COLUMNS
         if fixture.batch == 5
         else BATCH3_MOVE_COLUMNS
         if fixture.batch in {3, 4}
@@ -214,11 +226,13 @@ def _persist(fixture: Fixture) -> None:
     )
     reference_columns = (
         BATCH3_REFERENCE_COLUMNS
-        if fixture.batch in {3, 4, 5}
+        if fixture.batch in {3, 4, 5, 6}
         else REFERENCE_COLUMNS
     )
     semantic_columns = (
-        BATCH5_SEMANTIC_DIFF_COLUMNS
+        BATCH6_SEMANTIC_DIFF_COLUMNS
+        if fixture.batch == 6
+        else BATCH5_SEMANTIC_DIFF_COLUMNS
         if fixture.batch == 5
         else BATCH3_SEMANTIC_DIFF_COLUMNS
         if fixture.batch in {3, 4}
@@ -230,7 +244,7 @@ def _persist(fixture: Fixture) -> None:
             entry["snapshot_source"] = "git_head"
         for entry in fixture.after_entries:
             entry["snapshot_source"] = "working_tree"
-    elif fixture.batch in {3, 4, 5}:
+    elif fixture.batch in {3, 4, 5, 6}:
         for entry in fixture.before_entries:
             entry["snapshot_source"] = "working_tree_pre_move"
         for entry in fixture.after_entries:
@@ -243,7 +257,7 @@ def _persist(fixture: Fixture) -> None:
             "git_head"
             if fixture.batch == 2
             else "working_tree_pre_move"
-            if fixture.batch in {3, 4, 5}
+            if fixture.batch in {3, 4, 5, 6}
             else None
         ),
         git_head=fixture.git_head_commit,
@@ -253,7 +267,7 @@ def _persist(fixture: Fixture) -> None:
         fixture.after_entries,
         batch=fixture.batch,
         snapshot_source=(
-            "working_tree" if fixture.batch in {2, 3, 4, 5} else None
+            "working_tree" if fixture.batch in {2, 3, 4, 5, 6} else None
         ),
         git_head=fixture.git_head_commit,
     )
@@ -978,6 +992,462 @@ def _make_batch5_fixture(tmp_path: Path) -> Fixture:
         git_head_commit="0123456789abcdef0123456789abcdef01234567",
     )
     _persist(fixture)
+    return fixture
+
+
+def _make_batch6_fixture(tmp_path: Path) -> Fixture:
+    batch_plans: list[dict[str, str]] = []
+    payloads: list[dict[str, object]] = []
+
+    causal_manifest = _plan_row(
+        "configs/batch6/causal_manifest.yaml",
+        "configs/benchmarks/causal_unified/fixture_manifest.yaml",
+        batch="Batch 6",
+    )
+    causal_manifest.update(
+        {
+            "model": "",
+            "implementation": "unified",
+            "dataset": "iemocap",
+            "context_mode": "causal_context",
+            "feature_set": "clean_roberta_features",
+            "purpose": "formal",
+            "scope": "benchmark",
+        }
+    )
+    causal_payload: dict[str, object] = {
+        "expected_run_count": 2,
+        "protocol": {
+            "checkpoint_selection_split": "validation",
+            "test_split_used_for_selection": False,
+        },
+        "runs": [
+            {
+                "order": 1,
+                "model": "MMGCN",
+                "validation_session": "Ses01",
+                "config_path": "configs/pipeline/mmgcn/val_ses01.yaml",
+            },
+            {
+                "order": 2,
+                "model": "MultiDAGCL",
+                "validation_session": "Ses01",
+                "config_path": "configs/pipeline/multidag_cl/val_ses01.yaml",
+            },
+        ],
+    }
+    original_manifest = _plan_row(
+        "configs/batch6/original_manifest.yaml",
+        "configs/benchmarks/original_merc/pipeline_manifest.yaml",
+        batch="Batch 6",
+    )
+    original_manifest.update(
+        {
+            "model": "",
+            "implementation": "",
+            "dataset": "iemocap",
+            "context_mode": "full_context",
+            "feature_set": "",
+            "purpose": "formal",
+            "scope": "benchmark",
+        }
+    )
+    original_payload: dict[str, object] = {
+        "protocol": {
+            "checkpoint_selection": "val_weighted_f1",
+            "test_split_used_for_selection": False,
+        },
+        "stages": {
+            "screening": [
+                {
+                    "config": (
+                        "configs/mmgcn/paper_aligned/iemocap/full_context/"
+                        "legacy_mmgcn_features/screening.yaml"
+                    )
+                },
+                {
+                    "config": (
+                        "configs/multidag_cl/paper_aligned/iemocap/"
+                        "full_context/legacy_mmgcn_features/screening.yaml"
+                    )
+                },
+                {
+                    "config": (
+                        "configs/gsmcc/project_variant/iemocap/full_context/"
+                        "legacy_mmgcn_features/screening.yaml"
+                    )
+                },
+                {
+                    "config": (
+                        "configs/dialoguegcn/paper_aligned/iemocap/"
+                        "full_context/legacy_mmgcn_features/screening.yaml"
+                    )
+                },
+            ]
+        },
+    }
+    batch_plans.extend((causal_manifest, original_manifest))
+    payloads.extend((causal_payload, original_payload))
+
+    modality_sets = [
+        ["audio"],
+        ["audio", "visual"],
+        ["text"],
+        ["text", "audio"],
+        ["text", "audio", "visual"],
+        ["text", "visual"],
+        ["visual"],
+    ]
+    for index in range(27):
+        if index < 5:
+            purpose = "context_ablation"
+            stem = f"context_w{index}"
+        elif index < 12:
+            purpose = "modality_ablation"
+            stem = f"modality_{index - 5}"
+        else:
+            purpose = "stability_ablation"
+            stem = f"stability_{index - 12}"
+        plan_row = _plan_row(
+            f"configs/batch6/multidag_{index:02d}.yaml",
+            "configs/multidag_cl/unified/iemocap/causal_context/"
+            f"legacy_mmgcn_features/{stem}.yaml",
+            batch="Batch 6",
+        )
+        plan_row.update(
+            {
+                "model": "multidag_cl",
+                "implementation": "unified",
+                "dataset": "iemocap",
+                "context_mode": "causal_context",
+                "feature_set": "legacy_mmgcn_features",
+                "purpose": purpose,
+                "scope": "model",
+            }
+        )
+        active_modalities = (
+            modality_sets[index - 5]
+            if purpose == "modality_ablation"
+            else ["text", "audio", "visual"]
+        )
+        payload = {
+            "project": {"experiment_name": stem},
+            "system": {"seed": 42},
+            "dataset": {"name": "IEMOCAP", "num_classes": 6},
+            "model": {
+                "name": "MultiDAGCL",
+                "dropout": 0.1 + index / 1000,
+                "active_modalities": active_modalities,
+                "num_graph_layers": 1 + index % 2,
+                "modality_encoder_type": "causal_gru",
+            },
+            "graph": {
+                "context_mode": "causal",
+                "window_past": index if purpose == "context_ablation" else 5,
+                "window_future": 0,
+            },
+            "training": {"epochs": 30, "lr": 0.001 + index / 100000},
+        }
+        batch_plans.append(plan_row)
+        payloads.append(payload)
+
+    for index, active_modalities in enumerate(
+        [*modality_sets, ["text", "audio"]]
+    ):
+        is_smoke = index == 7
+        plan_row = _plan_row(
+            f"configs/batch6/mmgcn_{index:02d}.yaml",
+            (
+                "configs/mmgcn/unified/iemocap/full_context/"
+                "legacy_mmgcn_features/modality_ablation_smoke.yaml"
+                if is_smoke
+                else "configs/mmgcn/unified/m3ed/full_context/"
+                f"m3ed_features/modality_ablation_{index}.yaml"
+            ),
+            batch="Batch 6",
+        )
+        plan_row.update(
+            {
+                "model": "mmgcn",
+                "implementation": "unified",
+                "dataset": "iemocap" if is_smoke else "m3ed",
+                "context_mode": "full_context",
+                "feature_set": (
+                    "legacy_mmgcn_features" if is_smoke else "m3ed_features"
+                ),
+                "purpose": "modality_ablation",
+                "scope": "model",
+            }
+        )
+        payload = {
+            "project": {"experiment_name": f"mmgcn_modality_{index}"},
+            "system": {"seed": 42},
+            "dataset": {"name": "IEMOCAP" if is_smoke else "M3ED"},
+            "model": {"name": "MMGCN", "dropout": 0.5},
+            "train": {"max_epochs": 1 if is_smoke else 10},
+            "graph": {"context_mode": "full"},
+            "modality": {"active_modalities": active_modalities},
+            "notes": {
+                "modality_ablation": {
+                    "setting": f"fixture_{index}",
+                    "active_modalities": active_modalities,
+                }
+            },
+        }
+        batch_plans.append(plan_row)
+        payloads.append(payload)
+
+    raw_payloads = [_yaml_bytes(payload) for payload in payloads]
+    earlier_rows = [
+        _plan_row(
+            f"configs/batch{batch}/old.yaml",
+            f"configs/mmgcn/unified/synthetic/causal_context/"
+            f"synthetic/batch{batch}.yaml",
+            batch=f"Batch {batch}",
+        )
+        for batch in range(1, 6)
+    ]
+    manual_batch7 = _plan_row(
+        "configs/batch7/manual.yaml",
+        "configs/benchmarks/ablations/missing_modality/manual.yaml",
+        batch="Batch 7",
+        manual_review="YES",
+        collision_status="MANUAL_REVIEW",
+    )
+
+    for plan_row, raw in zip(batch_plans, raw_payloads):
+        target = tmp_path / plan_row["candidate_new_path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+    for plan_row in [*earlier_rows, manual_batch7]:
+        target_path = (
+            plan_row["candidate_new_path"]
+            if plan_row["migration_batch"] != "Batch 7"
+            else plan_row["old_path"]
+        )
+        target = tmp_path / target_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(_yaml_bytes({"seed": target_path}))
+
+    classification_columns = (
+        "old_path",
+        "model",
+        "implementation",
+        "purpose",
+        "is_ablation",
+        "is_smoke",
+        "is_formal",
+        "is_modality_missing",
+        "is_official",
+        "is_paper_aligned",
+        "is_project_variant",
+        "entrypoint",
+        "provenance_evidence",
+    )
+    classification_rows: list[dict[str, str]] = []
+    move_rows: list[dict[str, str]] = []
+    before_entries: list[dict[str, object]] = []
+    after_entries: list[dict[str, object]] = []
+    semantic_rows: list[dict[str, str]] = []
+    for plan_row, payload, raw in zip(batch_plans, payloads, raw_payloads):
+        is_ablation = "NO" if plan_row["scope"] == "benchmark" else "YES"
+        is_smoke = (
+            "YES"
+            if plan_row["candidate_new_path"].endswith(
+                "modality_ablation_smoke.yaml"
+            )
+            else "NO"
+        )
+        is_formal = "YES" if plan_row["scope"] == "benchmark" else "NO"
+        classification_row = {
+            "old_path": plan_row["old_path"],
+            "model": plan_row["model"],
+            "implementation": plan_row["implementation"],
+            "purpose": plan_row["purpose"],
+            "is_ablation": is_ablation,
+            "is_smoke": is_smoke,
+            "is_formal": is_formal,
+            "is_modality_missing": "NO",
+            "is_official": "NO",
+            "is_paper_aligned": "NO",
+            "is_project_variant": "NO",
+            "entrypoint": "scripts/workflows/run_pipeline.py",
+            "provenance_evidence": "synthetic Batch 6 fixture",
+        }
+        classification_rows.append(classification_row)
+        layout_role, benchmark_family = _batch6_layout(
+            plan_row, classification_row
+        )
+        provenance = _batch6_provenance(
+            layout_role, benchmark_family, plan_row["implementation"]
+        )
+        ablation_variable = _batch6_ablation_variable(plan_row, payload)
+        controlled_variables = _batch6_controlled_variables(plan_row, payload)
+        move_row = {column: "" for column in BATCH6_MOVE_COLUMNS}
+        move_row.update(
+            {
+                "old_path": plan_row["old_path"],
+                "new_path": plan_row["candidate_new_path"],
+                "layout_role": layout_role,
+                "benchmark_family": benchmark_family,
+                "model": plan_row["model"],
+                "implementation": plan_row["implementation"],
+                "provenance": provenance,
+                "dataset": plan_row["dataset"],
+                "context_mode": plan_row["context_mode"],
+                "feature_set": plan_row["feature_set"],
+                "purpose": plan_row["purpose"],
+                "scope": plan_row["scope"],
+                "is_ablation": is_ablation,
+                "is_smoke": is_smoke,
+                "is_formal": is_formal,
+                "is_modality_missing": "NO",
+                "is_project_variant": "NO",
+                "is_paper_aligned": "NO",
+                "is_official": "NO",
+                "ablation_variable": _canonical_json(ablation_variable),
+                "controlled_variables_sha256": _json_sha256(
+                    controlled_variables
+                ),
+                "pre_move_sha256": _sha(raw),
+                "post_move_sha256": _sha(raw),
+                "yaml_content_changed": "NO",
+                "approved_changed_keys": "",
+                "active_reference_count": "0",
+                "test_reference_count": "0",
+                "doc_reference_count": "0",
+                "yaml_reference_count": "0",
+                "status": "MOVED",
+                "notes": "synthetic Batch 6 fixture",
+            }
+        )
+        move_rows.append(move_row)
+        before_entry = _snapshot_entry(plan_row, payload, raw)
+        after_entry = _snapshot_entry(plan_row, payload, raw)
+        for entry in (before_entry, after_entry):
+            audit_fields = entry["audit_fields"]
+            assert isinstance(audit_fields, dict)
+            audit_fields.update(
+                {
+                    "layout_role": layout_role,
+                    "benchmark_family": benchmark_family,
+                    "provenance": provenance,
+                    "is_ablation": is_ablation,
+                    "is_smoke": is_smoke,
+                    "is_formal": is_formal,
+                    "is_modality_missing": "NO",
+                    "ablation_variable": ablation_variable,
+                    "controlled_variables": controlled_variables,
+                    "model_membership": _benchmark_membership(
+                        payload, benchmark_family
+                    ),
+                }
+            )
+        before_entries.append(before_entry)
+        after_entries.append(after_entry)
+        semantic_row = {
+            column: "" for column in BATCH6_SEMANTIC_DIFF_COLUMNS
+        }
+        semantic_row.update(
+            {
+                "old_path": plan_row["old_path"],
+                "new_path": plan_row["candidate_new_path"],
+                "layout_role": layout_role,
+                "benchmark_family": benchmark_family,
+                "model": plan_row["model"],
+                "implementation": plan_row["implementation"],
+                "provenance": provenance,
+                "purpose": plan_row["purpose"],
+                "ablation_variable": _canonical_json(ablation_variable),
+                "controlled_variables_sha256": _json_sha256(
+                    controlled_variables
+                ),
+                "byte_identical": "YES",
+                "semantic_identical": "YES",
+                "changed_keys": "",
+                "change_allowed": "YES",
+                "status": "PASS",
+                "notes": "synthetic Batch 6 fixture",
+            }
+        )
+        semantic_rows.append(semantic_row)
+
+    fixture = Fixture(
+        batch=6,
+        root=tmp_path,
+        plan_path=tmp_path / "plan.csv",
+        moves_path=tmp_path / "CONFIG_BATCH6_MOVES.csv",
+        before_path=tmp_path / "CONFIG_BATCH6_BEFORE_SNAPSHOT.json",
+        after_path=tmp_path / "CONFIG_BATCH6_AFTER_SNAPSHOT.json",
+        semantic_path=tmp_path / "CONFIG_BATCH6_SEMANTIC_DIFF.csv",
+        reference_path=tmp_path / "CONFIG_BATCH6_REFERENCE_AUDIT.csv",
+        tracked={
+            *(row["candidate_new_path"] for row in batch_plans),
+            *(row["candidate_new_path"] for row in earlier_rows),
+            manual_batch7["old_path"],
+        },
+        plan_rows=[*earlier_rows, *batch_plans, manual_batch7],
+        move_rows=move_rows,
+        before_entries=before_entries,
+        after_entries=after_entries,
+        semantic_rows=semantic_rows,
+        reference_rows=[],
+        git_head_bytes={},
+        git_head_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    _persist(fixture)
+    classification_path = (
+        tmp_path / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+    )
+    classification_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_csv(
+        classification_path,
+        classification_columns,
+        classification_rows,
+    )
+
+    membership_rows: list[dict[str, str]] = []
+    for index in (0, 1):
+        plan_row = batch_plans[index]
+        move_row = move_rows[index]
+        membership = _benchmark_membership(
+            payloads[index], move_row["benchmark_family"]
+        )
+        unique = list(
+            dict.fromkeys(
+                f"{item['model']}:{item['implementation']}"
+                for item in membership
+            )
+        )
+        order = [
+            f"{item['position']}:{item['stage']}:{item['model']}:"
+            f"{item['implementation']}"
+            for item in membership
+        ]
+        provenance = [str(item["provenance"]) for item in membership]
+        membership_rows.append(
+            {
+                "old_path": plan_row["old_path"],
+                "new_path": plan_row["candidate_new_path"],
+                "benchmark_family": move_row["benchmark_family"],
+                "before_model_membership": _canonical_json(unique),
+                "after_model_membership": _canonical_json(unique),
+                "before_model_order": _canonical_json(order),
+                "after_model_order": _canonical_json(order),
+                "before_provenance": _canonical_json(provenance),
+                "after_provenance": _canonical_json(provenance),
+                "model_membership_changed": "NO",
+                "model_order_changed": "NO",
+                "provenance_changed": "NO",
+                "status": "PASS",
+                "notes": "synthetic Batch 6 fixture",
+            }
+        )
+    _write_csv(
+        tmp_path / "CONFIG_BATCH6_MODEL_MEMBERSHIP_AUDIT.csv",
+        BATCH6_MODEL_MEMBERSHIP_COLUMNS,
+        membership_rows,
+    )
     return fixture
 
 
@@ -1895,6 +2365,204 @@ def test_batch5_active_old_reference_fails(tmp_path: Path) -> None:
     assert any(
         "production code retains old config path" in error
         for error in errors
+    )
+
+
+def test_valid_batch6_layout_roles_and_families_pass(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+
+    assert len(fixture.move_rows) == 37
+    assert sum(
+        row["layout_role"] == "cross_model_benchmark"
+        for row in fixture.move_rows
+    ) == 2
+    assert sum(
+        row["layout_role"] == "model_scoped_ablation"
+        for row in fixture.move_rows
+    ) == 35
+    assert sum(
+        row["benchmark_family"] == "causal_unified"
+        for row in fixture.move_rows
+    ) == 1
+    assert sum(
+        row["benchmark_family"] == "original_merc"
+        for row in fixture.move_rows
+    ) == 1
+    assert sum(
+        row["benchmark_family"] == "NOT_APPLICABLE"
+        for row in fixture.move_rows
+    ) == 35
+    assert _audit(fixture, expected_total=len(fixture.tracked)) == []
+
+
+def test_batch6_preview_counts_not_applicable_without_unknown_or_pollution(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    working = {
+        row["new_path"]: (
+            fixture.root / row["new_path"]
+        ).read_text(encoding="utf-8")
+        for row in fixture.move_rows
+    }
+    metrics, errors = preview_batch_migration(
+        fixture.root,
+        6,
+        fixture.plan_path,
+        classification_path=(
+            fixture.root
+            / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+        ),
+        strict=True,
+        tracked_yaml_override=fixture.tracked,
+        working_text_override=working,
+        index_text_override=working,
+    )
+
+    assert errors == []
+    assert metrics["BATCH6_PLANNED_YAML"] == 37
+    assert metrics["CROSS_MODEL_BENCHMARK_COUNT"] == 2
+    assert metrics["MODEL_SCOPED_ABLATION_COUNT"] == 35
+    assert metrics["BENCHMARK_FAMILY_NOT_APPLICABLE_COUNT"] == 35
+    assert metrics["PRIMARY_FAMILY_UNKNOWN_COUNT"] == 0
+    assert metrics["SMOKE_ATTRIBUTE_COUNT"] == 1
+    assert metrics["PREVIEW_STATE_POLLUTION_REMAINING"] == 0
+    assert metrics["ACTUAL_YAML_CONTENT_MODIFICATIONS"] == 0
+
+
+def test_batch6_smoke_is_orthogonal_to_model_scoped_ablation(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    smoke = next(row for row in fixture.move_rows if row["is_smoke"] == "YES")
+
+    assert smoke["layout_role"] == "model_scoped_ablation"
+    assert smoke["benchmark_family"] == "NOT_APPLICABLE"
+    assert smoke["is_ablation"] == "YES"
+    assert _audit(fixture, expected_total=len(fixture.tracked)) == []
+
+
+def test_batch6_ordinary_training_config_cannot_masquerade_as_ablation(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    classification_path = (
+        fixture.root / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+    )
+    with classification_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        columns = tuple(reader.fieldnames or ())
+        rows = [dict(row) for row in reader]
+    target_old = fixture.move_rows[2]["old_path"]
+    next(row for row in rows if row["old_path"] == target_old)[
+        "is_ablation"
+    ] = "NO"
+    _write_csv(classification_path, columns, rows)
+
+    assert any(
+        "ordinary training config cannot masquerade" in error
+        or "layout role cannot be derived" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("model", "dialoguegcn"), ("implementation", "paper_aligned")],
+)
+def test_batch6_model_or_implementation_must_match_target_path(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    target_old = fixture.move_rows[2]["old_path"]
+    plan_row = next(
+        row for row in fixture.plan_rows if row["old_path"] == target_old
+    )
+    plan_row[field] = value
+    fixture.move_rows[2][field] = value
+    _persist(fixture)
+
+    assert any(
+        "canonical target path" in error
+        or "classification disagrees with plan" in error
+        or "layout role cannot be derived" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "expected_error"),
+    [
+        ("graph.window_past", 99, "ablation variable mismatch"),
+        ("dataset.name", "WRONG", "controlled variables mismatch"),
+    ],
+)
+def test_batch6_ablation_or_controlled_variable_drift_fails(
+    tmp_path: Path,
+    path: str,
+    value: object,
+    expected_error: str,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    _change_after(
+        fixture,
+        path=path,
+        value=value,
+        declared=True,
+        index=2,
+    )
+
+    assert any(
+        expected_error in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch6_author_official_count_must_remain_zero(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    classification_path = (
+        fixture.root / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+    )
+    with classification_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        columns = tuple(reader.fieldnames or ())
+        rows = [dict(row) for row in reader]
+    rows[0]["is_official"] = "YES"
+    _write_csv(classification_path, columns, rows)
+
+    assert any(
+        "author_official count must be zero" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch6_membership_audit_preserves_gsmcc_project_variant(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch6_fixture(tmp_path)
+    membership_path = (
+        fixture.root / "CONFIG_BATCH6_MODEL_MEMBERSHIP_AUDIT.csv"
+    )
+    with membership_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = [dict(row) for row in reader]
+    original_row = next(
+        row for row in rows if row["benchmark_family"] == "original_merc"
+    )
+    original_row["after_provenance"] = original_row[
+        "after_provenance"
+    ].replace("project_variant", "paper_aligned")
+    _write_csv(membership_path, BATCH6_MODEL_MEMBERSHIP_COLUMNS, rows)
+
+    assert any(
+        "model membership audit after_provenance mismatch" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
     )
 
 

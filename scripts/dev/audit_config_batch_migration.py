@@ -86,6 +86,39 @@ BATCH5_MOVE_COLUMNS = (
     "status",
     "notes",
 )
+BATCH6_MOVE_COLUMNS = (
+    "old_path",
+    "new_path",
+    "layout_role",
+    "benchmark_family",
+    "model",
+    "implementation",
+    "provenance",
+    "dataset",
+    "context_mode",
+    "feature_set",
+    "purpose",
+    "scope",
+    "is_ablation",
+    "is_smoke",
+    "is_formal",
+    "is_modality_missing",
+    "is_project_variant",
+    "is_paper_aligned",
+    "is_official",
+    "ablation_variable",
+    "controlled_variables_sha256",
+    "pre_move_sha256",
+    "post_move_sha256",
+    "yaml_content_changed",
+    "approved_changed_keys",
+    "active_reference_count",
+    "test_reference_count",
+    "doc_reference_count",
+    "yaml_reference_count",
+    "status",
+    "notes",
+)
 REFERENCE_COLUMNS = (
     "old_config_path",
     "source_file",
@@ -141,8 +174,42 @@ BATCH5_SEMANTIC_DIFF_COLUMNS = (
     "status",
     "notes",
 )
-EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10, 5: 13}
-EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0, 5: 0}
+BATCH6_SEMANTIC_DIFF_COLUMNS = (
+    "old_path",
+    "new_path",
+    "layout_role",
+    "benchmark_family",
+    "model",
+    "implementation",
+    "provenance",
+    "purpose",
+    "ablation_variable",
+    "controlled_variables_sha256",
+    "byte_identical",
+    "semantic_identical",
+    "changed_keys",
+    "change_allowed",
+    "status",
+    "notes",
+)
+BATCH6_MODEL_MEMBERSHIP_COLUMNS = (
+    "old_path",
+    "new_path",
+    "benchmark_family",
+    "before_model_membership",
+    "after_model_membership",
+    "before_model_order",
+    "after_model_order",
+    "before_provenance",
+    "after_provenance",
+    "model_membership_changed",
+    "model_order_changed",
+    "provenance_changed",
+    "status",
+    "notes",
+)
+EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10, 5: 13, 6: 37}
+EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0, 5: 0, 6: 0}
 EXPECTED_IMPLEMENTATION_COUNTS = {
     2: {"unified": 13, "paper_aligned": 4},
     3: {"unified": 13, "paper_aligned": 4},
@@ -160,16 +227,19 @@ SNAPSHOT_IDENTITY_FIELDS = {
 }
 YES_NO = {"YES", "NO"}
 CONFIG_PATH_KEYS = {
+    "baseline_configs",
     "base_config",
     "config",
     "config_path",
+    "configs",
     "eval_config",
+    "model_configs",
     "parent_config",
     "pipeline_config",
     "source_config",
     "train_config",
 }
-SCRIPT_PATH_KEYS = {"entrypoint", "script"}
+SCRIPT_PATH_KEYS = {"entrypoint", "launcher", "script"}
 APPROVED_PATH_KEYS = CONFIG_PATH_KEYS | SCRIPT_PATH_KEYS
 GROUP_MEETING_PATHS = {
     "scripts/analyze/export_group_meeting_baseline_report.py",
@@ -262,6 +332,317 @@ def _is_relative_repo_path(value: str) -> bool:
 def _batch_number(value: str) -> int | None:
     match = re.fullmatch(r"Batch ([1-7])", value)
     return int(match.group(1)) if match else None
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _json_sha256(value: Any) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _nested_value(value: Any, dotted_path: str) -> Any:
+    current = value
+    for part in dotted_path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _drop_nested_paths(value: Any, dotted_paths: Iterable[str]) -> Any:
+    cloned = json.loads(json.dumps(value, ensure_ascii=False))
+    if not isinstance(cloned, dict):
+        return cloned
+    for dotted_path in dotted_paths:
+        parts = dotted_path.split(".")
+        current: Any = cloned
+        for part in parts[:-1]:
+            if not isinstance(current, dict) or part not in current:
+                current = None
+                break
+            current = current[part]
+        if isinstance(current, dict):
+            current.pop(parts[-1], None)
+    return cloned
+
+
+def _batch6_layout(
+    plan_row: Mapping[str, str],
+    classification_row: Mapping[str, str],
+) -> tuple[str, str]:
+    target = plan_row.get("candidate_new_path", "")
+    if target.startswith("configs/benchmarks/causal_unified/"):
+        return "cross_model_benchmark", "causal_unified"
+    if target.startswith("configs/benchmarks/original_merc/"):
+        return "cross_model_benchmark", "original_merc"
+    model = plan_row.get("model", "")
+    implementation = plan_row.get("implementation", "")
+    canonical_prefix = f"configs/{model}/{implementation}/"
+    if (
+        classification_row.get("is_ablation") == "YES"
+        and model
+        and implementation
+        and target.startswith(canonical_prefix)
+    ):
+        return "model_scoped_ablation", "NOT_APPLICABLE"
+    return "UNKNOWN", "UNKNOWN"
+
+
+def _batch6_provenance(
+    layout_role: str,
+    benchmark_family: str,
+    implementation: str,
+) -> str:
+    if layout_role == "model_scoped_ablation":
+        return implementation
+    if benchmark_family == "causal_unified":
+        return "unified"
+    if benchmark_family == "original_merc":
+        return "paper_aligned_and_project_variant"
+    return "UNKNOWN"
+
+
+def _batch6_ablation_variable(
+    plan_row: Mapping[str, str],
+    parsed_yaml: Any,
+) -> Any:
+    purpose = plan_row.get("purpose", "")
+    if purpose == "context_ablation":
+        paths = (
+            "graph.context_mode",
+            "graph.window_past",
+            "graph.window_future",
+        )
+        return {
+            path: _nested_value(parsed_yaml, path)
+            for path in paths
+            if _nested_value(parsed_yaml, path) is not None
+        }
+    if purpose == "modality_ablation":
+        paths = (
+            "model.active_modalities",
+            "modality.active_modalities",
+            "notes.modality_ablation.setting",
+        )
+        return {
+            path: _nested_value(parsed_yaml, path)
+            for path in paths
+            if _nested_value(parsed_yaml, path) is not None
+        }
+    if purpose == "stability_ablation":
+        sections = ("model", "graph", "training", "optimizer", "scheduler", "loss")
+        result = {
+            "profile": PurePosixPath(
+                plan_row.get("candidate_new_path", "")
+            ).stem
+        }
+        if isinstance(parsed_yaml, dict):
+            result.update(
+                {
+                    section: parsed_yaml[section]
+                    for section in sections
+                    if section in parsed_yaml
+                }
+            )
+        return result
+    return None
+
+
+def _batch6_controlled_variables(
+    plan_row: Mapping[str, str],
+    parsed_yaml: Any,
+) -> Any:
+    purpose = plan_row.get("purpose", "")
+    if purpose == "context_ablation":
+        excluded = (
+            "graph.context_mode",
+            "graph.window_past",
+            "graph.window_future",
+        )
+    elif purpose == "modality_ablation":
+        excluded = (
+            "model.active_modalities",
+            "modality.active_modalities",
+            "notes.modality_ablation.setting",
+        )
+    elif purpose == "stability_ablation":
+        excluded = ("model", "graph", "training", "optimizer", "scheduler", "loss")
+    else:
+        excluded = ()
+    return _drop_nested_paths(parsed_yaml, excluded)
+
+
+def _benchmark_membership(
+    parsed_yaml: Any,
+    benchmark_family: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(parsed_yaml, dict):
+        return []
+    membership: list[dict[str, Any]] = []
+    if benchmark_family == "causal_unified":
+        runs = parsed_yaml.get("runs", [])
+        if not isinstance(runs, list):
+            return []
+        model_names = {"MMGCN": "mmgcn", "MultiDAGCL": "multidag_cl"}
+        for position, run in enumerate(runs, start=1):
+            if not isinstance(run, dict):
+                continue
+            membership.append(
+                {
+                    "position": position,
+                    "stage": "runs",
+                    "model": model_names.get(
+                        str(run.get("model", "")),
+                        str(run.get("model", "")).lower(),
+                    ),
+                    "implementation": "unified",
+                    "provenance": "unified",
+                    "config_path": str(run.get("config_path", "")),
+                }
+            )
+        return membership
+    if benchmark_family != "original_merc":
+        return []
+    stages = parsed_yaml.get("stages", {})
+    if not isinstance(stages, dict):
+        return []
+    position = 0
+    for stage, entries in stages.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            config_path = str(entry.get("config", ""))
+            parts = PurePosixPath(config_path).parts
+            if len(parts) < 3 or parts[0] != "configs":
+                continue
+            position += 1
+            model = parts[1]
+            implementation = (
+                "project_variant"
+                if "/project_variant/" in f"/{config_path}/"
+                else "paper_aligned"
+                if "/paper_aligned/" in f"/{config_path}/"
+                else "UNKNOWN"
+            )
+            membership.append(
+                {
+                    "position": position,
+                    "stage": str(stage),
+                    "model": model,
+                    "implementation": implementation,
+                    "provenance": implementation,
+                    "config_path": config_path,
+                }
+            )
+    return membership
+
+
+def build_batch6_snapshot_entry(
+    plan_row: Mapping[str, str],
+    classification_row: Mapping[str, str],
+    yaml_path: Path,
+    *,
+    snapshot_source: str,
+) -> dict[str, Any]:
+    raw = yaml_path.read_bytes()
+    parsed_yaml = yaml.safe_load(raw.decode("utf-8-sig"))
+    layout_role, benchmark_family = _batch6_layout(
+        plan_row, classification_row
+    )
+    provenance = _batch6_provenance(
+        layout_role,
+        benchmark_family,
+        plan_row.get("implementation", ""),
+    )
+    scalar_items = list(_walk_scalars(parsed_yaml))
+    config_references = sorted(
+        {
+            value
+            for path, value in scalar_items
+            if isinstance(value, str)
+            and value.startswith("configs/")
+            and (
+                _path_leaf(path) in CONFIG_PATH_KEYS
+                or _path_leaf(path).endswith("_config_path")
+            )
+        }
+    )
+    metric_fields = [
+        {"path": path, "value": value}
+        for path, value in scalar_items
+        if any(
+            token in _path_leaf(path).lower()
+            for token in ("metric", "select_best", "checkpoint_selection")
+        )
+    ]
+    ablation_variable = _batch6_ablation_variable(plan_row, parsed_yaml)
+    controlled_variables = _batch6_controlled_variables(
+        plan_row, parsed_yaml
+    )
+    return {
+        "snapshot_source": snapshot_source,
+        "old_path": plan_row["old_path"],
+        "new_path": plan_row["candidate_new_path"],
+        "candidate_new_path": plan_row["candidate_new_path"],
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "top_level_keys": (
+            list(parsed_yaml) if isinstance(parsed_yaml, dict) else []
+        ),
+        "parsed_yaml": parsed_yaml,
+        "audit_fields": {
+            "layout_role": layout_role,
+            "benchmark_family": benchmark_family,
+            "model_classification": plan_row.get("model", ""),
+            "implementation": plan_row.get("implementation", ""),
+            "provenance": provenance,
+            "provenance_evidence": classification_row.get(
+                "provenance_evidence", ""
+            ),
+            "purpose": plan_row.get("purpose", ""),
+            "is_ablation": classification_row.get("is_ablation", ""),
+            "is_smoke": classification_row.get("is_smoke", ""),
+            "is_formal": classification_row.get("is_formal", ""),
+            "is_modality_missing": classification_row.get(
+                "is_modality_missing", ""
+            ),
+            "is_project_variant": classification_row.get(
+                "is_project_variant", ""
+            ),
+            "is_paper_aligned": classification_row.get(
+                "is_paper_aligned", ""
+            ),
+            "is_official": classification_row.get("is_official", ""),
+            "dataset_classification": plan_row.get("dataset", ""),
+            "context_mode": plan_row.get("context_mode", ""),
+            "feature_set": plan_row.get("feature_set", ""),
+            "seed": classification_row.get("seed", ""),
+            "split": classification_row.get("split", ""),
+            "metric_fields": metric_fields,
+            "ablation_variable": ablation_variable,
+            "controlled_variables": controlled_variables,
+            "controlled_variables_sha256": _json_sha256(
+                controlled_variables
+            ),
+            "modality": classification_row.get("modality_settings", ""),
+            "missing_modality": classification_row.get(
+                "missing_modality_settings", ""
+            ),
+            "config_references": config_references,
+            "entrypoint": classification_row.get("entrypoint", ""),
+            "model_membership": _benchmark_membership(
+                parsed_yaml, benchmark_family
+            ),
+        },
+    }
 
 
 def _walk_scalars(value: Any, prefix: str = "") -> Iterable[tuple[str, Any]]:
@@ -425,6 +806,7 @@ def preview_batch_migration(
     batch: int,
     plan_path: Path,
     *,
+    classification_path: Path | None = None,
     strict: bool = False,
     tracked_yaml_override: set[str] | None = None,
     working_text_override: Mapping[str, str] | None = None,
@@ -457,6 +839,113 @@ def preview_batch_migration(
         errors.append(f"{batch_label} plan contains duplicate old_path values")
     if len(plan_by_candidate) != len(batch_plan):
         errors.append(f"{batch_label} plan contains duplicate candidate_new_path values")
+
+    batch6_metrics: dict[str, int] = {}
+    if batch == 6:
+        classification_path = classification_path or (
+            repo_root / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+        )
+        try:
+            classification_columns, classification = _read_csv(
+                classification_path
+            )
+        except OSError as exc:
+            return {}, [f"cannot load classification: {exc}"]
+        required_classification = (
+            "old_path",
+            "model",
+            "implementation",
+            "purpose",
+            "is_ablation",
+            "is_smoke",
+            "is_formal",
+            "is_modality_missing",
+        )
+        for column in _missing_columns(
+            classification_columns, required_classification
+        ):
+            errors.append(f"classification is missing column: {column}")
+        classification_by_old = {
+            row["old_path"]: row
+            for row in classification
+            if row.get("old_path")
+        }
+        roles: list[tuple[str, str]] = []
+        for row in batch_plan:
+            classification_row = classification_by_old.get(row["old_path"])
+            if classification_row is None:
+                errors.append(
+                    f"{row['old_path']}: classification row is missing"
+                )
+                roles.append(("UNKNOWN", "UNKNOWN"))
+                continue
+            roles.append(_batch6_layout(row, classification_row))
+        role_counts = Counter(role for role, _ in roles)
+        family_counts = Counter(family for _, family in roles)
+        batch6_metrics = {
+            "BATCH6_PLANNED_YAML": len(batch_plan),
+            "CROSS_MODEL_BENCHMARK_COUNT": role_counts[
+                "cross_model_benchmark"
+            ],
+            "MODEL_SCOPED_ABLATION_COUNT": role_counts[
+                "model_scoped_ablation"
+            ],
+            "CAUSAL_UNIFIED_COUNT": family_counts["causal_unified"],
+            "ORIGINAL_MERC_COUNT": family_counts["original_merc"],
+            "ABLATION_ATTRIBUTE_COUNT": sum(
+                classification_by_old.get(row["old_path"], {}).get(
+                    "is_ablation"
+                )
+                == "YES"
+                for row in batch_plan
+            ),
+            "SMOKE_ATTRIBUTE_COUNT": sum(
+                classification_by_old.get(row["old_path"], {}).get("is_smoke")
+                == "YES"
+                for row in batch_plan
+            ),
+            "BENCHMARK_FAMILY_NOT_APPLICABLE_COUNT": family_counts[
+                "NOT_APPLICABLE"
+            ],
+            "PRIMARY_FAMILY_UNKNOWN_COUNT": sum(
+                role == "UNKNOWN"
+                or family
+                not in {
+                    "causal_unified",
+                    "original_merc",
+                    "NOT_APPLICABLE",
+                }
+                for role, family in roles
+            ),
+            "TARGET_UNDER_CONFIGS_BENCHMARKS_COUNT": sum(
+                row["candidate_new_path"].startswith("configs/benchmarks/")
+                for row in batch_plan
+            ),
+            "TARGET_UNDER_MODEL_CANONICAL_TREE_COUNT": role_counts[
+                "model_scoped_ablation"
+            ],
+            "PREVIEW_STATE_POLLUTION_REMAINING": 0,
+        }
+        if strict:
+            expected_metrics = {
+                "BATCH6_PLANNED_YAML": 37,
+                "CROSS_MODEL_BENCHMARK_COUNT": 2,
+                "MODEL_SCOPED_ABLATION_COUNT": 35,
+                "CAUSAL_UNIFIED_COUNT": 1,
+                "ORIGINAL_MERC_COUNT": 1,
+                "ABLATION_ATTRIBUTE_COUNT": 35,
+                "SMOKE_ATTRIBUTE_COUNT": 1,
+                "BENCHMARK_FAMILY_NOT_APPLICABLE_COUNT": 35,
+                "PRIMARY_FAMILY_UNKNOWN_COUNT": 0,
+                "TARGET_UNDER_CONFIGS_BENCHMARKS_COUNT": 2,
+                "TARGET_UNDER_MODEL_CANONICAL_TREE_COUNT": 35,
+                "PREVIEW_STATE_POLLUTION_REMAINING": 0,
+            }
+            for key, expected in expected_metrics.items():
+                if batch6_metrics[key] != expected:
+                    errors.append(
+                        f"{key} mismatch: {batch6_metrics[key]} != {expected}"
+                    )
 
     tracked = (
         set(tracked_yaml_override)
@@ -543,6 +1032,7 @@ def preview_batch_migration(
         "ACTUAL_YAML_CONTENT_MODIFICATIONS": real_modifications,
         "ACTUAL_UNAPPROVED_SEMANTIC_CHANGES": actual_unapproved,
     }
+    metrics.update(batch6_metrics)
     expected_path_changes = (
         expected_path_changes
         if expected_path_changes is not None
@@ -790,6 +1280,7 @@ def audit_batch_migration(
     moves_path: Path,
     *,
     strict: bool = False,
+    classification_path: Path | None = None,
     tracked_yaml_override: set[str] | None = None,
     tracked_text_override: Mapping[str, str] | None = None,
     staged_paths_override: set[str] | None = None,
@@ -799,6 +1290,7 @@ def audit_batch_migration(
     after_snapshot_path: Path | None = None,
     semantic_diff_path: Path | None = None,
     reference_audit_path: Path | None = None,
+    model_membership_audit_path: Path | None = None,
     git_head_bytes_override: Mapping[str, bytes] | None = None,
     git_head_commit_override: str | None = None,
 ) -> list[str]:
@@ -819,11 +1311,34 @@ def audit_batch_migration(
     reference_audit_path = reference_audit_path or (
         artifacts_dir / f"CONFIG_BATCH{batch}_REFERENCE_AUDIT.csv"
     )
+    classification_path = classification_path or (
+        repo_root / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+    )
+    model_membership_audit_path = model_membership_audit_path or (
+        artifacts_dir / f"CONFIG_BATCH{batch}_MODEL_MEMBERSHIP_AUDIT.csv"
+    )
 
     plan_columns, plan = _read_csv(plan_path)
     move_columns, moves = _read_csv(moves_path)
     reference_columns, references = _read_csv(reference_audit_path)
     semantic_columns, semantic_rows = _read_csv(semantic_diff_path)
+    classification_columns: list[str] = []
+    classification: list[dict[str, str]] = []
+    membership_columns: list[str] = []
+    membership_rows: list[dict[str, str]] = []
+    if batch == 6:
+        try:
+            classification_columns, classification = _read_csv(
+                classification_path
+            )
+        except OSError as exc:
+            return [f"cannot load classification: {exc}"]
+        try:
+            membership_columns, membership_rows = _read_csv(
+                model_membership_audit_path
+            )
+        except OSError as exc:
+            return [f"cannot load model membership audit: {exc}"]
     errors: list[str] = []
 
     for column in _missing_columns(
@@ -831,7 +1346,9 @@ def audit_batch_migration(
     ):
         errors.append(f"plan is missing column: {column}")
     required_move_columns = (
-        BATCH5_MOVE_COLUMNS
+        BATCH6_MOVE_COLUMNS
+        if batch == 6
+        else BATCH5_MOVE_COLUMNS
         if batch == 5
         else BATCH3_MOVE_COLUMNS
         if batch in {3, 4}
@@ -839,11 +1356,13 @@ def audit_batch_migration(
     )
     required_reference_columns = (
         BATCH3_REFERENCE_COLUMNS
-        if batch in {3, 4, 5}
+        if batch in {3, 4, 5, 6}
         else REFERENCE_COLUMNS
     )
     required_semantic_columns = (
-        BATCH5_SEMANTIC_DIFF_COLUMNS
+        BATCH6_SEMANTIC_DIFF_COLUMNS
+        if batch == 6
+        else BATCH5_SEMANTIC_DIFF_COLUMNS
         if batch == 5
         else BATCH3_SEMANTIC_DIFF_COLUMNS
         if batch in {3, 4}
@@ -855,6 +1374,30 @@ def audit_batch_migration(
         errors.append(f"reference audit is missing column: {column}")
     for column in _missing_columns(semantic_columns, required_semantic_columns):
         errors.append(f"semantic diff is missing column: {column}")
+    if batch == 6:
+        required_classification = (
+            "old_path",
+            "model",
+            "implementation",
+            "purpose",
+            "is_ablation",
+            "is_smoke",
+            "is_formal",
+            "is_modality_missing",
+            "is_official",
+            "is_paper_aligned",
+            "is_project_variant",
+            "entrypoint",
+            "provenance_evidence",
+        )
+        for column in _missing_columns(
+            classification_columns, required_classification
+        ):
+            errors.append(f"classification is missing column: {column}")
+        for column in _missing_columns(
+            membership_columns, BATCH6_MODEL_MEMBERSHIP_COLUMNS
+        ):
+            errors.append(f"model membership audit is missing column: {column}")
     if errors:
         return errors
 
@@ -908,6 +1451,102 @@ def audit_batch_migration(
                 "Batch 5 context counts mismatch: "
                 f"{dict(context_counts)} != {dict(expected_context_counts)}"
             )
+    classification_by_old = {
+        row["old_path"]: row
+        for row in classification
+        if row.get("old_path")
+    }
+    batch6_layouts: dict[str, tuple[str, str]] = {}
+    if batch == 6:
+        for plan_row in batch_plan:
+            old_path = plan_row["old_path"]
+            classification_row = classification_by_old.get(old_path)
+            if classification_row is None:
+                errors.append(f"{old_path}: classification row is missing")
+                batch6_layouts[old_path] = ("UNKNOWN", "UNKNOWN")
+                continue
+            for field in ("model", "implementation", "purpose"):
+                if classification_row.get(field, "") != plan_row.get(field, ""):
+                    errors.append(
+                        f"{old_path}: classification disagrees with plan on {field}"
+                    )
+            layout_role, benchmark_family = _batch6_layout(
+                plan_row, classification_row
+            )
+            batch6_layouts[old_path] = (layout_role, benchmark_family)
+            if layout_role == "UNKNOWN":
+                errors.append(
+                    f"{old_path}: Batch 6 layout role cannot be derived"
+                )
+            if (
+                layout_role == "model_scoped_ablation"
+                and classification_row.get("is_ablation") != "YES"
+            ):
+                errors.append(
+                    f"{old_path}: ordinary training config cannot masquerade "
+                    "as a model-scoped ablation"
+                )
+            if layout_role == "model_scoped_ablation" and plan_row.get(
+                "purpose"
+            ) not in {
+                "context_ablation",
+                "modality_ablation",
+                "stability_ablation",
+            }:
+                errors.append(
+                    f"{old_path}: model-scoped ablation has invalid purpose"
+                )
+            if (
+                classification_row.get("is_official") != "NO"
+                or plan_row.get("implementation") == "author_official"
+            ):
+                errors.append(
+                    f"{old_path}: Batch 6 author_official count must be zero"
+                )
+            if (
+                plan_row.get("implementation") == "paper_aligned"
+                and classification_row.get("is_official") != "NO"
+            ):
+                errors.append(
+                    f"{old_path}: paper_aligned must not be author_official"
+                )
+        role_counts = Counter(role for role, _ in batch6_layouts.values())
+        family_counts = Counter(family for _, family in batch6_layouts.values())
+        expected_role_counts = Counter(
+            {
+                "cross_model_benchmark": 2,
+                "model_scoped_ablation": 35,
+            }
+        )
+        if role_counts != expected_role_counts:
+            errors.append(
+                "Batch 6 layout-role counts mismatch: "
+                f"{dict(role_counts)} != {dict(expected_role_counts)}"
+            )
+        expected_family_counts = Counter(
+            {
+                "causal_unified": 1,
+                "original_merc": 1,
+                "NOT_APPLICABLE": 35,
+            }
+        )
+        if family_counts != expected_family_counts:
+            errors.append(
+                "Batch 6 benchmark-family counts mismatch: "
+                f"{dict(family_counts)} != {dict(expected_family_counts)}"
+            )
+        if sum(
+            classification_by_old.get(row["old_path"], {}).get("is_ablation")
+            == "YES"
+            for row in batch_plan
+        ) != 35:
+            errors.append("Batch 6 ablation attribute count must be 35")
+        if sum(
+            classification_by_old.get(row["old_path"], {}).get("is_smoke")
+            == "YES"
+            for row in batch_plan
+        ) != 1:
+            errors.append("Batch 6 smoke attribute count must be 1")
     if len(moves) != len(batch_plan):
         errors.append(
             f"moves row count {len(moves)} does not match plan {len(batch_plan)}"
@@ -950,7 +1589,7 @@ def audit_batch_migration(
         if git_head_commit_override is not None
         else str(before_payload.get("git_head", ""))
     )
-    if batch in {2, 3, 4, 5}:
+    if batch in {2, 3, 4, 5, 6}:
         expected_snapshot_head = snapshot_baseline_head
         if not expected_snapshot_head:
             errors.append("Git HEAD commit cannot be resolved")
@@ -1121,6 +1760,80 @@ def audit_batch_migration(
                     f"{label}: {context_mode} config is placed under the "
                     "wrong context directory"
                 )
+        if batch == 6:
+            classification_row = classification_by_old.get(old_path, {})
+            layout_role, benchmark_family = batch6_layouts.get(
+                old_path, ("UNKNOWN", "UNKNOWN")
+            )
+            expected_provenance = _batch6_provenance(
+                layout_role,
+                benchmark_family,
+                move["implementation"],
+            )
+            expected_model_prefix = (
+                f"configs/{move['model']}/{move['implementation']}/"
+            )
+            if move["layout_role"] != layout_role:
+                errors.append(f"{label}: layout_role mismatch")
+            if move["benchmark_family"] != benchmark_family:
+                errors.append(f"{label}: benchmark_family mismatch")
+            if move["provenance"] != expected_provenance:
+                errors.append(f"{label}: provenance mismatch")
+            for flag in (
+                "is_ablation",
+                "is_smoke",
+                "is_formal",
+                "is_modality_missing",
+                "is_project_variant",
+                "is_paper_aligned",
+                "is_official",
+            ):
+                if move[flag] not in YES_NO:
+                    errors.append(f"{label}: {flag} must be YES or NO")
+                classification_value = classification_row.get(flag)
+                if (
+                    classification_value in YES_NO
+                    and move[flag] != classification_value
+                ):
+                    errors.append(
+                        f"{label}: {flag} disagrees with classification"
+                    )
+            if move["is_official"] != "NO":
+                errors.append(
+                    f"{label}: Batch 6 author_official count must be zero"
+                )
+            if layout_role == "cross_model_benchmark":
+                expected_prefix = (
+                    f"configs/benchmarks/{benchmark_family}/"
+                )
+                if not new_path.startswith(expected_prefix):
+                    errors.append(
+                        f"{label}: cross-model benchmark is under the wrong "
+                        "benchmark family"
+                    )
+                if move["is_ablation"] != "NO":
+                    errors.append(
+                        f"{label}: cross-model benchmark cannot be an ablation"
+                    )
+            elif layout_role == "model_scoped_ablation":
+                if not new_path.startswith(expected_model_prefix):
+                    errors.append(
+                        f"{label}: model or implementation is inconsistent "
+                        "with the canonical target path"
+                    )
+                if move["is_ablation"] != "YES":
+                    errors.append(
+                        f"{label}: model-scoped ablation marker must be YES"
+                    )
+                if move["benchmark_family"] != "NOT_APPLICABLE":
+                    errors.append(
+                        f"{label}: model-scoped ablation benchmark family "
+                        "must be NOT_APPLICABLE"
+                    )
+                if move["scope"] == "benchmark":
+                    errors.append(
+                        f"{label}: model-scoped ablation must retain model scope"
+                    )
         if old_disk.exists():
             errors.append(f"{old_path}: old path still exists")
         if not new_disk.is_file():
@@ -1269,6 +1982,66 @@ def audit_batch_migration(
                         f"{new_path}: GS-MCC registry key is missing from "
                         f"{registry_source}"
                     )
+        if batch == 6:
+            layout_role, benchmark_family = batch6_layouts.get(
+                old_path, ("UNKNOWN", "UNKNOWN")
+            )
+            if layout_role == "model_scoped_ablation":
+                model_section = (
+                    parsed_disk.get("model", {})
+                    if isinstance(parsed_disk, dict)
+                    else {}
+                )
+                model_name = (
+                    model_section.get("name")
+                    if isinstance(model_section, dict)
+                    else None
+                )
+                expected_model_name = {
+                    "mmgcn": "MMGCN",
+                    "multidag_cl": "MultiDAGCL",
+                    "dialoguegcn": "causal_dialoguegcn",
+                    "gsmcc": "causal_gsmcc_inspired",
+                }.get(move["model"])
+                if model_name != expected_model_name:
+                    errors.append(
+                        f"{new_path}: model registry/consumer key mismatch: "
+                        f"{model_name!r} != {expected_model_name!r}"
+                    )
+            ablation_variable = _batch6_ablation_variable(
+                plan_row, parsed_disk
+            )
+            controlled_variables = _batch6_controlled_variables(
+                plan_row, parsed_disk
+            )
+            if move["ablation_variable"] != _canonical_json(
+                ablation_variable
+            ):
+                errors.append(f"{new_path}: ablation variable mismatch")
+            if move["controlled_variables_sha256"] != _json_sha256(
+                controlled_variables
+            ):
+                errors.append(f"{new_path}: controlled variables mismatch")
+            membership = _benchmark_membership(
+                parsed_disk, benchmark_family
+            )
+            if any(
+                item.get("implementation") == "author_official"
+                or item.get("provenance") == "author_official"
+                for item in membership
+            ):
+                errors.append(
+                    f"{new_path}: benchmark membership contains author_official"
+                )
+            if any(
+                item.get("model") == "gsmcc"
+                and item.get("implementation") != "project_variant"
+                for item in membership
+            ):
+                errors.append(
+                    f"{new_path}: GS-MCC benchmark member must remain "
+                    "project_variant"
+                )
 
         before_entry = before.get(old_path)
         after_entry = after.get(old_path)
@@ -1344,7 +2117,7 @@ def audit_batch_migration(
             and not documented_later_reference_drift
         ):
             errors.append(f"{old_path}: after snapshot semantics do not match disk")
-        if batch in {2, 3, 4, 5}:
+        if batch in {2, 3, 4, 5, 6}:
             for snapshot_label, snapshot_entry in (
                 ("before", before_entry),
                 ("after", after_entry),
@@ -1361,6 +2134,50 @@ def audit_batch_migration(
                             f"{old_path}: {snapshot_label} snapshot identity "
                             f"mismatch on {plan_field}"
                         )
+                if batch == 6:
+                    layout_role, benchmark_family = batch6_layouts.get(
+                        old_path, ("UNKNOWN", "UNKNOWN")
+                    )
+                    expected_provenance = _batch6_provenance(
+                        layout_role,
+                        benchmark_family,
+                        plan_row.get("implementation", ""),
+                    )
+                    expected_ablation = _batch6_ablation_variable(
+                        plan_row, snapshot_entry.get("parsed_yaml")
+                    )
+                    expected_controlled = _batch6_controlled_variables(
+                        plan_row, snapshot_entry.get("parsed_yaml")
+                    )
+                    expected_fields = {
+                        "layout_role": layout_role,
+                        "benchmark_family": benchmark_family,
+                        "provenance": expected_provenance,
+                        "is_ablation": classification_by_old.get(
+                            old_path, {}
+                        ).get("is_ablation", ""),
+                        "is_smoke": classification_by_old.get(
+                            old_path, {}
+                        ).get("is_smoke", ""),
+                        "is_formal": classification_by_old.get(
+                            old_path, {}
+                        ).get("is_formal", ""),
+                        "is_modality_missing": classification_by_old.get(
+                            old_path, {}
+                        ).get("is_modality_missing", ""),
+                        "ablation_variable": expected_ablation,
+                        "controlled_variables": expected_controlled,
+                        "model_membership": _benchmark_membership(
+                            snapshot_entry.get("parsed_yaml"),
+                            benchmark_family,
+                        ),
+                    }
+                    for field, expected_value in expected_fields.items():
+                        if audit_fields.get(field) != expected_value:
+                            errors.append(
+                                f"{old_path}: {snapshot_label} snapshot "
+                                f"{field} mismatch"
+                            )
 
         changes = _semantic_changes(
             before_entry.get("parsed_yaml"), after_entry.get("parsed_yaml")
@@ -1413,6 +2230,21 @@ def audit_batch_migration(
             and semantic_row["context_mode"] != move["context_mode"]
         ):
             errors.append(f"{old_path}: semantic diff context_mode mismatch")
+        if batch == 6:
+            for field in (
+                "layout_role",
+                "benchmark_family",
+                "model",
+                "implementation",
+                "provenance",
+                "purpose",
+                "ablation_variable",
+                "controlled_variables_sha256",
+            ):
+                if semantic_row[field] != move[field]:
+                    errors.append(
+                        f"{old_path}: semantic diff {field} mismatch"
+                    )
         if semantic_row["byte_identical"] != byte_identical:
             errors.append(f"{old_path}: semantic diff byte result mismatch")
         if semantic_row["semantic_identical"] != semantic_identical:
@@ -1432,7 +2264,107 @@ def audit_batch_migration(
         if semantic_row["status"] != ("PASS" if expected_allowed else "FAIL"):
             errors.append(f"{old_path}: semantic diff status mismatch")
 
-    expected_source_changes = {2: 4, 3: 4, 4: 0, 5: 0}
+    if batch == 6:
+        cross_model_paths = {
+            old_path
+            for old_path, (layout_role, _) in batch6_layouts.items()
+            if layout_role == "cross_model_benchmark"
+        }
+        membership_by_old = {
+            row["old_path"]: row for row in membership_rows
+        }
+        if len(membership_rows) != len(membership_by_old):
+            errors.append("model membership audit duplicates old_path values")
+        if set(membership_by_old) != cross_model_paths:
+            errors.append(
+                "model membership audit must contain exactly the two "
+                "cross-model benchmarks"
+            )
+        for old_path in sorted(cross_model_paths):
+            row = membership_by_old.get(old_path)
+            before_entry = before.get(old_path)
+            after_entry = after.get(old_path)
+            if row is None or before_entry is None or after_entry is None:
+                continue
+            new_path = plan_by_old[old_path]["candidate_new_path"]
+            _, benchmark_family = batch6_layouts[old_path]
+            before_membership = _benchmark_membership(
+                before_entry.get("parsed_yaml"), benchmark_family
+            )
+            after_membership = _benchmark_membership(
+                after_entry.get("parsed_yaml"), benchmark_family
+            )
+            before_unique = list(
+                dict.fromkeys(
+                    f"{item['model']}:{item['implementation']}"
+                    for item in before_membership
+                )
+            )
+            after_unique = list(
+                dict.fromkeys(
+                    f"{item['model']}:{item['implementation']}"
+                    for item in after_membership
+                )
+            )
+            before_order = [
+                f"{item['position']}:{item['stage']}:{item['model']}:"
+                f"{item['implementation']}"
+                for item in before_membership
+            ]
+            after_order = [
+                f"{item['position']}:{item['stage']}:{item['model']}:"
+                f"{item['implementation']}"
+                for item in after_membership
+            ]
+            before_provenance = [
+                str(item["provenance"]) for item in before_membership
+            ]
+            after_provenance = [
+                str(item["provenance"]) for item in after_membership
+            ]
+            expected_values = {
+                "new_path": new_path,
+                "benchmark_family": benchmark_family,
+                "before_model_membership": _canonical_json(before_unique),
+                "after_model_membership": _canonical_json(after_unique),
+                "before_model_order": _canonical_json(before_order),
+                "after_model_order": _canonical_json(after_order),
+                "before_provenance": _canonical_json(before_provenance),
+                "after_provenance": _canonical_json(after_provenance),
+                "model_membership_changed": (
+                    "YES" if before_unique != after_unique else "NO"
+                ),
+                "model_order_changed": (
+                    "YES" if before_order != after_order else "NO"
+                ),
+                "provenance_changed": (
+                    "YES"
+                    if before_provenance != after_provenance
+                    else "NO"
+                ),
+            }
+            for field, expected_value in expected_values.items():
+                if row[field] != expected_value:
+                    errors.append(
+                        f"{old_path}: model membership audit {field} mismatch"
+                    )
+            if any(
+                row[field] != "NO"
+                for field in (
+                    "model_membership_changed",
+                    "model_order_changed",
+                    "provenance_changed",
+                )
+            ):
+                errors.append(
+                    f"{old_path}: benchmark membership/order/provenance changed"
+                )
+            if row["status"] != "PASS":
+                errors.append(
+                    f"{old_path}: model membership audit status must be PASS"
+                )
+
+    expected_source_changes = {2: 4, 3: 4, 4: 0, 5: 0, 6: 0}
     if batch in expected_source_changes:
         declared_source_changes = sum(
             move["yaml_content_changed"] == "YES"
@@ -1446,6 +2378,10 @@ def audit_batch_migration(
                 "source_config-only YAML changes; "
                 f"found {declared_source_changes}"
             )
+    if batch == 6 and any(
+        move["yaml_content_changed"] != "NO" for move in moves
+    ):
+        errors.append("Batch 6 YAML content changes must be zero")
 
     completed_batches = {batch}
     for candidate_batch in range(1, 8):
@@ -1555,7 +2491,7 @@ def audit_batch_migration(
                     "historical reference is outside the approved categories: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
-        if batch in {3, 4, 5}:
+        if batch in {3, 4, 5, 6}:
             if row["requires_update"] not in YES_NO:
                 errors.append(
                     f"reference audit {row['source_file']}: "
@@ -1569,7 +2505,7 @@ def audit_batch_migration(
                     f"reference audit {row['source_file']}: "
                     "requires_update disagrees with historical status"
                 )
-        if batch in {2, 3, 4, 5} and row["updated"] == "YES":
+        if batch in {2, 3, 4, 5, 6} and row["updated"] == "YES":
             if (
                 row["historical_reference"] != "NO"
                 or row["remaining_reference_allowed"] != "NO"
@@ -1589,7 +2525,7 @@ def audit_batch_migration(
                     f"{row['source_file']}:{row['source_line']}"
                 )
 
-    if batch in {2, 3, 4, 5}:
+    if batch in {2, 3, 4, 5, 6}:
         reference_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for row in references:
             if row["updated"] != "YES":
@@ -1599,7 +2535,7 @@ def audit_batch_migration(
                 category = "test"
             elif source.startswith("docs/"):
                 category = "doc"
-            elif batch in {3, 4, 5} and source.startswith("configs/"):
+            elif batch in {3, 4, 5, 6} and source.startswith("configs/"):
                 category = "yaml"
             else:
                 category = "active"
@@ -1611,7 +2547,7 @@ def audit_batch_migration(
                 "test_reference_count": counts["test"],
                 "doc_reference_count": counts["doc"],
             }
-            if batch in {3, 4, 5}:
+            if batch in {3, 4, 5, 6}:
                 expected_counts["yaml_reference_count"] = counts["yaml"]
             for field, expected in expected_counts.items():
                 try:
@@ -1688,6 +2624,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--batch", type=int, required=True)
     parser.add_argument("--plan", required=True)
+    parser.add_argument(
+        "--classification",
+        default="docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv",
+    )
     parser.add_argument("--moves")
     parser.add_argument(
         "--preview",
@@ -1711,9 +2651,22 @@ def main() -> int:
             repo_root,
             int(args.batch),
             resolve(args.plan),
+            classification_path=resolve(args.classification),
             strict=bool(args.strict),
         )
         for key in (
+            "BATCH6_PLANNED_YAML",
+            "CROSS_MODEL_BENCHMARK_COUNT",
+            "MODEL_SCOPED_ABLATION_COUNT",
+            "CAUSAL_UNIFIED_COUNT",
+            "ORIGINAL_MERC_COUNT",
+            "ABLATION_ATTRIBUTE_COUNT",
+            "SMOKE_ATTRIBUTE_COUNT",
+            "BENCHMARK_FAMILY_NOT_APPLICABLE_COUNT",
+            "PRIMARY_FAMILY_UNKNOWN_COUNT",
+            "TARGET_UNDER_CONFIGS_BENCHMARKS_COUNT",
+            "TARGET_UNDER_MODEL_CANONICAL_TREE_COUNT",
+            "PREVIEW_STATE_POLLUTION_REMAINING",
             "PREVIEW_PATH_CHANGES_REQUIRED",
             "ACTUAL_FILE_CHANGES",
             "APPROVED_ACTUAL_CHANGES",
@@ -1741,6 +2694,7 @@ def main() -> int:
         int(args.batch),
         resolve(args.plan),
         resolve(args.moves),
+        classification_path=resolve(args.classification),
         strict=bool(args.strict),
     )
     if errors:

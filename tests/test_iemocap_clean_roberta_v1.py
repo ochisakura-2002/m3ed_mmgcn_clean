@@ -83,7 +83,7 @@ CLEAN_FORMAL_TRAIN_CONFIGS = tuple(
     for family in ("mmgcn", "multidag_cl")
     for session in range(1, 5)
 )
-CLEAN_FORMAL_MANIFEST = ROOT / "configs/experiments/iemocap_clean_roberta_v1_8run.yaml"
+CLEAN_FORMAL_MANIFEST = ROOT / "configs/benchmarks/causal_unified/iemocap_clean_roberta_eight_run.yaml"
 FORBIDDEN_FORMAL_CAPS = (
     "train_batch_cap",
     "val_batch_cap",

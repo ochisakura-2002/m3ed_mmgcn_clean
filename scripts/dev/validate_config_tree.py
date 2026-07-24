@@ -38,7 +38,15 @@ CAUSAL_BENCHMARK_TRAIN_DIRS = {
         / "causal_context"
         / "legacy_mmgcn_features"
     ),
-    "gsmcc": ROOT / "configs" / "baselines" / "gsmcc" / "iemocap" / "causal_benchmark",
+    "gsmcc": (
+        ROOT
+        / "configs"
+        / "gsmcc"
+        / "project_variant"
+        / "iemocap"
+        / "causal_context"
+        / "legacy_mmgcn_features"
+    ),
     "dialoguegcn": (
         ROOT
         / "configs"
@@ -86,10 +94,11 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
     "gsmcc": (
         ROOT
         / "configs"
-        / "baselines"
         / "gsmcc"
+        / "project_variant"
         / "iemocap"
-        / "clean_roberta_v1"
+        / "causal_context"
+        / "clean_roberta_features"
     ),
 }
 CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
@@ -183,6 +192,28 @@ ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS = {
             "clean_roberta_features/fivefold_base.yaml"
         ),
     },
+    "gsmcc": {
+        "screening": (
+            ROOT
+            / "configs/gsmcc/project_variant/iemocap/full_context/"
+            "legacy_mmgcn_features/screening.yaml"
+        ),
+        "clean_screening": (
+            ROOT
+            / "configs/gsmcc/project_variant/iemocap/full_context/"
+            "clean_roberta_features/gsmcc_clean.yaml"
+        ),
+        "legacy_fold_bases": (
+            ROOT
+            / "configs/gsmcc/project_variant/iemocap/full_context/"
+            "legacy_mmgcn_features/fivefold_base.yaml"
+        ),
+        "clean_fold_bases": (
+            ROOT
+            / "configs/gsmcc/project_variant/iemocap/full_context/"
+            "clean_roberta_features/fivefold_base.yaml"
+        ),
+    },
 }
 ORIGINAL_REPRO_MODELS = {
     "mmgcn": "original_repro_mmgcn",
@@ -251,8 +282,16 @@ ORIGINAL_REPRO_SMOKE_CONFIGS = {
         / "clean_roberta_features"
         / "smoke.yaml"
     ),
-    ("gsmcc", "legacy"): ORIGINAL_REPRO_LEGACY_SMOKE_DIR / "gsmcc_legacy.yaml",
-    ("gsmcc", "clean"): ORIGINAL_REPRO_LEGACY_SMOKE_DIR / "gsmcc_clean.yaml",
+    ("gsmcc", "legacy"): (
+        ROOT
+        / "configs/gsmcc/project_variant/iemocap/full_context/"
+        "legacy_mmgcn_features/smoke.yaml"
+    ),
+    ("gsmcc", "clean"): (
+        ROOT
+        / "configs/gsmcc/project_variant/iemocap/full_context/"
+        "clean_roberta_features/smoke.yaml"
+    ),
 }
 ORIGINAL_MERC_TRACKS = {
     "legacy_official_split_safe_selection": (
@@ -277,6 +316,7 @@ CAUSAL_BENCHMARK_VARIANTS = {
 }
 CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
     "dialoguegcn": {"smoke_real_2epoch.yaml"},
+    "gsmcc": {"smoke_real_2epoch.yaml"},
     "multidag_cl": {
         "context_past_all_causal_tav_smoke.yaml",
         "context_w5_tav_quick.yaml",
@@ -287,7 +327,7 @@ CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
 
 def causal_training_name(family: str, pipeline_name: str) -> str:
     if (
-        family in {"mmgcn", "multidag_cl", "dialoguegcn"}
+        family in {"mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"}
         and pipeline_name == "official_prefix.yaml"
     ):
         return "val_official_prefix.yaml"
@@ -296,7 +336,7 @@ def causal_training_name(family: str, pipeline_name: str) -> str:
 
 def causal_pipeline_name(family: str, training_name: str) -> str:
     if (
-        family in {"mmgcn", "multidag_cl", "dialoguegcn"}
+        family in {"mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"}
         and training_name == "val_official_prefix.yaml"
     ):
         return "official_prefix.yaml"
@@ -1510,14 +1550,14 @@ def validate_original_merc_tree(errors: list[str]) -> None:
         f"original reproduction smoke config matrix missing {missing_smoke}",
         errors,
     )
-    expected_legacy_smoke = {"gsmcc_legacy.yaml", "gsmcc_clean.yaml"}
+    expected_legacy_smoke: set[str] = set()
     actual_legacy_smoke = {
         path.name for path in ORIGINAL_REPRO_LEGACY_SMOKE_DIR.glob("*.yaml")
     }
     require(
         actual_legacy_smoke == expected_legacy_smoke,
-        "legacy original reproduction smoke directory must contain only "
-        "unmigrated GS-MCC configs",
+        "legacy original reproduction smoke directory must not retain "
+        "migrated GS-MCC configs",
         errors,
     )
     for family in ORIGINAL_REPRO_MODELS:

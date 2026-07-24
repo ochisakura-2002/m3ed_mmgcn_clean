@@ -439,8 +439,8 @@ def test_diagnostic_records_required_stages_for_two_batches_and_both_modes() -> 
 @pytest.mark.parametrize(
     "config_path",
     [
-        "configs/experiments/original_merc/screening/gsmcc_legacy.yaml",
-        "configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml",
     ],
 )
 def test_real_gsmcc_two_train_batches_are_finite_when_features_exist(

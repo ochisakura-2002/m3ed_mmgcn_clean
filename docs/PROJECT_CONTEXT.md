@@ -36,7 +36,7 @@
 
 `CONFIG_BATCH_4=COMPLETED`
 
-`CONFIG_BATCH_5=NOT_STARTED`
+`CONFIG_BATCH_5=COMPLETED`
 
 `CONFIG_BATCH_6=NOT_STARTED`
 
@@ -48,7 +48,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划。Config Batch 1--4 已完成；Batch 4 将 10 个 DialogueGCN YAML 迁移到 canonical 路径，其中 6 个 `unified`、4 个 `paper_aligned`。10 个 YAML 均 byte-identical 且 semantic-identical，更新 30 个 active references（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0；Batch 1--3 严格回归均通过。当前剩余 2 行 manual review 和 1 个 candidate collision group；下一阶段只执行 Config Batch 5。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划。Config Batch 1--5 已完成；Batch 5 将 13 个 GS-MCC `project_variant` YAML 迁移到 canonical 路径，其中 7 个 `causal_context`、6 个 `full_context`。13 个 YAML 均 byte-identical 且 semantic-identical，更新 46 个 active references（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0；Batch 1--4 严格回归均通过。当前剩余 2 行 manual review 和 1 个 candidate collision group；下一阶段只执行 Config Batch 6。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 ## 模型路线与命名边界
 
@@ -143,6 +143,17 @@ Config Batch 4 已迁移 10 个 DialogueGCN YAML；完整 old/new 映射及 SHA 
 - `configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/{dialoguegcn_clean,fivefold_base}.yaml`
 
 Batch 4 的 10 个 YAML 内容不变，均为 byte-identical 且 semantic-identical。引用审计记录 30 个 active references 已更新，其中 5 个为 pipeline references；历史旧引用和 active old references 均为 0。严格 Batch 1/2/3/4 回归、config validator、相关测试、无训练 dry-run 与完整 pytest 均通过。`paper_aligned` 仍不等于 `author_official`，本批次不是作者官方 DialogueGCN 复现。
+
+## Config Batch 5 canonical paths
+
+Config Batch 5 已迁移 13 个 GS-MCC `project_variant` YAML；完整 old/new 映射及 SHA 见 `docs/refactors/CONFIG_BATCH5_MOVES.csv`。
+
+- `configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/{val_official_prefix,val_ses01,val_ses02,val_ses03,val_ses04,smoke_real_2epoch}.yaml`
+- `configs/gsmcc/project_variant/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml`
+- `configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/{screening,fivefold_base,smoke}.yaml`
+- `configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/{gsmcc_clean,fivefold_base,smoke}.yaml`
+
+Batch 5 的 13 个 YAML 内容不变，均为 byte-identical 且 semantic-identical。引用审计记录 46 个 active references 已更新，其中 5 个为 pipeline references；历史旧引用和 active old references 均为 0。causal 配置继续解析为 `causal_gsmcc_inspired`，full-context 配置继续解析为 `project_paper_oriented_gsmcc`；二者都是项目 `project_variant`，不是 `author_official`。作者官方 GS-MCC 复现尚未开始。
 
 ## Compatibility paths
 
@@ -293,6 +304,11 @@ Phase 3B2 canonical support paths 为：
 - Batch 4 reference audit 记录 30 个已更新 active references，其中 5 个 pipeline references；历史旧引用与 active old references 均为 0。
 - Batch 4 audit/plan/benchmark focused tests：`64 passed`；DialogueGCN/config/pipeline/registry/checkpoint 相关回归：`181 passed, 3 skipped`；完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`403 passed, 3 skipped`。
 - Batch 4 config validation、Phase 4A strict plan audit、Batch 1/2/3/4 strict audit、10-config 无训练 dry-run、4 个 CLI help 与 `git diff --check` 均通过。
+- Config Batch 5 基于分支 `refactor/model-first-layout`、Git HEAD `2403a801b48307f214f2fdd6768d206e40c453e9` 完成；13 个 GS-MCC `project_variant` YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 13、tracked YAML 总数 183。
+- Batch 5 的 7 个 `causal_context` 与 6 个 `full_context` YAML 均 byte-identical 且 semantic-identical；YAML 内容变化 0、未批准语义变化 0。
+- Batch 5 reference audit 记录 46 个已更新 active references，其中 5 个 pipeline references；历史旧引用与 active old references 均为 0。
+- Batch 5 相关定向回归：`219 passed, 3 skipped`；13-config 无训练 dry-run 解析配置、registry、entrypoint、output/checkpoint 与 pipeline/manifest 引用均通过。
+- Batch 5 完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`420 passed, 3 skipped, 14 warnings`；config validator、Phase 4A strict plan audit、Batch 1/2/3/4/5 strict audit、CLI help 与 `git diff --check` 均通过。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
@@ -303,8 +319,8 @@ Phase 3B2 canonical support paths 为：
 - `prepare_m3ed_metadata.py`、真实 batch/model 诊断与 summary rebuild 工具具有数据或资产写入风险；Phase 3B2 只做 import、CLI help、synthetic 或静态安全检查，没有执行这些真实动作。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
-- Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1--4 严格按迁移计划执行。历史 outputs 内冻结的配置快照不在迁移范围。
-- 当前只剩 1 个 candidate collision group，涉及两份 missing-modality pipeline。active docs 区分 original formal 与 stable-candidate source run，但 YAML 没有机器可读 source-run 字段；必须在 Config Batch 7 前决定合并为一份 canonical 配置，或由后续独立任务补足机器可读语义。该 collision 不属于 Batch 1--4。
+- Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1--5 严格按迁移计划执行。历史 outputs 内冻结的配置快照不在迁移范围。
+- 当前只剩 1 个 candidate collision group，涉及两份 missing-modality pipeline。active docs 区分 original formal 与 stable-candidate source run，但 YAML 没有机器可读 source-run 字段；必须在 Config Batch 7 前决定合并为一份 canonical 配置，或由后续独立任务补足机器可读语义。该 collision 不属于 Batch 1--5。
 - 配置 provenance 不得按旧路径或文件名猜测；`paper_aligned` 不是 `author_official`，全部 GS-MCC 配置均为 `project_variant`。
 
 已知论文叙事风险：
@@ -317,7 +333,7 @@ Phase 3B2 canonical support paths 为：
 
 ## 下一阶段工程顺序
 
-模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 与 Config Batch 1--4 也已完成。下一阶段只执行 `CONFIG_BATCH_5`。每次只执行一个 batch；剩余 collision 属于 Batch 7，不阻塞 Batch 5，但必须在 Batch 7 前解决。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
+模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 与 Config Batch 1--5 也已完成。下一阶段只执行 `CONFIG_BATCH_6`。每次只执行一个 batch；剩余 collision 属于 Batch 7，不阻塞 Batch 6，但必须在 Batch 7 前解决。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
 
 Phase 3B2 结果见 `docs/refactors/SCRIPT_SUPPORT_LAYOUT_REFACTOR_REPORT.md`、`docs/refactors/SCRIPT_SUPPORT_CLASSIFICATION_PHASE3B2.csv` 与 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3B2.*`。后续 config 重构不得删除 Phase 3A/3B1/3B2 wrapper、改变 runtime/checkpoint schema，或把 `paper_aligned` 误写为 `author_official`。
 
@@ -368,6 +384,16 @@ Config Batch 4 的执行与审计依据为：
 - `docs/refactors/CONFIG_BATCH4_SEMANTIC_DIFF.csv`
 - `docs/refactors/CONFIG_BATCH4_REFERENCE_AUDIT.csv`
 - `docs/refactors/CONFIG_BATCH4_REFACTOR_REPORT.md`
+- `scripts/dev/audit_config_batch_migration.py`
+
+Config Batch 5 的执行与审计依据为：
+
+- `docs/refactors/CONFIG_BATCH5_MOVES.csv`
+- `docs/refactors/CONFIG_BATCH5_BEFORE_SNAPSHOT.json`
+- `docs/refactors/CONFIG_BATCH5_AFTER_SNAPSHOT.json`
+- `docs/refactors/CONFIG_BATCH5_SEMANTIC_DIFF.csv`
+- `docs/refactors/CONFIG_BATCH5_REFERENCE_AUDIT.csv`
+- `docs/refactors/CONFIG_BATCH5_REFACTOR_REPORT.md`
 - `scripts/dev/audit_config_batch_migration.py`
 
 ## 下一阶段研究路线

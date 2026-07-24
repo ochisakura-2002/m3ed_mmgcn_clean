@@ -63,7 +63,7 @@ CLEAN_FEATURE_SHA256 = "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb
 CLEAN_CONFIGS = (
     ROOT / "configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
     ROOT / "configs/multidag_cl/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
-    ROOT / "configs/baselines/gsmcc/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+    ROOT / "configs/gsmcc/project_variant/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
     ROOT / "configs/dialoguegcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
 )
 CLEAN_FORMAL_PIPELINE_CONFIGS = tuple(

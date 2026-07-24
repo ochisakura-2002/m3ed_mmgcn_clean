@@ -42,6 +42,9 @@ FORMAL_ORIGINAL_MERC = "formal_original_merc"
 SMOKE_ORIGINAL_MERC = "smoke_original_merc"
 OUT_OF_SCOPE = "out_of_scope"
 FORMAL_CONFIG_PREFIX = "configs/experiments/original_merc/"
+GSMCC_FORMAL_CONFIG_PREFIX = (
+    "configs/gsmcc/project_variant/iemocap/full_context/"
+)
 SMOKE_CONFIG_PREFIX = "configs/smoke/original_repro/"
 CANONICAL_SMOKE_CONFIG_PATHS = frozenset(
     {
@@ -56,6 +59,10 @@ CANONICAL_SMOKE_CONFIG_PATHS = frozenset(
         "configs/multidag_cl/paper_aligned/iemocap/full_context/"
         "clean_roberta_features/smoke.yaml",
         "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/smoke.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/"
+        "clean_roberta_features/smoke.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/"
         "legacy_mmgcn_features/smoke.yaml",
     }
 )
@@ -222,7 +229,9 @@ def classify_run_scope(run_dir: Path) -> dict[str, Any]:
         config.get("model", {}).get("name"), metadata.get("model_name")
     ) or "unknown"
     exact_protocol = protocol_version == ORIGINAL_MERC_PROTOCOL_VERSION
-    formal_source = _path_belongs_to(config_path, FORMAL_CONFIG_PREFIX)
+    formal_source = _path_belongs_to(
+        config_path, FORMAL_CONFIG_PREFIX
+    ) or _path_belongs_to(config_path, GSMCC_FORMAL_CONFIG_PREFIX)
     smoke_source = _path_belongs_to(
         config_path, SMOKE_CONFIG_PREFIX
     ) or _path_matches_any(config_path, CANONICAL_SMOKE_CONFIG_PATHS)
@@ -605,7 +614,7 @@ def write_top2_selection(
     config_by_model = {
         "original_repro_mmgcn": "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
         "original_repro_multidag_cl": "configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
-        "project_paper_oriented_gsmcc": "configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml",
+        "project_paper_oriented_gsmcc": "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
         "original_repro_dialoguegcn": "configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
     }
     invalid_screening_models = set(invalid_screening_models or set())

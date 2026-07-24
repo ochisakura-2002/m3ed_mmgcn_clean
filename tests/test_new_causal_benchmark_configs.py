@@ -30,11 +30,19 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
             "causal_gsmcc_inspired",
             ROOT
             / "configs"
-            / "baselines"
             / "gsmcc"
+            / "project_variant"
             / "iemocap"
-            / "causal_benchmark",
-            {name: name for name in VARIANTS},
+            / "causal_context"
+            / "legacy_mmgcn_features",
+            {
+                name: (
+                    "val_official_prefix.yaml"
+                    if name == "official_prefix.yaml"
+                    else name
+                )
+                for name in VARIANTS
+            },
         ),
         (
             "dialoguegcn",
@@ -58,8 +66,7 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
     ):
         pipeline_dir = ROOT / "configs" / "pipeline" / family / "iemocap" / "causal_benchmark"
         expected_train_names = set(train_name_by_pipeline_name.values())
-        if family == "dialoguegcn":
-            expected_train_names.add("smoke_real_2epoch.yaml")
+        expected_train_names.add("smoke_real_2epoch.yaml")
         assert {
             path.name for path in train_dir.glob("*.yaml")
         } == expected_train_names

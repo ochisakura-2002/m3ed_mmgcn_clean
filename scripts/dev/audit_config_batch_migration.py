@@ -61,6 +61,31 @@ BATCH3_MOVE_COLUMNS = (
     "status",
     "notes",
 )
+BATCH5_MOVE_COLUMNS = (
+    "old_path",
+    "new_path",
+    "model",
+    "implementation",
+    "dataset",
+    "context_mode",
+    "feature_set",
+    "purpose",
+    "scope",
+    "is_smoke",
+    "is_formal",
+    "is_project_variant",
+    "is_official",
+    "pre_move_sha256",
+    "post_move_sha256",
+    "yaml_content_changed",
+    "approved_changed_keys",
+    "active_reference_count",
+    "test_reference_count",
+    "doc_reference_count",
+    "yaml_reference_count",
+    "status",
+    "notes",
+)
 REFERENCE_COLUMNS = (
     "old_config_path",
     "source_file",
@@ -105,12 +130,24 @@ BATCH3_SEMANTIC_DIFF_COLUMNS = (
     "status",
     "notes",
 )
-EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10}
-EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0}
+BATCH5_SEMANTIC_DIFF_COLUMNS = (
+    "old_path",
+    "new_path",
+    "context_mode",
+    "byte_identical",
+    "semantic_identical",
+    "changed_keys",
+    "change_allowed",
+    "status",
+    "notes",
+)
+EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10, 5: 13}
+EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0, 5: 0}
 EXPECTED_IMPLEMENTATION_COUNTS = {
     2: {"unified": 13, "paper_aligned": 4},
     3: {"unified": 13, "paper_aligned": 4},
     4: {"unified": 6, "paper_aligned": 4},
+    5: {"project_variant": 13},
 }
 DEFAULT_TRACKED_YAML_COUNT = 183
 SNAPSHOT_IDENTITY_FIELDS = {
@@ -794,13 +831,21 @@ def audit_batch_migration(
     ):
         errors.append(f"plan is missing column: {column}")
     required_move_columns = (
-        BATCH3_MOVE_COLUMNS if batch in {3, 4} else MOVE_COLUMNS
+        BATCH5_MOVE_COLUMNS
+        if batch == 5
+        else BATCH3_MOVE_COLUMNS
+        if batch in {3, 4}
+        else MOVE_COLUMNS
     )
     required_reference_columns = (
-        BATCH3_REFERENCE_COLUMNS if batch in {3, 4} else REFERENCE_COLUMNS
+        BATCH3_REFERENCE_COLUMNS
+        if batch in {3, 4, 5}
+        else REFERENCE_COLUMNS
     )
     required_semantic_columns = (
-        BATCH3_SEMANTIC_DIFF_COLUMNS
+        BATCH5_SEMANTIC_DIFF_COLUMNS
+        if batch == 5
+        else BATCH3_SEMANTIC_DIFF_COLUMNS
         if batch in {3, 4}
         else SEMANTIC_DIFF_COLUMNS
     )
@@ -845,6 +890,24 @@ def audit_batch_migration(
         row.get("model") != "dialoguegcn" for row in batch_plan
     ):
         errors.append("Batch 4 must contain only DialogueGCN configs")
+    if batch == 5 and any(row.get("model") != "gsmcc" for row in batch_plan):
+        errors.append("Batch 5 must contain only GS-MCC configs")
+    if batch == 5 and any(
+        row.get("implementation") != "project_variant" for row in batch_plan
+    ):
+        errors.append("Batch 5 must contain only project_variant configs")
+    if batch == 5:
+        context_counts = Counter(
+            row.get("context_mode", "") for row in batch_plan
+        )
+        expected_context_counts = Counter(
+            {"causal_context": 7, "full_context": 6}
+        )
+        if context_counts != expected_context_counts:
+            errors.append(
+                "Batch 5 context counts mismatch: "
+                f"{dict(context_counts)} != {dict(expected_context_counts)}"
+            )
     if len(moves) != len(batch_plan):
         errors.append(
             f"moves row count {len(moves)} does not match plan {len(batch_plan)}"
@@ -887,7 +950,7 @@ def audit_batch_migration(
         if git_head_commit_override is not None
         else str(before_payload.get("git_head", ""))
     )
-    if batch in {2, 3, 4}:
+    if batch in {2, 3, 4, 5}:
         expected_snapshot_head = snapshot_baseline_head
         if not expected_snapshot_head:
             errors.append("Git HEAD commit cannot be resolved")
@@ -1005,6 +1068,59 @@ def audit_batch_migration(
             ):
                 if move[flag] not in YES_NO:
                     errors.append(f"{label}: {flag} must be YES or NO")
+        if batch == 5:
+            expected_prefix = "configs/gsmcc/project_variant/"
+            if move["model"] != "gsmcc":
+                errors.append(f"{label}: Batch 5 model must be gsmcc")
+            if move["implementation"] != "project_variant":
+                errors.append(
+                    f"{label}: Batch 5 implementation must be project_variant"
+                )
+            if not new_path.startswith(expected_prefix):
+                errors.append(
+                    f"{label}: project_variant is placed under the wrong "
+                    "canonical lineage"
+                )
+            if any(
+                segment in PurePosixPath(new_path).parts
+                for segment in ("unified", "paper_aligned", "author_official")
+            ):
+                errors.append(
+                    f"{label}: Batch 5 path contains a forbidden lineage"
+                )
+            if move["is_project_variant"] != "YES":
+                errors.append(
+                    f"{label}: GS-MCC project_variant marker must be YES"
+                )
+            if move["is_official"] != "NO":
+                errors.append(
+                    f"{label}: GS-MCC project_variant must be non-official"
+                )
+            for flag in (
+                "is_smoke",
+                "is_formal",
+                "is_project_variant",
+                "is_official",
+            ):
+                if move[flag] not in YES_NO:
+                    errors.append(f"{label}: {flag} must be YES or NO")
+            context_mode = move["context_mode"]
+            expected_context_segment = (
+                "causal_context"
+                if context_mode == "causal_context"
+                else "full_context"
+                if context_mode == "full_context"
+                else ""
+            )
+            if not expected_context_segment:
+                errors.append(
+                    f"{label}: Batch 5 has invalid context mode {context_mode!r}"
+                )
+            elif f"/{expected_context_segment}/" not in new_path:
+                errors.append(
+                    f"{label}: {context_mode} config is placed under the "
+                    "wrong context directory"
+                )
         if old_disk.exists():
             errors.append(f"{old_path}: old path still exists")
         if not new_disk.is_file():
@@ -1077,6 +1193,82 @@ def audit_batch_migration(
                             f"{new_path}: DialogueGCN registry key is missing "
                             f"from {registry_source}"
                         )
+        if batch == 5:
+            model_section = (
+                parsed_disk.get("model", {})
+                if isinstance(parsed_disk, dict)
+                else {}
+            )
+            graph_section = (
+                parsed_disk.get("graph", {})
+                if isinstance(parsed_disk, dict)
+                else {}
+            )
+            model_name = (
+                model_section.get("name")
+                if isinstance(model_section, dict)
+                else None
+            )
+            causal_context = move["context_mode"] == "causal_context"
+            expected_model_name = (
+                "causal_gsmcc_inspired"
+                if causal_context
+                else "project_paper_oriented_gsmcc"
+            )
+            if model_name != expected_model_name:
+                errors.append(
+                    f"{new_path}: GS-MCC registry/consumer key mismatch: "
+                    f"{model_name!r} != {expected_model_name!r}"
+                )
+            if causal_context:
+                if parsed_disk.get("causal") is not True:
+                    errors.append(f"{new_path}: causal GS-MCC flag changed")
+                if (
+                    not isinstance(graph_section, dict)
+                    or graph_section.get("context_mode") != "causal"
+                    or graph_section.get("window_future") != 0
+                ):
+                    errors.append(
+                        f"{new_path}: causal GS-MCC graph/context contract changed"
+                    )
+            else:
+                if (
+                    not isinstance(model_section, dict)
+                    or model_section.get("fidelity_status")
+                    != "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION"
+                ):
+                    errors.append(
+                        f"{new_path}: full-context GS-MCC project-variant "
+                        "provenance marker changed"
+                    )
+                if model_section.get("causal_grade") != (
+                    "noncausal_offline_full_context"
+                ):
+                    errors.append(
+                        f"{new_path}: full-context GS-MCC causal grade changed"
+                    )
+
+            registry_root = repo_root
+            if not (registry_root / "models/registry").is_dir():
+                registry_root = Path(__file__).resolve().parents[2]
+            registry_source = (
+                registry_root / "models/registry/causal.py"
+                if causal_context
+                else registry_root / "models/registry/paper_aligned.py"
+            )
+            try:
+                registry_text = registry_source.read_text(encoding="utf-8-sig")
+            except OSError as exc:
+                errors.append(
+                    f"{new_path}: GS-MCC registry source unavailable: {exc}"
+                )
+            else:
+                quoted_key = f'"{expected_model_name}"'
+                if quoted_key not in registry_text:
+                    errors.append(
+                        f"{new_path}: GS-MCC registry key is missing from "
+                        f"{registry_source}"
+                    )
 
         before_entry = before.get(old_path)
         after_entry = after.get(old_path)
@@ -1152,7 +1344,7 @@ def audit_batch_migration(
             and not documented_later_reference_drift
         ):
             errors.append(f"{old_path}: after snapshot semantics do not match disk")
-        if batch in {2, 3, 4}:
+        if batch in {2, 3, 4, 5}:
             for snapshot_label, snapshot_entry in (
                 ("before", before_entry),
                 ("after", after_entry),
@@ -1216,6 +1408,11 @@ def audit_batch_migration(
             and semantic_row["implementation"] != move["implementation"]
         ):
             errors.append(f"{old_path}: semantic diff implementation mismatch")
+        if (
+            batch == 5
+            and semantic_row["context_mode"] != move["context_mode"]
+        ):
+            errors.append(f"{old_path}: semantic diff context_mode mismatch")
         if semantic_row["byte_identical"] != byte_identical:
             errors.append(f"{old_path}: semantic diff byte result mismatch")
         if semantic_row["semantic_identical"] != semantic_identical:
@@ -1235,7 +1432,7 @@ def audit_batch_migration(
         if semantic_row["status"] != ("PASS" if expected_allowed else "FAIL"):
             errors.append(f"{old_path}: semantic diff status mismatch")
 
-    expected_source_changes = {2: 4, 3: 4, 4: 0}
+    expected_source_changes = {2: 4, 3: 4, 4: 0, 5: 0}
     if batch in expected_source_changes:
         declared_source_changes = sum(
             move["yaml_content_changed"] == "YES"
@@ -1358,7 +1555,7 @@ def audit_batch_migration(
                     "historical reference is outside the approved categories: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
-        if batch in {3, 4}:
+        if batch in {3, 4, 5}:
             if row["requires_update"] not in YES_NO:
                 errors.append(
                     f"reference audit {row['source_file']}: "
@@ -1372,7 +1569,7 @@ def audit_batch_migration(
                     f"reference audit {row['source_file']}: "
                     "requires_update disagrees with historical status"
                 )
-        if batch in {2, 3, 4} and row["updated"] == "YES":
+        if batch in {2, 3, 4, 5} and row["updated"] == "YES":
             if (
                 row["historical_reference"] != "NO"
                 or row["remaining_reference_allowed"] != "NO"
@@ -1392,7 +1589,7 @@ def audit_batch_migration(
                     f"{row['source_file']}:{row['source_line']}"
                 )
 
-    if batch in {2, 3, 4}:
+    if batch in {2, 3, 4, 5}:
         reference_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for row in references:
             if row["updated"] != "YES":
@@ -1402,7 +1599,7 @@ def audit_batch_migration(
                 category = "test"
             elif source.startswith("docs/"):
                 category = "doc"
-            elif batch in {3, 4} and source.startswith("configs/"):
+            elif batch in {3, 4, 5} and source.startswith("configs/"):
                 category = "yaml"
             else:
                 category = "active"
@@ -1414,7 +1611,7 @@ def audit_batch_migration(
                 "test_reference_count": counts["test"],
                 "doc_reference_count": counts["doc"],
             }
-            if batch in {3, 4}:
+            if batch in {3, 4, 5}:
                 expected_counts["yaml_reference_count"] = counts["yaml"]
             for field, expected in expected_counts.items():
                 try:

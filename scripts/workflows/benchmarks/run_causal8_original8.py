@@ -296,20 +296,20 @@ def build_run_plan() -> list[RunSpec]:
                 "clean_roberta_features/dialoguegcn_clean.yaml"
             ),
         },
+        "gsmcc": {
+            "legacy": Path(
+                "configs/gsmcc/project_variant/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+            "clean": Path(
+                "configs/gsmcc/project_variant/iemocap/full_context/"
+                "clean_roberta_features/gsmcc_clean.yaml"
+            ),
+        },
     }
-    for track, config_dir in (
-        ("legacy", "screening"),
-        ("clean", "clean_screening"),
-    ):
+    for track in ("legacy", "clean"):
         for model in ("mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"):
-            config = (
-                canonical_original_configs[model][track]
-                if model in canonical_original_configs
-                else Path(
-                    "configs/experiments/original_merc/"
-                    f"{config_dir}/{model}_{track}.yaml"
-                )
-            )
+            config = canonical_original_configs[model][track]
             original.append(
                 RunSpec(
                     index=index,

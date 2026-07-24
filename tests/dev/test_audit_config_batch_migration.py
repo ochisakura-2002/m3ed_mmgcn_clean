@@ -14,6 +14,8 @@ from scripts.dev.audit_config_batch_migration import (
     BATCH3_MOVE_COLUMNS,
     BATCH3_REFERENCE_COLUMNS,
     BATCH3_SEMANTIC_DIFF_COLUMNS,
+    BATCH5_MOVE_COLUMNS,
+    BATCH5_SEMANTIC_DIFF_COLUMNS,
     MOVE_COLUMNS,
     REFERENCE_COLUMNS,
     SEMANTIC_DIFF_COLUMNS,
@@ -204,15 +206,21 @@ def _semantic_row(plan_row: dict[str, str]) -> dict[str, str]:
 def _persist(fixture: Fixture) -> None:
     _write_csv(fixture.plan_path, MAPPING_COLUMNS, fixture.plan_rows)
     move_columns = (
-        BATCH3_MOVE_COLUMNS if fixture.batch in {3, 4} else MOVE_COLUMNS
+        BATCH5_MOVE_COLUMNS
+        if fixture.batch == 5
+        else BATCH3_MOVE_COLUMNS
+        if fixture.batch in {3, 4}
+        else MOVE_COLUMNS
     )
     reference_columns = (
         BATCH3_REFERENCE_COLUMNS
-        if fixture.batch in {3, 4}
+        if fixture.batch in {3, 4, 5}
         else REFERENCE_COLUMNS
     )
     semantic_columns = (
-        BATCH3_SEMANTIC_DIFF_COLUMNS
+        BATCH5_SEMANTIC_DIFF_COLUMNS
+        if fixture.batch == 5
+        else BATCH3_SEMANTIC_DIFF_COLUMNS
         if fixture.batch in {3, 4}
         else SEMANTIC_DIFF_COLUMNS
     )
@@ -222,7 +230,7 @@ def _persist(fixture: Fixture) -> None:
             entry["snapshot_source"] = "git_head"
         for entry in fixture.after_entries:
             entry["snapshot_source"] = "working_tree"
-    elif fixture.batch in {3, 4}:
+    elif fixture.batch in {3, 4, 5}:
         for entry in fixture.before_entries:
             entry["snapshot_source"] = "working_tree_pre_move"
         for entry in fixture.after_entries:
@@ -235,7 +243,7 @@ def _persist(fixture: Fixture) -> None:
             "git_head"
             if fixture.batch == 2
             else "working_tree_pre_move"
-            if fixture.batch in {3, 4}
+            if fixture.batch in {3, 4, 5}
             else None
         ),
         git_head=fixture.git_head_commit,
@@ -245,7 +253,7 @@ def _persist(fixture: Fixture) -> None:
         fixture.after_entries,
         batch=fixture.batch,
         snapshot_source=(
-            "working_tree" if fixture.batch in {2, 3, 4} else None
+            "working_tree" if fixture.batch in {2, 3, 4, 5} else None
         ),
         git_head=fixture.git_head_commit,
     )
@@ -779,6 +787,176 @@ def _make_batch4_fixture(tmp_path: Path) -> Fixture:
             *earlier_rows,
             *batch_plans,
             later_batch5,
+            manual_batch7,
+        ],
+        move_rows=move_rows,
+        before_entries=[
+            _snapshot_entry(plan_row, payload, raw)
+            for plan_row, payload, raw in zip(
+                batch_plans, payloads, raw_payloads
+            )
+        ],
+        after_entries=[
+            _snapshot_entry(plan_row, payload, raw)
+            for plan_row, payload, raw in zip(
+                batch_plans, payloads, raw_payloads
+            )
+        ],
+        semantic_rows=semantic_rows,
+        reference_rows=[],
+        git_head_bytes={},
+        git_head_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    _persist(fixture)
+    return fixture
+
+
+def _make_batch5_fixture(tmp_path: Path) -> Fixture:
+    batch_plans: list[dict[str, str]] = []
+    payloads: list[dict[str, object]] = []
+    raw_payloads: list[bytes] = []
+    for index in range(13):
+        causal_context = index < 7
+        context_mode = (
+            "causal_context" if causal_context else "full_context"
+        )
+        feature_set = (
+            "clean_roberta_features"
+            if index in {5, 8, 11}
+            else "legacy_mmgcn_features"
+        )
+        plan_row = _plan_row(
+            f"configs/batch5/old_{index:02d}.yaml",
+            f"configs/gsmcc/project_variant/iemocap/{context_mode}/"
+            f"{feature_set}/new_{index:02d}.yaml",
+            batch="Batch 5",
+        )
+        plan_row.update(
+            {
+                "model": "gsmcc",
+                "implementation": "project_variant",
+                "dataset": "iemocap",
+                "context_mode": context_mode,
+                "feature_set": feature_set,
+                "purpose": "formal" if index not in {5, 6, 11, 12} else "smoke",
+            }
+        )
+        batch_plans.append(plan_row)
+        if causal_context:
+            payload: dict[str, object] = {
+                "causal": True,
+                "system": {"seed": index},
+                "dataset": {"name": "IEMOCAP"},
+                "model": {
+                    "name": "causal_gsmcc_inspired",
+                    "fusion_type": "concat",
+                    "active_modalities": ["text", "audio", "visual"],
+                },
+                "graph": {
+                    "context_mode": "causal",
+                    "window_past": 5,
+                    "window_future": 0,
+                },
+                "missing_modalities": {"enabled": False},
+                "training": {"epochs": 2, "batch_size": 2},
+            }
+        else:
+            payload = {
+                "system": {"seed": index},
+                "dataset": {"name": "IEMOCAP"},
+                "model": {
+                    "name": "project_paper_oriented_gsmcc",
+                    "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+                    "causal_grade": "noncausal_offline_full_context",
+                    "fusion_type": "concat",
+                    "active_modalities": ["text", "audio", "visual"],
+                },
+                "missing_modalities": {"enabled": False},
+                "training": {"epochs": 2, "batch_size": 2},
+            }
+        payloads.append(payload)
+        raw_payloads.append(_yaml_bytes(payload))
+
+    earlier_rows = [
+        _plan_row(
+            f"configs/batch{batch}/old.yaml",
+            f"configs/mmgcn/unified/synthetic/causal_context/"
+            f"synthetic/batch{batch}.yaml",
+            batch=f"Batch {batch}",
+        )
+        for batch in range(1, 5)
+    ]
+    later_batch6 = _plan_row(
+        "configs/batch6/old.yaml",
+        "configs/benchmarks/causal_unified/formal/batch6.yaml",
+        batch="Batch 6",
+    )
+    manual_batch7 = _plan_row(
+        "configs/batch7/manual.yaml",
+        "configs/benchmarks/ablations/missing_modality/manual.yaml",
+        batch="Batch 7",
+        manual_review="YES",
+        collision_status="MANUAL_REVIEW",
+    )
+
+    for plan_row, raw in zip(batch_plans, raw_payloads):
+        target = tmp_path / plan_row["candidate_new_path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+    for plan_row in [*earlier_rows, later_batch6, manual_batch7]:
+        target_path = (
+            plan_row["candidate_new_path"]
+            if plan_row["migration_batch"]
+            in {"Batch 1", "Batch 2", "Batch 3", "Batch 4"}
+            else plan_row["old_path"]
+        )
+        target = tmp_path / target_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(_yaml_bytes({"seed": target_path}))
+
+    move_rows = [
+        _move_row(plan_row, raw)
+        for plan_row, raw in zip(batch_plans, raw_payloads)
+    ]
+    semantic_rows = [_semantic_row(plan_row) for plan_row in batch_plans]
+    for plan_row, move_row, semantic_row in zip(
+        batch_plans, move_rows, semantic_rows
+    ):
+        move_row.update(
+            {
+                "is_smoke": (
+                    "YES" if plan_row["purpose"] == "smoke" else "NO"
+                ),
+                "is_formal": (
+                    "NO" if plan_row["purpose"] == "smoke" else "YES"
+                ),
+                "is_project_variant": "YES",
+                "is_official": "NO",
+                "yaml_reference_count": "0",
+            }
+        )
+        semantic_row["context_mode"] = plan_row["context_mode"]
+
+    tracked = {
+        *(row["candidate_new_path"] for row in batch_plans),
+        *(row["candidate_new_path"] for row in earlier_rows),
+        later_batch6["old_path"],
+        manual_batch7["old_path"],
+    }
+    fixture = Fixture(
+        batch=5,
+        root=tmp_path,
+        plan_path=tmp_path / "plan.csv",
+        moves_path=tmp_path / "CONFIG_BATCH5_MOVES.csv",
+        before_path=tmp_path / "CONFIG_BATCH5_BEFORE_SNAPSHOT.json",
+        after_path=tmp_path / "CONFIG_BATCH5_AFTER_SNAPSHOT.json",
+        semantic_path=tmp_path / "CONFIG_BATCH5_SEMANTIC_DIFF.csv",
+        reference_path=tmp_path / "CONFIG_BATCH5_REFERENCE_AUDIT.csv",
+        tracked=tracked,
+        plan_rows=[
+            *earlier_rows,
+            *batch_plans,
+            later_batch6,
             manual_batch7,
         ],
         move_rows=move_rows,
@@ -1503,6 +1681,220 @@ def test_batch4_fails_if_batch5_yaml_is_moved(tmp_path: Path) -> None:
     assert any(
         "non-Batch 4 YAML was moved or is missing" in error
         for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_valid_batch5_gsmcc_project_variant_fixture_passes(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+
+    assert len(fixture.move_rows) == 13
+    assert sum(
+        row["context_mode"] == "causal_context"
+        for row in fixture.move_rows
+    ) == 7
+    assert sum(
+        row["context_mode"] == "full_context"
+        for row in fixture.move_rows
+    ) == 6
+    assert all(
+        row["implementation"] == "project_variant"
+        and row["is_project_variant"] == "YES"
+        and row["is_official"] == "NO"
+        for row in fixture.move_rows
+    )
+    assert _audit(fixture, expected_total=len(fixture.tracked)) == []
+
+
+def test_batch5_non_gsmcc_config_fails(tmp_path: Path) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    batch_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 5"
+    )
+    batch_row["model"] = "dialoguegcn"
+    fixture.move_rows[0]["model"] = "dialoguegcn"
+    _persist(fixture)
+
+    assert any(
+        "Batch 5 must contain only GS-MCC" in error
+        or "Batch 5 model must be gsmcc" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    "implementation",
+    ["unified", "paper_aligned", "author_official"],
+)
+def test_batch5_non_project_variant_implementation_fails(
+    tmp_path: Path,
+    implementation: str,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    batch_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 5"
+    )
+    batch_row["implementation"] = implementation
+    fixture.move_rows[0]["implementation"] = implementation
+    _persist(fixture)
+
+    assert any(
+        "Batch 5 must contain only project_variant" in error
+        or "Batch 5 implementation must be project_variant" in error
+        or "author_official is forbidden" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch5_official_flag_fails(tmp_path: Path) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    fixture.move_rows[0]["is_official"] = "YES"
+    _persist(fixture)
+
+    assert any(
+        "must be non-official" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch5_missing_project_variant_marker_fails(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    fixture.move_rows[0]["is_project_variant"] = "NO"
+    _persist(fixture)
+
+    assert any(
+        "project_variant marker must be YES" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "wrong_context"),
+    [(0, "full_context"), (7, "causal_context")],
+)
+def test_batch5_wrong_context_placement_fails(
+    tmp_path: Path,
+    index: int,
+    wrong_context: str,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    plan_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["old_path"] == fixture.move_rows[index]["old_path"]
+    )
+    old_new_path = plan_row["candidate_new_path"]
+    wrong_new_path = old_new_path.replace(
+        plan_row["context_mode"],
+        wrong_context,
+    )
+    source = fixture.root / old_new_path
+    target = fixture.root / wrong_new_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.replace(target)
+    fixture.tracked.remove(old_new_path)
+    fixture.tracked.add(wrong_new_path)
+    plan_row["candidate_new_path"] = wrong_new_path
+    fixture.move_rows[index]["new_path"] = wrong_new_path
+    fixture.before_entries[index]["new_path"] = wrong_new_path
+    fixture.after_entries[index]["new_path"] = wrong_new_path
+    fixture.semantic_rows[index]["new_path"] = wrong_new_path
+    _persist(fixture)
+
+    assert any(
+        "wrong context directory" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ("graph.window_past", 99),
+        ("model.fusion_type", "sum"),
+        ("model.active_modalities", ["text"]),
+        ("missing_modalities.enabled", True),
+        ("causal", False),
+    ],
+)
+def test_batch5_graph_fusion_modality_causal_drift_fails(
+    tmp_path: Path,
+    path: str,
+    value: object,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    _change_after(
+        fixture,
+        path=path,
+        value=value,
+        declared=True,
+    )
+
+    assert any(
+        "non-approved semantic keys" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch5_fails_if_batch4_canonical_config_is_missing(
+    tmp_path: Path,
+) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    batch4_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 4"
+    )
+    candidate = batch4_row["candidate_new_path"]
+    (fixture.root / candidate).unlink()
+    fixture.tracked.remove(candidate)
+
+    assert any(
+        "earlier-batch canonical YAML is missing" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch5_fails_if_batch6_yaml_is_moved(tmp_path: Path) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    batch6_row = next(
+        row
+        for row in fixture.plan_rows
+        if row["migration_batch"] == "Batch 6"
+    )
+    old_path = batch6_row["old_path"]
+    new_path = batch6_row["candidate_new_path"]
+    (fixture.root / old_path).unlink()
+    target = fixture.root / new_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_yaml_bytes({"seed": "moved"}))
+    fixture.tracked.remove(old_path)
+    fixture.tracked.add(new_path)
+
+    assert any(
+        "non-Batch 5 YAML was moved or is missing" in error
+        for error in _audit(fixture, expected_total=len(fixture.tracked))
+    )
+
+
+def test_batch5_active_old_reference_fails(tmp_path: Path) -> None:
+    fixture = _make_batch5_fixture(tmp_path)
+    old_path = fixture.move_rows[0]["old_path"]
+    errors = _audit(
+        fixture,
+        tracked_text={"scripts/live.py": f'CONFIG = "{old_path}"\n'},
+        expected_total=len(fixture.tracked),
+    )
+    assert any(
+        "production code retains old config path" in error
+        for error in errors
     )
 
 

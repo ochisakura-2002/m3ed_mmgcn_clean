@@ -1,0 +1,3507 @@
+{
+  "schema_version": 1,
+  "migration_batch": 5,
+  "yaml_count": 13,
+  "snapshot_source": "working_tree_pre_move",
+  "git_head": "2403a801b48307f214f2fdd6768d206e40c453e9",
+  "entries": [
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml",
+      "sha256": "615fa4063359d5166545cd58c5632b65d5f331127a808e7140a1f9fb321a6199",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_official_prefix",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 30,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "official_prefix"
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 30
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/causal_benchmark/val_ses01.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml",
+      "sha256": "9e2c91a903ccce5fbe33bb5599d5cb85e53f93ecfc48cf866531b10a496332fb",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_val_ses01",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses01",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 30,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "session_holdout"
+          }
+        ],
+        "validation_session_fields": [
+          {
+            "path": "dataset.val_session_id",
+            "value": "Ses01"
+          }
+        ],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 30
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/causal_benchmark/val_ses02.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses02.yaml",
+      "sha256": "b570cf9267d41427bc2a0228007aa472d3c4bb0d59a0370bb5b98b94f9c3fa8c",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_val_ses02",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses02",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 30,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "session_holdout"
+          }
+        ],
+        "validation_session_fields": [
+          {
+            "path": "dataset.val_session_id",
+            "value": "Ses02"
+          }
+        ],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 30
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/causal_benchmark/val_ses03.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml",
+      "sha256": "101536aa3e2a13fea74272de2b56938eadeba1d724dfb794f2c20a6189d09e03",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_val_ses03",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses03",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 30,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "session_holdout"
+          }
+        ],
+        "validation_session_fields": [
+          {
+            "path": "dataset.val_session_id",
+            "value": "Ses03"
+          }
+        ],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 30
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/causal_benchmark/val_ses04.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses04.yaml",
+      "sha256": "d141d28e6dc3120985e2d35b7a8934494554892d590ce45340d4e9d2a9582209",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_val_ses04",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "session_holdout",
+          "val_session_id": "Ses04",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 30,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "session_holdout"
+          }
+        ],
+        "validation_session_fields": [
+          {
+            "path": "dataset.val_session_id",
+            "value": "Ses04"
+          }
+        ],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 30
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/baselines/gsmcc/iemocap/clean_roberta_v1/smoke_real_2epoch.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
+      "sha256": "18e97f64fc44eca6ecb8f8976dbe3bf9d77cb9611018c3a1128e0a159b6912cb",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_clean_roberta_v1_smoke_real_2epoch",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 768,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 2,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "clean_roberta_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
+          },
+          {
+            "path": "dataset.feature_set_name",
+            "value": "iemocap_clean_roberta_base_utterance_mean_v1"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "official_prefix"
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 2
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/fivefold_base.yaml",
+      "sha256": "f795ecf7142fb7d4d504ab1ac12a49701565b38690212779cdff6c1e4a76f38f",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_gsmcc_clean_fold",
+        "profile": "formal_clean_fold_base",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_protocol": "clean_roberta_v1",
+          "feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "usage": "fair_main_experiment",
+          "experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 250,
+          "batch_size": 32,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 20,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "clean_roberta_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "iemocap_clean_roberta_base_utterance_mean_v1"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "clean_roberta_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "frozen_self_supervised_utterance_only"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "outer_session_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 250
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 32
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml",
+      "sha256": "19394aa5f5147e217bcaf1a421164deac178acb8bcf070f657995cb0afd6ba86",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "project_gsmcc_clean_screening",
+        "profile": "clean_screening",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_protocol": "clean_roberta_v1",
+          "feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "usage": "fair_main_experiment",
+          "experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 250,
+          "batch_size": 32,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 20,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "clean_roberta_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "iemocap_clean_roberta_base_utterance_mean_v1"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "clean_roberta_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "frozen_self_supervised_utterance_only"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "outer_session_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 250
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 32
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/experiments/original_merc/legacy_fold_bases/gsmcc_legacy.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml",
+      "sha256": "7f31756d3eaf203342f2dab040d5ac785c78e7b30c49c52f1e870e957a29cc43",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "project_gsmcc_legacy_fivefold",
+        "profile": "formal_legacy_fivefold_base",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "legacy_mmgcn_textcnn",
+          "feature_protocol": "legacy_mmgcn_features_v1",
+          "feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "usage": "fair_legacy_feature_comparison",
+          "experiment_track": "legacy_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 250,
+          "batch_size": 32,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 20,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "legacy_mmgcn_textcnn"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "legacy_mmgcn_features_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "legacy_emotion_supervised_text_features"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "formal",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "outer_session_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 250
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 32
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/experiments/original_merc/screening/gsmcc_legacy.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
+      "sha256": "f356d723706ec61baf2e028cea0c7e562ad30cdc0070ec09c046f7d9c8affeb7",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_gsmcc_legacy_screening",
+        "profile": "screening",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "legacy_mmgcn_textcnn",
+          "feature_protocol": "legacy_mmgcn_features_v1",
+          "feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "usage": "reproduction_diagnostic",
+          "experiment_track": "legacy_official_split_safe_selection",
+          "protocol_comparability": "paper_adjacent_not_exact",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "official_train_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 250,
+          "batch_size": 32,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 20,
+          "amp": false
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "legacy_mmgcn_textcnn"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "legacy_mmgcn_features_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "legacy_emotion_supervised_text_features"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "screening",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "official_train_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 250
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 32
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/smoke/original_repro/gsmcc_clean.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/smoke.yaml",
+      "sha256": "144495e44fbdc650a4924f0efd6c9cc1746ab0a00b42bc9dcbd76c1371be2e06",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "protocol_version",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_gsmcc_clean_smoke",
+        "profile": "smoke",
+        "protocol_version": "original_merc_three_track_v2",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 768,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "iemocap_clean_roberta_base_utterance_mean_v1",
+          "feature_protocol": "clean_roberta_v1",
+          "feature_cleanliness": "frozen_self_supervised_utterance_only",
+          "usage": "fair_main_experiment",
+          "experiment_track": "clean_roberta_fivefold_fair_comparison",
+          "protocol_comparability": "fair_comparison_not_paper_reproduction",
+          "feature_pkl_path": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl",
+          "feature_sha256": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "outer_session_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 2,
+          "batch_size": 2,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false,
+          "max_train_batches": 1,
+          "max_eval_batches": 1
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cpu"
+        },
+        "output": {
+          "root": "tmp/smoke_outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "clean_roberta_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "iemocap_clean_roberta_base_utterance_mean_v1"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "clean_roberta_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "frozen_self_supervised_utterance_only"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf"
+          }
+        ],
+        "purpose": "smoke",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "outer_session_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 2
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 2
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "tmp/smoke_outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/smoke/original_repro/gsmcc_legacy.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/smoke.yaml",
+      "sha256": "a4fea79f929639077f3df370fd56da65151620d7281550064440f6afda599489",
+      "top_level_keys": [
+        "run_name",
+        "profile",
+        "protocol_version",
+        "model",
+        "dataset",
+        "training",
+        "optimizer",
+        "scheduler",
+        "system",
+        "output"
+      ],
+      "parsed_yaml": {
+        "run_name": "original_gsmcc_legacy_smoke",
+        "profile": "smoke",
+        "protocol_version": "original_merc_three_track_v2",
+        "model": {
+          "name": "project_paper_oriented_gsmcc",
+          "fidelity_status": "PROJECT_VARIANT_NOT_PAPER_REPRODUCTION",
+          "causal_grade": "noncausal_offline_full_context",
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "num_classes": 6,
+          "hidden_dim": 100,
+          "num_speakers": 2,
+          "graph_layers": 4,
+          "window": 10,
+          "dropout": 0.4,
+          "cross_modal_scale": 1.0,
+          "angular_similarity_eps": 1e-07,
+          "use_contrastive_loss": true,
+          "contrastive_temperature": 0.1,
+          "contrastive_loss_weight": 1.0
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_set_name": "legacy_mmgcn_textcnn",
+          "feature_protocol": "legacy_mmgcn_features_v1",
+          "feature_cleanliness": "legacy_emotion_supervised_text_features",
+          "usage": "reproduction_diagnostic",
+          "experiment_track": "legacy_official_split_safe_selection",
+          "protocol_comparability": "paper_adjacent_not_exact",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "val_split_strategy": "official_train_stratified",
+          "outer_test_session": "Ses05",
+          "inner_val_ratio": 0.1,
+          "split_seed": 42
+        },
+        "training": {
+          "epochs": 2,
+          "batch_size": 2,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0,
+          "early_stopping_patience": 0,
+          "amp": false,
+          "max_train_batches": 1,
+          "max_eval_batches": 1
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 1e-05,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "system": {
+          "seed": 42,
+          "device": "cpu"
+        },
+        "output": {
+          "root": "tmp/smoke_outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/paper_aligned/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "project_paper_oriented_gsmcc"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "full_context",
+        "causal_flag_fields": [
+          {
+            "path": "model.causal_grade",
+            "value": "noncausal_offline_full_context"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "model.window",
+            "value": 10
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_set_name",
+            "value": "legacy_mmgcn_textcnn"
+          },
+          {
+            "path": "dataset.feature_protocol",
+            "value": "legacy_mmgcn_features_v1"
+          },
+          {
+            "path": "dataset.feature_cleanliness",
+            "value": "legacy_emotion_supervised_text_features"
+          },
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "smoke",
+        "split_fields": [
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "official_train_stratified"
+          },
+          {
+            "path": "dataset.inner_val_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [
+          {
+            "path": "dataset.outer_test_session",
+            "value": "Ses05"
+          }
+        ],
+        "seed_fields": [
+          {
+            "path": "dataset.split_seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          },
+          {
+            "path": "system.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 2
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 2
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 1e-05
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.4
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.num_speakers",
+            "value": 2
+          },
+          {
+            "path": "model.graph_layers",
+            "value": 4
+          },
+          {
+            "path": "model.cross_modal_scale",
+            "value": 1.0
+          },
+          {
+            "path": "model.angular_similarity_eps",
+            "value": 1e-07
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "model.use_contrastive_loss",
+            "value": true
+          },
+          {
+            "path": "model.contrastive_loss_weight",
+            "value": 1.0
+          }
+        ],
+        "modality_fields": [],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "tmp/smoke_outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    },
+    {
+      "snapshot_source": "working_tree_pre_move",
+      "old_path": "configs/smoke/train_causal_gsmcc_iemocap_real_2epoch.yaml",
+      "new_path": "configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml",
+      "sha256": "3940294f70c773e7462d8048bb930640e178c170dd89f3f9322943ed4a779b6b",
+      "top_level_keys": [
+        "causal",
+        "causal_contract_version",
+        "run_name",
+        "system",
+        "dataset",
+        "model",
+        "graph",
+        "loss",
+        "training",
+        "optimizer",
+        "scheduler",
+        "output"
+      ],
+      "parsed_yaml": {
+        "causal": true,
+        "causal_contract_version": "1.0",
+        "run_name": "causal_gsmcc_iemocap_real_2epoch_smoke",
+        "system": {
+          "seed": 42,
+          "device": "cuda"
+        },
+        "dataset": {
+          "name": "IEMOCAP",
+          "feature_pkl_path": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl",
+          "feature_sha256": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3",
+          "num_classes": 6,
+          "label_list": [
+            "Happy",
+            "Sad",
+            "Neutral",
+            "Angry",
+            "Excited",
+            "Frustrated"
+          ],
+          "text_feature_dim": 100,
+          "audio_feature_dim": 1582,
+          "visual_feature_dim": 342,
+          "valid_ratio": 0.1,
+          "val_split_strategy": "official_prefix",
+          "sample_unit": "dialogue"
+        },
+        "model": {
+          "name": "causal_gsmcc_inspired",
+          "text_dim": 100,
+          "audio_dim": 1582,
+          "visual_dim": 342,
+          "hidden_dim": 128,
+          "num_classes": 6,
+          "dropout": 0.2,
+          "modality_encoder_type": "linear",
+          "fusion_type": "concat",
+          "num_graph_layers": 1,
+          "num_filter_steps": 2
+        },
+        "graph": {
+          "context_mode": "causal",
+          "window_past": 5,
+          "window_future": 0
+        },
+        "loss": {
+          "classification_weight": 1.0,
+          "consistency_weight": 0.0,
+          "complementarity_weight": 0.0
+        },
+        "training": {
+          "epochs": 2,
+          "batch_size": 8,
+          "seed": 42,
+          "select_best_by": "val_weighted_f1",
+          "grad_clip": 1.0,
+          "num_workers": 0
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "learning_rate": 0.0005,
+          "weight_decay": 0.0001
+        },
+        "scheduler": {
+          "name": "none"
+        },
+        "output": {
+          "root": "outputs",
+          "experiment_date": null
+        }
+      },
+      "audit_fields": {
+        "entrypoint": "scripts/workflows/causal_graph/train.py",
+        "entrypoint_exists": "YES",
+        "registry_status": "SUPPORTED_PROJECT_VARIANT",
+        "model_classification": "gsmcc",
+        "model_key_fields": [
+          {
+            "path": "model.name",
+            "value": "causal_gsmcc_inspired"
+          }
+        ],
+        "implementation": "project_variant",
+        "is_project_variant": "YES",
+        "is_official": "NO",
+        "dataset_classification": "iemocap",
+        "context_mode": "causal_context",
+        "causal_flag_fields": [
+          {
+            "path": "causal",
+            "value": true
+          },
+          {
+            "path": "causal_contract_version",
+            "value": "1.0"
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          }
+        ],
+        "context_window_fields": [
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "feature_set": "legacy_mmgcn_features",
+        "feature_paths": [
+          {
+            "path": "dataset.feature_pkl_path",
+            "value": "third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl"
+          },
+          {
+            "path": "dataset.feature_sha256",
+            "value": "ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3"
+          }
+        ],
+        "purpose": "smoke",
+        "split_fields": [
+          {
+            "path": "dataset.valid_ratio",
+            "value": 0.1
+          },
+          {
+            "path": "dataset.val_split_strategy",
+            "value": "official_prefix"
+          }
+        ],
+        "validation_session_fields": [],
+        "test_session_fields": [],
+        "seed_fields": [
+          {
+            "path": "system.seed",
+            "value": 42
+          },
+          {
+            "path": "training.seed",
+            "value": 42
+          }
+        ],
+        "epoch_fields": [
+          {
+            "path": "training.epochs",
+            "value": 2
+          }
+        ],
+        "batch_size_fields": [
+          {
+            "path": "training.batch_size",
+            "value": 8
+          }
+        ],
+        "optimizer_fields": [
+          {
+            "path": "optimizer.name",
+            "value": "AdamW"
+          },
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          },
+          {
+            "path": "optimizer.weight_decay",
+            "value": 0.0001
+          }
+        ],
+        "learning_rate_fields": [
+          {
+            "path": "optimizer.learning_rate",
+            "value": 0.0005
+          }
+        ],
+        "dropout_fields": [
+          {
+            "path": "model.dropout",
+            "value": 0.2
+          }
+        ],
+        "graph_fusion_fields": [
+          {
+            "path": "model.fusion_type",
+            "value": "concat"
+          },
+          {
+            "path": "model.num_graph_layers",
+            "value": 1
+          },
+          {
+            "path": "model.num_filter_steps",
+            "value": 2
+          },
+          {
+            "path": "graph.context_mode",
+            "value": "causal"
+          },
+          {
+            "path": "graph.window_past",
+            "value": 5
+          },
+          {
+            "path": "graph.window_future",
+            "value": 0
+          }
+        ],
+        "loss_fields": [
+          {
+            "path": "loss.classification_weight",
+            "value": 1.0
+          },
+          {
+            "path": "loss.consistency_weight",
+            "value": 0.0
+          },
+          {
+            "path": "loss.complementarity_weight",
+            "value": 0.0
+          }
+        ],
+        "modality_fields": [
+          {
+            "path": "model.modality_encoder_type",
+            "value": "linear"
+          }
+        ],
+        "missing_modality_fields": [],
+        "checkpoint_paths": [],
+        "output_roots": [
+          {
+            "path": "output.root",
+            "value": "outputs"
+          },
+          {
+            "path": "output.experiment_date",
+            "value": null
+          }
+        ],
+        "source_config_fields": [],
+        "train_config_fields": [],
+        "eval_config_fields": [],
+        "pipeline_config_fields": [],
+        "config_references": [],
+        "script_references": []
+      }
+    }
+  ]
+}

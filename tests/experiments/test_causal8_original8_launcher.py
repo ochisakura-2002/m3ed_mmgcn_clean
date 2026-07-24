@@ -114,11 +114,11 @@ def test_plan_has_causal_first_original_second_in_exact_order() -> None:
         "configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
-        "configs/experiments/original_merc/screening/gsmcc_legacy.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml",
         "configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/multidag_cl_clean.yaml",
         "configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/dialoguegcn_clean.yaml",
-        "configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml",
     ]
     args = parse_args([])
     assert args.start_index == 1

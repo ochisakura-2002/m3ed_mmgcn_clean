@@ -20,7 +20,7 @@ run_control:
 
 train:
   enabled: true
-  train_config_path: configs/baselines/gsmcc/iemocap/causal_benchmark/val_ses03.yaml
+  train_config_path: configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses03.yaml
 
 evaluation:
   enabled: true
@@ -46,4 +46,3 @@ multi_run_training_curves:
 multi_run_final_analysis:
   enabled: false
   config_path: ''
-

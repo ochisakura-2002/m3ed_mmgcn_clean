@@ -88,7 +88,8 @@
 9. Config Batch 2 已将 17 个 MMGCN YAML 移入 `configs/mmgcn/{unified,paper_aligned}/`：13 个 `unified`、4 个 `paper_aligned`；13 个内容不变，4 个仅更新同批次精确 target 的 `source_config`，未批准语义变化为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH2_*`。
 10. Config Batch 3 已将 17 个 MultiDAG-CL YAML 移入 `configs/multidag_cl/{unified,paper_aligned}/`：13 个 `unified`、4 个 `paper_aligned`；13 个内容不变，4 个仅更新同批次精确 target 的 `source_config`，52 个 active references 已更新，16 个历史引用已标记保留，active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH3_*`。
 11. Config Batch 4 已将 10 个 DialogueGCN YAML 移入 `configs/dialoguegcn/{unified,paper_aligned}/`：6 个 `unified`、4 个 `paper_aligned`；10 个 YAML 内容不变，30 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH4_*`。
-12. Batch 1--4 旧 YAML 路径已失效且没有 wrapper；Config Batch 5--7 尚未开始，当前仍有 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group。
+12. Config Batch 5 已将 13 个 GS-MCC YAML 移入 `configs/gsmcc/project_variant/iemocap/{causal_context,full_context}/`：7 个 `causal_context`、6 个 `full_context`；13 个 YAML 内容不变，46 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH5_*`。
+13. Batch 1--5 旧 YAML 路径已失效且没有 wrapper；Config Batch 6--7 尚未开始，当前仍有 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group。
 
 ### 数据读取
 
@@ -135,14 +136,14 @@
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 与 Config Batch 1--4 已完成：183 个 tracked YAML 全部分类，Batch 4 的 10 个 DialogueGCN YAML 已迁移且内容不变，30 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 和未批准语义变化均为 0；Batch 1--3 严格回归通过，剩余 1 个 collision group 只属于 Batch 7。下一阶段只执行 Config Batch 5，且完整配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 与 Config Batch 1--5 已完成：183 个 tracked YAML 全部分类，Batch 5 的 13 个 GS-MCC `project_variant` YAML 已迁移且内容不变，46 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 和未批准语义变化均为 0；Batch 1--4 严格回归通过，剩余 1 个 collision group 只属于 Batch 7。下一阶段只执行 Config Batch 6，且完整配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
 
 Config migration 规则：
 
 1. provenance 依据 YAML 内容、registry 和真实 consumer，不依据旧文件名猜测。
 2. `paper_aligned` 不等于 `author_official`；当前 GS-MCC 配置一律为 `project_variant`。
 3. 不创建旧 YAML wrapper，不保留新旧两份 YAML 真相。
-4. 后续每次只执行一个 migration batch；Config Batch 5 尚未开始，剩余 missing-modality candidate collision 必须在 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
+4. 后续每次只执行一个 migration batch；Config Batch 6 尚未开始，剩余 missing-modality candidate collision 必须在 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
 
 ## 入口脚本速查
 

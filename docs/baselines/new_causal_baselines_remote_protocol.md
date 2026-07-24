@@ -50,7 +50,7 @@ python scripts/dev/validate_config_tree.py
 
 ```bash
 python scripts/baselines/debug_new_causal_graph_real_batch.py \
-  --config configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml
+  --config configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 ```
 
 ```bash
@@ -77,7 +77,7 @@ outputs if one model fails. A strict failure blocks formal training.
 
 ```bash
 python scripts/baselines/train_new_causal_graph_baseline.py \
-  --config configs/smoke/train_causal_gsmcc_iemocap_real_2epoch.yaml
+  --config configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml
 GS_RUN_ID=$(awk -F= '$1=="run_id" {print $2}' outputs/dev/latest_run.txt)
 ```
 

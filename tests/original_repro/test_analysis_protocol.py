@@ -113,7 +113,7 @@ def _write_numeric_audit_run(
     profile: str = "clean_screening",
     protocol_version: str = "original_merc_three_track_v2",
     config_source: str = (
-        "configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml"
+        "configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml"
     ),
     experiment_track: str = CLEAN_FIVEFOLD_TRACK,
     text_feature_dim: int = 768,
@@ -592,7 +592,7 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
         runs_root,
         run_name="original_gsmcc_legacy_screening_20260716_151823_9ab9c9",
         profile="screening",
-        config_source="configs/experiments/original_merc/screening/gsmcc_legacy.yaml",
+        config_source="configs/gsmcc/project_variant/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         experiment_track=LEGACY_OFFICIAL_TRACK,
         text_feature_dim=100,
         nan_probability=True,
@@ -601,7 +601,7 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
         runs_root,
         run_name="project_gsmcc_clean_screening_20260716_175031_53d594",
         profile="clean_screening",
-        config_source="configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml",
+        config_source="configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml",
         experiment_track=CLEAN_FIVEFOLD_TRACK,
         nan_probability=True,
     )
@@ -610,16 +610,23 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
         "original_gsmcc_legacy_smoke_20260721_130424_628ebb",
         "original_gsmcc_clean_smoke_20260721_130452_df46ec",
     }
+    gsmcc_smoke_configs = {
+        "clean": (
+            "configs/gsmcc/project_variant/iemocap/full_context/"
+            "clean_roberta_features/smoke.yaml"
+        ),
+        "legacy": (
+            "configs/gsmcc/project_variant/iemocap/full_context/"
+            "legacy_mmgcn_features/smoke.yaml"
+        ),
+    }
     for run_name, text_dim in zip(sorted(smoke_ids), (768, 100)):
         feature_name = "clean" if text_dim == 768 else "legacy"
         _write_numeric_audit_run(
             runs_root,
             run_name=run_name,
             profile="smoke",
-            config_source=(
-                "configs/smoke/original_repro/"
-                f"gsmcc_{feature_name}.yaml"
-            ),
+            config_source=gsmcc_smoke_configs[feature_name],
             experiment_track=(
                 CLEAN_FIVEFOLD_TRACK
                 if text_dim == 768

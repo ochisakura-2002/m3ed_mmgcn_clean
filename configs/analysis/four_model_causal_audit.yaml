@@ -4,7 +4,7 @@ models:
   multidag:
     config: configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
   gsmcc:
-    config: configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml
+    config: configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
   dialoguegcn:
     config: configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 

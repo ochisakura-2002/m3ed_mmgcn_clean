@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.experiments.run_causal8_original8_formal import (
+from scripts.workflows.benchmarks.run_causal8_original8 import (
     BATCH_PREFIX,
     EXPERIMENT_DATE_ENV,
     MANIFEST_COLUMNS,
@@ -473,7 +473,7 @@ def test_manifest_discovery_uses_only_new_matching_run_and_rejects_smoke(
 def test_missing_config_is_a_public_gate_failure(tmp_path: Path) -> None:
     jobs = build_run_plan()
     jobs[0] = replace(jobs[0], config=tmp_path / "missing.yaml")
-    from scripts.experiments.run_causal8_original8_formal import run_preflight_checks
+    from scripts.workflows.benchmarks.run_causal8_original8 import run_preflight_checks
 
     with pytest.raises(PublicGateError, match="does not exist"):
         run_preflight_checks(

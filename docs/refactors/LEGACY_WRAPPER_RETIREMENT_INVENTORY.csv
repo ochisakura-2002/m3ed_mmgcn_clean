@@ -1,0 +1,99 @@
+old_path,canonical_target,wrapper_type,tracked,active_reference_count,historical_reference_count,safe_to_delete,reason
+models/baselines/__init__.py,,legacy_package_init,YES,17,148,YES,Package marker exists only for the retired legacy model wrapper tree
+models/baselines/causal_baseline_registry.py,models.registry.causal,reexport_module,YES,2,25,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/causal_graph_common/__init__.py,models.common.causal_graph,reexport_package,YES,0,8,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/causal_graph_common/graph_builders.py,models.common.causal_graph.graph_builders,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/causal_graph_common/masked_ops.py,models.common.causal_graph.masked_ops,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/causal_graph_common/relation_utils.py,models.common.causal_graph.relation_utils,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/dialoguegcn/__init__.py,models.dialoguegcn.unified,reexport_package,YES,1,12,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/dialoguegcn/causal_dialoguegcn_graph.py,models.dialoguegcn.unified.causal_dialoguegcn_graph,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/dialoguegcn/causal_dialoguegcn_model.py,models.dialoguegcn.unified.causal_dialoguegcn_model,reexport_module,YES,1,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/dialoguegcn/relational_graph_conv.py,models.dialoguegcn.unified.relational_graph_conv,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/gsmcc/__init__.py,models.gsmcc.project_variant.causal,reexport_package,YES,1,13,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/gsmcc/causal_gsmcc_losses.py,models.gsmcc.project_variant.causal.causal_gsmcc_losses,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/gsmcc/causal_gsmcc_model.py,models.gsmcc.project_variant.causal.causal_gsmcc_model,reexport_module,YES,1,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/gsmcc/causal_spectral_ops.py,models.gsmcc.project_variant.causal.causal_spectral_ops,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/mmgcn/__init__.py,models.mmgcn.unified,reexport_package,YES,1,14,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/mmgcn/dense_graph.py,models.mmgcn.unified.dense_graph,reexport_module,YES,4,3,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/mmgcn/mm_gcn.py,models.mmgcn.unified.mm_gcn,reexport_module,YES,6,18,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/multidag_cl/__init__.py,models.multidag_cl.unified,reexport_package,YES,1,27,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/multidag_cl/multidag_cl_model.py,models.multidag_cl.unified.multidag_cl_model,reexport_module,YES,1,11,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/__init__.py,models.dialoguegcn.paper_aligned;models.gsmcc.project_variant.full_context;models.mmgcn.paper_aligned;models.multidag_cl.paper_aligned;models.registry.paper_aligned,reexport_package,YES,6,46,YES,Model layout report and source confirm pure canonical re-exports
+models/baselines/original_repro/common.py,models.common.paper_aligned,reexport_module,YES,0,2,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/dialoguegcn/__init__.py,models.dialoguegcn.paper_aligned,reexport_package,YES,0,4,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/dialoguegcn/model.py,models.dialoguegcn.paper_aligned.model,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/gsmcc/__init__.py,models.gsmcc.project_variant.full_context,reexport_package,YES,0,11,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/gsmcc/model.py,models.gsmcc.project_variant.full_context.model,reexport_module,YES,0,11,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/mmgcn/__init__.py,models.mmgcn.paper_aligned,reexport_package,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/mmgcn/model.py,models.mmgcn.paper_aligned.model,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/multidag_cl/__init__.py,models.multidag_cl.paper_aligned,reexport_package,YES,0,5,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/multidag_cl/curriculum.py,models.multidag_cl.paper_aligned.curriculum,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/multidag_cl/model.py,models.multidag_cl.paper_aligned.model,reexport_module,YES,0,1,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/original_repro/registry.py,models.registry.paper_aligned,reexport_module,YES,1,5,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/sdt/__init__.py,models.experimental.sdt,reexport_package,YES,0,9,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/sdt/sdt_model.py,models.experimental.sdt.sdt_model,reexport_module,YES,1,3,YES,Model layout report and source confirm a pure canonical re-export
+models/baselines/simple_mlp.py,models.simple_mlp.model,reexport_module,YES,2,12,YES,Model layout report and source confirm a pure canonical re-export
+scripts/analysis/analyze_original_merc_results.py,scripts.analysis.paper_aligned.analyze_original_merc_results,module_alias_cli,YES,4,3,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/analyze_original_merc_results.py,scripts.analysis.paper_aligned.analyze_original_merc_results,module_alias_cli,YES,5,9,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/audit_iemocap_feature_pkl.py,scripts.diagnostics.data.audit_iemocap_feature_pkl,module_alias_cli,YES,6,6,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/audit_model_causality.py,scripts.analysis.causal.audit_model_causality,module_alias_cli,YES,3,9,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/build_analysis_tables.py,scripts.analysis.common.build_analysis_tables,module_alias_cli,YES,5,7,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/diagnose_iemocap_splits.py,scripts.diagnostics.data.diagnose_iemocap_splits,module_alias_cli,YES,2,12,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/diagnose_loss_stability.py,scripts.diagnostics.experiments.diagnose_loss_stability,module_alias_cli,YES,2,7,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/diagnose_multidag_cl_run.py,scripts.diagnostics.experiments.diagnose_multidag_cl_run,module_alias_cli,YES,2,8,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/export_original_merc_reproduction_report.py,scripts.analysis.paper_aligned.analyze_original_merc_results,module_alias_cli,YES,3,2,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/export_paper_artifacts.py,scripts.analysis.common.export_paper_artifacts,module_alias_cli,YES,3,3,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/export_paper_multi_run_tables.py,scripts.analysis.common.export_paper_multi_run_tables,module_alias_cli,YES,2,4,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_missing_modality_summary.py,scripts.analysis.common.plot_missing_modality_summary,module_alias_cli,YES,4,6,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_multi_run_final_analysis.py,scripts.analysis.common.plot_multi_run_final_analysis,module_alias_cli,YES,3,5,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_multi_run_training_curves.py,scripts.analysis.common.plot_multi_run_training_curves,module_alias_cli,YES,3,5,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_multidag_cl_stabilization_compare.py,scripts.analysis.models.multidag_cl.plot_stabilization_compare,module_alias_cli,YES,2,7,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_single_run_final_analysis.py,scripts.analysis.common.plot_single_run_final_analysis,module_alias_cli,YES,3,6,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/plot_single_run_training_curves.py,scripts.analysis.common.plot_single_run_training_curves,module_alias_cli,YES,3,6,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/probe_iemocap_text_features.py,scripts.diagnostics.data.probe_iemocap_text_features,module_alias_cli,YES,2,6,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/run_four_model_causal_audit.py,scripts.analysis.causal.run_four_model_causal_audit,module_alias_cli,YES,4,3,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/analyze/summarize_causal_benchmark_runs.py,scripts.analysis.causal.summarize_causal_benchmark_runs,module_alias_cli,YES,3,7,YES,Phase 3B1 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_causal_dialoguegcn_forward.py,scripts.diagnostics.models.dialoguegcn.debug_causal_dialoguegcn_forward,module_alias_cli,YES,2,5,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_causal_gsmcc_forward.py,scripts.diagnostics.models.gsmcc.debug_causal_gsmcc_forward,module_alias_cli,YES,2,5,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_multidag_cl_forward.py,scripts.diagnostics.models.multidag_cl.debug_multidag_cl_forward,module_alias_cli,YES,2,12,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_multidag_cl_real_batch.py,scripts.diagnostics.models.multidag_cl.debug_multidag_cl_real_batch,module_alias_cli,YES,6,23,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_new_causal_graph_real_batch.py,scripts.diagnostics.models.debug_new_causal_graph_real_batch,module_alias_cli,YES,4,6,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/debug_sdt_forward.py,scripts.diagnostics.models.sdt.debug_sdt_forward,module_alias_cli,YES,2,9,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/evaluate_multidag_cl_checkpoint.py,scripts.models.multidag_cl.unified.evaluate,module_alias_cli,YES,2,13,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/evaluate_new_causal_graph_checkpoint.py,scripts.workflows.causal_graph.evaluate,module_alias_cli,YES,8,3,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/evaluate_original_merc_checkpoint.py,scripts.workflows.paper_aligned.evaluate,module_alias_cli,YES,2,1,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/new_causal_graph_runtime.py,scripts.runtime.causal_graph,module_alias,YES,2,4,YES,Phase 3A report and source confirm a transparent module alias
+scripts/baselines/original_merc_runtime.py,scripts.runtime.paper_aligned,module_alias,YES,5,4,YES,Phase 3A report and source confirm a transparent module alias
+scripts/baselines/run_original_merc_pipeline.py,scripts.workflows.paper_aligned.run_pipeline,module_alias_cli,YES,5,12,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/train_multidag_cl.py,scripts.models.multidag_cl.unified.train,module_alias_cli,YES,10,24,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/train_multidag_cl_smoke.py,scripts.models.multidag_cl.unified.smoke,module_alias_cli,YES,1,18,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/train_new_causal_graph_baseline.py,scripts.workflows.causal_graph.train,module_alias_cli,YES,10,5,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/baselines/train_original_merc_baseline.py,scripts.workflows.paper_aligned.train,module_alias_cli,YES,7,6,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_dialogue_feature_dataset.py,scripts.diagnostics.data.debug_dialogue_feature_dataset,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_iemocap_dataloader.py,scripts.diagnostics.data.debug_iemocap_dataloader,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_io.py,scripts.diagnostics.experiments.debug_io,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_m3ed_dataloader.py,scripts.diagnostics.data.debug_m3ed_dataloader,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_m3ed_dataset.py,scripts.diagnostics.data.debug_m3ed_dataset,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_m3ed_feature_dataset.py,scripts.diagnostics.data.debug_m3ed_feature_dataset,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_mmgcn_forward.py,scripts.diagnostics.models.mmgcn.debug_mmgcn_forward,module_alias_cli,YES,2,5,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/debug/debug_simple_mlp_step.py,scripts.diagnostics.models.simple_mlp.debug_simple_mlp_step,module_alias_cli,YES,2,5,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/dev/diagnose_gsmcc_numerics.py,scripts.diagnostics.models.gsmcc.diagnose_gsmcc_numerics,module_alias_cli,YES,3,8,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/diagnose/diagnose_m3ed_label_alignment.py,scripts.diagnostics.data.diagnose_m3ed_label_alignment,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/evaluate_checkpoint.py,scripts.evaluation.unified_checkpoint,module_alias_cli,YES,16,23,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/experiments/evaluate_missing_modalities.py,scripts.workflows.ablations.evaluate_missing_modalities,module_alias_cli,YES,1,3,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/experiments/generate_modality_ablation_configs.py,scripts.workflows.ablations.generate_modality_configs,module_alias_cli,YES,1,1,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/experiments/run_causal8_original8_formal.py,scripts.workflows.benchmarks.run_causal8_original8,module_alias_cli,YES,5,5,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/features/build_iemocap_clean_text_features.py,scripts.data.build.build_iemocap_clean_text_features,module_alias_cli,YES,4,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/inspect/extract_mmgcn_core_blocks.py,scripts.diagnostics.models.mmgcn.extract_mmgcn_core_blocks,module_alias_cli,YES,2,4,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/inspect/inspect_m3ed_feature_files.py,scripts.data.inspect.inspect_m3ed_feature_files,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/inspect/inspect_m3ed_official.py,scripts.data.inspect.inspect_m3ed_official,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/inspect/inspect_mmgcn_feature_pkl.py,scripts.data.inspect.inspect_mmgcn_feature_pkl,module_alias_cli,YES,3,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/inspect/inspect_mmgcn_official_model.py,scripts.diagnostics.models.mmgcn.inspect_mmgcn_official_model,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/maintenance/check_env.py,scripts.dev.check_env,module_alias_cli,YES,3,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/prepare/prepare_m3ed_metadata.py,scripts.data.prepare.prepare_m3ed_metadata,module_alias_cli,YES,2,2,YES,Phase 3B2 report and source confirm a transparent module alias and CLI forwarder
+scripts/run_experiment_pipeline.py,scripts.workflows.run_pipeline,module_alias_cli,YES,7,53,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/run_original_merc_reproduction_pipeline.py,scripts.workflows.paper_aligned.run_pipeline,module_alias_cli,YES,1,1,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/train.py,scripts.workflows.train_from_config,module_alias_cli,YES,6,2,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/train_mmgcn.py,scripts.models.mmgcn.unified.train,module_alias_cli,YES,18,31,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/train_simple_mlp.py,scripts.models.simple_mlp.train,module_alias_cli,YES,2,4,YES,Phase 3A report and source confirm a transparent module alias and CLI forwarder
+scripts/workflows/paper_aligned/run_reproduction.py,scripts.workflows.paper_aligned.run_pipeline,main_forwarder,YES,1,1,YES,Source only imports canonical main and calls it with no independent behavior

@@ -62,13 +62,13 @@ Run from the project root. Use the project environment, keep the command to one
 batch, and keep the split to `train` or `val`.
 
 ```powershell
-conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\m3ed\full_context\m3ed_features\skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device cpu
+conda run -n m3ed_mmgcn python -B scripts\diagnostics\models\multidag_cl\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\m3ed\full_context\m3ed_features\skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device cpu
 ```
 
 Optional IEMOCAP path check and one-batch dry run:
 
 ```powershell
-conda run -n m3ed_mmgcn python -B scripts\baselines\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\iemocap\full_context\legacy_mmgcn_features\val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device cpu
+conda run -n m3ed_mmgcn python -B scripts\diagnostics\models\multidag_cl\debug_multidag_cl_real_batch.py --config configs\mmgcn\unified\iemocap\full_context\legacy_mmgcn_features\val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device cpu
 ```
 
 Do not run a full epoch or formal training on local Windows for this task.
@@ -79,13 +79,13 @@ After syncing the code to the remote V100 machine and confirming the data files
 exist at the config-declared relative paths, run from the project root:
 
 ```bash
-conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device config
+conda run -n m3ed_mmgcn python -B scripts/diagnostics/models/multidag_cl/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml --dataset M3ED --split train --batch-size-override 2 --device config
 ```
 
 Optional IEMOCAP fallback:
 
 ```bash
-conda run -n m3ed_mmgcn python -B scripts/baselines/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device config
+conda run -n m3ed_mmgcn python -B scripts/diagnostics/models/multidag_cl/debug_multidag_cl_real_batch.py --config configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml --dataset IEMOCAP --split train --batch-size-override 2 --device config
 ```
 
 Record the remote git commit hash before running:

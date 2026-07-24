@@ -44,32 +44,32 @@ conda run -n m3ed_mmgcn python scripts/dev/validate_config_tree.py
 Inspect a stage without launching training:
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts/baselines/run_original_merc_pipeline.py --stage smoke
+conda run -n m3ed_mmgcn python scripts/workflows/paper_aligned/run_pipeline.py --stage smoke
 ```
 
 Train one verified smoke after placing the pinned feature PKL:
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts/baselines/train_original_merc_baseline.py `
+conda run -n m3ed_mmgcn python scripts/workflows/paper_aligned/train.py `
   --config configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/smoke.yaml
 ```
 
 Evaluate a saved checkpoint:
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts/baselines/evaluate_original_merc_checkpoint.py `
+conda run -n m3ed_mmgcn python scripts/workflows/paper_aligned/evaluate.py `
   --checkpoint <run>/checkpoints/best_model.pt --split test
 ```
 
 Aggregate completed outputs through the canonical analysis directory:
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts/analyze/analyze_original_merc_results.py
+conda run -n m3ed_mmgcn python scripts/analysis/paper_aligned/analyze_original_merc_results.py
 ```
 
-The legacy `scripts/analysis/analyze_original_merc_results.py` path is only a
-compatibility wrapper. Generated reports are runtime artifacts and must not be
-committed without traceable real training inputs.
+Only the canonical analysis entrypoint above is supported. Generated reports
+are runtime artifacts and must not be committed without traceable real training
+inputs.
 
 ## Current fidelity boundary
 

@@ -14,7 +14,7 @@ from models.gsmcc.project_variant.full_context.model import (
     angular_similarity,
     build_sliding_multimodal_graph,
 )
-from scripts.baselines.original_merc_runtime import (
+from scripts.runtime.paper_aligned import (
     NUMERIC_STATUS_GRADIENT,
     NUMERIC_STATUS_PARAMETER,
     NumericValidationError,
@@ -33,7 +33,7 @@ from scripts.baselines.original_merc_runtime import (
     validate_runtime_config,
     verify_feature_sha256,
 )
-import scripts.baselines.train_original_merc_baseline as train_module
+import scripts.workflows.paper_aligned.train as train_module
 from scripts.diagnostics.models.gsmcc.diagnose_gsmcc_numerics import diagnose_mode
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.run_experiment_pipeline import choose_evaluate_script, choose_train_script
+from scripts.workflows.run_pipeline import choose_evaluate_script, choose_train_script
 
 
 ROOT = Path(__file__).resolve().parents[1]

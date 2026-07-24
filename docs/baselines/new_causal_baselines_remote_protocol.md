@@ -49,12 +49,12 @@ python scripts/dev/validate_config_tree.py
 ## 5. Run one real batch per new model
 
 ```bash
-python scripts/baselines/debug_new_causal_graph_real_batch.py \
+python scripts/diagnostics/models/debug_new_causal_graph_real_batch.py \
   --config configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 ```
 
 ```bash
-python scripts/baselines/debug_new_causal_graph_real_batch.py \
+python scripts/diagnostics/models/debug_new_causal_graph_real_batch.py \
   --config configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 ```
 
@@ -65,7 +65,7 @@ padding-loss exclusion status.
 ## 6. Run the unified real-batch causal audit
 
 ```bash
-python scripts/analyze/run_four_model_causal_audit.py \
+python scripts/analysis/causal/run_four_model_causal_audit.py \
   --config configs/benchmarks/causal_unified/analysis/four_model_audit_formal.yaml \
   --strict
 ```
@@ -76,31 +76,31 @@ outputs if one model fails. A strict failure blocks formal training.
 ## 7. Run two-epoch real-data smoke training
 
 ```bash
-python scripts/baselines/train_new_causal_graph_baseline.py \
+python scripts/workflows/causal_graph/train.py \
   --config configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml
 GS_RUN_ID=$(awk -F= '$1=="run_id" {print $2}' outputs/dev/latest_run.txt)
 ```
 
 ```bash
-python scripts/baselines/evaluate_new_causal_graph_checkpoint.py \
+python scripts/workflows/causal_graph/evaluate.py \
   --checkpoint "outputs/dev/${GS_RUN_ID}/checkpoints/best_model.pt" \
   --split val
-python scripts/baselines/evaluate_new_causal_graph_checkpoint.py \
+python scripts/workflows/causal_graph/evaluate.py \
   --checkpoint "outputs/dev/${GS_RUN_ID}/checkpoints/best_model.pt" \
   --split test
 ```
 
 ```bash
-python scripts/baselines/train_new_causal_graph_baseline.py \
+python scripts/workflows/causal_graph/train.py \
   --config configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/smoke_real_2epoch.yaml
 DIALOGUEGCN_RUN_ID=$(awk -F= '$1=="run_id" {print $2}' outputs/dev/latest_run.txt)
 ```
 
 ```bash
-python scripts/baselines/evaluate_new_causal_graph_checkpoint.py \
+python scripts/workflows/causal_graph/evaluate.py \
   --checkpoint "outputs/dev/${DIALOGUEGCN_RUN_ID}/checkpoints/best_model.pt" \
   --split val
-python scripts/baselines/evaluate_new_causal_graph_checkpoint.py \
+python scripts/workflows/causal_graph/evaluate.py \
   --checkpoint "outputs/dev/${DIALOGUEGCN_RUN_ID}/checkpoints/best_model.pt" \
   --split test
 ```

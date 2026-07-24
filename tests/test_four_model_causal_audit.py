@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.analyze.run_four_model_causal_audit import run_four_model_audit
+from scripts.analysis.causal.run_four_model_causal_audit import run_four_model_audit
 
 
 ROOT = Path(__file__).resolve().parents[1]

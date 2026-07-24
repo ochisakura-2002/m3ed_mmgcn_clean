@@ -5,9 +5,9 @@ from pathlib import Path
 import torch
 
 from models.registry.causal import build_new_causal_baseline
-from scripts.analyze.audit_model_causality import build_synthetic_batch
-from scripts.baselines.evaluate_new_causal_graph_checkpoint import evaluate_checkpoint
-from scripts.baselines.new_causal_graph_runtime import (
+from scripts.analysis.causal.audit_model_causality import build_synthetic_batch
+from scripts.workflows.causal_graph.evaluate import evaluate_checkpoint
+from scripts.runtime.causal_graph import (
     build_optimizer,
     forward_batch,
     load_checkpoint,
@@ -15,7 +15,7 @@ from scripts.baselines.new_causal_graph_runtime import (
     normalized_training_config,
     rebuild_model_from_checkpoint,
 )
-from scripts.baselines.train_new_causal_graph_baseline import checkpoint_payload
+from scripts.workflows.causal_graph.train import checkpoint_payload
 
 
 def test_checkpoint_rebuild_preserves_eval_logits_and_writes_outputs(

@@ -13,7 +13,7 @@ not as a copy of the config files. It covers four YAML families:
 Baseline training YAMLs are consumed by:
 
 ```bash
-python scripts/baselines/train_multidag_cl.py --config <training_yaml>
+python scripts/models/multidag_cl/unified/train.py --config <training_yaml>
 ```
 
 They define one training run and one checkpoint family under
@@ -98,7 +98,7 @@ Special cases:
 Pipeline YAMLs are consumed by:
 
 ```bash
-python scripts/run_experiment_pipeline.py --config <pipeline_yaml>
+python scripts/workflows/run_pipeline.py --config <pipeline_yaml>
 ```
 
 The pipeline is the piece that wires training, evaluation, tables, and figures
@@ -109,7 +109,7 @@ logs, but it does not call the plotting scripts.
 |---|---|---|---|---|
 | `project.pipeline_name` | Human-readable pipeline name printed in logs. | Helps identify which workflow ran. | Context, modality, or missing-modality names. | Names mirror YAML filenames. |
 | `dataset.name` | Dataset expected by the pipeline. | Checked against the training YAML to prevent mismatches. | `IEMOCAP`. | Keeps formal MultiDAG+CL runs on one dataset family. |
-| `model.name` | Model registry key for train/evaluate script selection. | `MultiDAGCL` routes to `scripts/baselines/train_multidag_cl.py` and `evaluate_multidag_cl_checkpoint.py`. | `MultiDAGCL`. | Avoids touching MMGCN or SDT entries. |
+| `model.name` | Model registry key for train/evaluate script selection. | `MultiDAGCL` routes to `scripts/models/multidag_cl/unified/train.py` and `scripts/models/multidag_cl/unified/evaluate.py`. | `MultiDAGCL`. | Avoids touching MMGCN or SDT entries. |
 | `execution.dry_run` | YAML-controlled dry-run switch. | If true, commands are printed but not executed. | `false` for real runs, `true` for command audit. | This is a YAML field, not a `--dry-run` CLI argument. |
 | `train.enabled` | Whether the pipeline trains a new run. | If true, pipeline launches the train script. | `true` for context/modality pipelines, `false` for missing-modality reuse. | Missing-modality evaluation reuses an existing TAV checkpoint. |
 | `train.train_config_path` | Training YAML to launch. | Determines model settings, output name, and training budget. | A path under `configs/baselines/multidag_cl/`. | Keeps training details out of the pipeline scheduler. |

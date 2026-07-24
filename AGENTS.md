@@ -34,31 +34,40 @@
 ## 当前模型目录与阶段
 
 1. 模型实现已迁移到模型优先的 canonical 路径：`models/<model>/<lineage>/`；公共代码位于 `models/common/`，registry 位于 `models/registry/`。
-2. `models/baselines/` 与 `models/baselines/original_repro/` 只保留一个迁移周期的兼容 re-export wrapper；新代码禁止 import 这些旧路径。
+2. 上一轮重构的 `models/baselines/` 兼容 tree 已退休；旧模型 import 路径不再受支持，只能使用 canonical model path。
 3. `paper_aligned` 表示项目内按论文结构实现，不等于 `author_official`；当前 MultiDAG+CL 项目实现不是作者官方完整复现，GS-MCC 两套实现均为 `project_variant`。
 4. `MMGCN` 是当前经典复现锚点，不得表述为已经选定的最终 baseline；SDT 位于 `models/experimental/sdt/`，仍不进入正式 baseline 排名。
 5. 目录重构不得改变模型数学行为、forward 契约或 `state_dict` schema。
-6. 模型目录、scripts layout 与 config layout 重构均已完成；`CONFIG_LAYOUT_AUDIT=COMPLETED`、`CONFIG_LAYOUT_REFACTOR=COMPLETED`。Config Batch 1--7 全部完成，183 个 tracked YAML 已进入 canonical tree，active old references、manual review、candidate collision 与未批准语义变化均为 0。
+6. 模型目录、scripts layout、config layout 与 legacy wrapper 退休均已完成；`CANONICAL_ONLY_LAYOUT=COMPLETED`、`CONFIG_LAYOUT_AUDIT=COMPLETED`、`CONFIG_LAYOUT_REFACTOR=COMPLETED`。Config Batch 1--7 全部完成，183 个 tracked YAML 已进入 canonical tree，active old references、manual review、candidate collision 与未批准语义变化均为 0。
 7. 作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始；后续部署必须作为独立任务执行，不得把现有 `paper_aligned` 或 `project_variant` 误写为 `author_official`。
 8. 不要为定位模型代码扫描 `outputs/`、`data/`、`third_party/` 或 `tmp/`。
 
 ## 当前脚本目录与阶段
 
 1. 生产执行脚本的 canonical 路径位于 `scripts/models/`、`scripts/runtime/`、`scripts/evaluation/` 和 `scripts/workflows/`。
-2. 迁移前的训练、评估、pipeline 与实验 launcher 路径只保留 compatibility wrapper；新代码禁止依赖这些旧 wrapper。
+2. 迁移前的训练、评估、pipeline 与实验 launcher wrapper 已退休；旧脚本执行命令不再受支持。
 3. Config Batch 1--7 已迁移；生产配置、脚本、测试与活动文档必须使用 canonical config path。
 4. Phase 3B1 analysis layout 已完成；canonical 分析实现位于 `scripts/analysis/{common,causal,paper_aligned,models}/`。
-5. 被迁移的 tracked `scripts/analyze/` 入口只保留 compatibility wrapper；新代码禁止 import 这些旧 analysis wrapper。
+5. 被迁移的 tracked `scripts/analyze/` 分析 wrapper 已退休；分析必须使用 `scripts/analysis/` 下的 canonical 入口。
 6. Phase 3B2 support layout 已完成；canonical 支持脚本位于 `scripts/data/{build,prepare,inspect}/`、`scripts/diagnostics/{data,models,experiments}/`、`scripts/maintenance/` 与 `scripts/dev/`。
 7. `data/build` 生成数据或特征资产，`data/prepare` 做训练前数据准备，`data/inspect` 只读查看数据；`diagnostics` 判定数据、模型或实验异常；`maintenance` 可更新仓库/汇总资产，`dev` 只放静态验证与开发门禁。
-8. 迁移前的 debug、diagnose、features、prepare、inspect 及 deferred analyze/support 路径只保留 compatibility wrapper；新代码禁止 import 这些旧 support wrapper。
-9. 所有 tracked 生产 scripts 已切换到 canonical model import；旧 model import 只允许保留在专用兼容性测试中。
+8. 迁移前的 debug、diagnose、features、prepare、inspect 及 deferred analyze/support wrapper 已退休；支持脚本必须使用 canonical 路径。
+9. 所有 tracked 生产 scripts 与 tests 已切换到 canonical model/script import；专用兼容性测试已由 canonical-only retirement gate 取代。
 10. `CONFIG_LAYOUT_REFACTOR=COMPLETED`；`CONFIG_BATCH_1=COMPLETED`、`CONFIG_BATCH_2=COMPLETED`、`CONFIG_BATCH_3=COMPLETED`、`CONFIG_BATCH_4=COMPLETED`、`CONFIG_BATCH_5=COMPLETED`、`CONFIG_BATCH_6=COMPLETED`、`CONFIG_BATCH_7=COMPLETED`。
 11. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不读取其内容作为生产依据、不修改、不 staged。
 12. 配置 provenance 必须依据 YAML 内容、registry 与真实 consumer，不得根据旧文件名中的 `original`、`official` 等字样猜测。
 13. YAML 迁移不保留双份真相，也不创建旧 YAML wrapper；发生候选路径碰撞时必须先人工消解。
 14. Phase 4A 配置迁移已经结束；不得在没有新计划与独立审计的情况下继续移动 canonical YAML。
 15. Batch 7 的 missing-modality collision 已按普通 context 与 stable context 的不同 `source_config` 语义拆分为两个唯一 canonical path，两份配置均保留。
+
+## 当前 wrapper 退休状态
+
+1. `LEGACY_MODEL_WRAPPERS=RETIRED`
+2. `LEGACY_SCRIPT_WRAPPERS=RETIRED`
+3. `CANONICAL_ONLY_LAYOUT=COMPLETED`
+4. `FORMAL_LONG_TRAINING_STARTED=NO`
+5. 旧模型 import 路径和旧脚本执行命令均不再受支持；后续代码、配置、测试、文档与命令必须使用 canonical 路径。
+6. Wrapper 退休没有修改模型数学、forward、loss、optimizer、训练逻辑、数据划分、checkpoint/state-dict schema 或配置语义；tracked YAML 数量仍为 183。
 
 ## 当前配置目录与阶段
 

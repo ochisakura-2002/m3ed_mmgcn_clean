@@ -57,7 +57,7 @@ class M3EDFeatureDataset:
         }
     """
 
-    # 根据 scripts/inspect_m3ed_feature_files.py 的输出确定：
+    # 根据 scripts/data/inspect/inspect_m3ed_feature_files.py 的输出确定：
     # metadata 的 val split 对应 feature pkl 里的 generic test split；
     # metadata 的 test split 对应 feature pkl 里的 generic val split。
     #

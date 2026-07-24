@@ -1,0 +1,33 @@
+metric,value,evidence
+LEGACY_WRAPPER_RETIREMENT_STATUS,PASS,All retirement and canonical-only gates passed
+TRACKED_PYTHON_SCANNED,236,76 model Python files and 160 script Python files at pre-retirement HEAD
+CANONICAL_IMPLEMENTATIONS_CLASSIFIED,87,22 model implementations and 65 script implementations
+CANONICAL_PACKAGE_INIT_CLASSIFIED,51,20 model package init files and 31 script package init files
+CONFIRMED_MODEL_WRAPPERS,33,Model layout report plus AST/source re-export audit
+CONFIRMED_SCRIPT_WRAPPERS,64,Phase 3A/3B1/3B2 reports plus AST/source forwarding audit
+MODEL_WRAPPERS_DELETED,33,git rm inventory rows
+SCRIPT_WRAPPERS_DELETED,64,git rm inventory rows
+LEGACY_PACKAGE_INIT_FILES_DELETED,12,11 re-export package init files plus one wrapper-tree-only package marker
+AMBIGUOUS_FILES_REMAINING,0,All 236 tracked model/script Python files classified
+ACTIVE_REFERENCES_UPDATED,245,Unique pre-retirement active reference lines updated or removed
+ACTIVE_LEGACY_MODEL_IMPORTS,0,Final tracked AST import audit
+ACTIVE_LEGACY_SCRIPT_REFERENCES,0,Final active code/config/test/operational-doc reference audit
+ACTIVE_LEGACY_ENTRYPOINTS,0,Final filesystem and Git tracked-path audit
+CANONICAL_MODEL_IMPORT_STATUS,PASS,Canonical imports and registries passed
+CANONICAL_SCRIPT_ENTRYPOINT_STATUS,PASS,63 canonical script entrypoints remain and seven representative CLI help gates passed
+TRACKED_YAML_COUNT,183,git ls-files count
+ACTIVE_OLD_CONFIG_REFERENCES,0,Phase 4A and Batch 1-7 strict audits
+CONFIG_VALIDATION_STATUS,PASS,scripts/dev/validate_config_tree.py
+DRY_RUN_STATUS,PASS,Six no-epoch no-output model/config construction cases
+FULL_PYTEST_STATUS,PASS,309 passed 3 skipped 14 warnings
+MODEL_CODE_CHANGED,NO,No canonical model implementation file changed
+MODEL_MATH_CHANGED,NO,No forward graph loss or model parameter logic changed
+TRAINING_BEHAVIOR_CHANGED,NO,Command targets and state-dict protocol gates passed
+FORMAL_TRAINING_STARTED,0,Only imports CLI help audits tests and model construction dry-runs executed
+GROUP_MEETING_FILES_CHANGED,NO,Protected files were not read as production evidence or modified
+GROUP_MEETING_FILES_STAGED,NO,Final Git status
+COMMIT_CREATED,NO,HEAD unchanged
+PUSH_PERFORMED,NO,No push command executed
+CANONICAL_ONLY_LAYOUT_COMPLETED,YES,Legacy wrapper inventory is fully retired
+READY_TO_COMMIT_WRAPPER_RETIREMENT,YES,All required gates passed
+READY_FOR_LONG_TRAINING_CONFIG_PREPARATION,YES,Canonical-only layout and config audits passed; long training itself remains not started

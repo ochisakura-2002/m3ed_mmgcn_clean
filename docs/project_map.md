@@ -73,7 +73,7 @@
 4. `scripts/models/simple_mlp/train.py`：`SimpleMLP` canonical 训练入口。
 5. `scripts/runtime/`：causal graph 与 paper-aligned 跨模型 runtime。
 6. `scripts/workflows/`：通用、causal、paper-aligned、formal benchmark 和 modality workflow。
-7. `scripts/train_mmgcn.py`、`scripts/evaluate_checkpoint.py`、`scripts/run_experiment_pipeline.py` 等迁移前路径仅为 compatibility wrapper。
+7. 迁移前的脚本 wrapper 已退休；训练、评估与 pipeline 只支持上述 canonical 入口。
 
 ### 配置
 
@@ -112,7 +112,7 @@
 6. `models/common/` 与 `models/registry/`：共享图/论文对齐工具和 canonical registry。
 7. `models/simple_mlp/model.py`：简单三模态拼接 MLP sanity baseline。
 8. `models/experimental/sdt/`：实验 SDT，不进入正式 baseline 排名。
-9. `models/baselines/`：旧 import 的临时兼容 wrapper；新代码不得依赖该目录。
+9. 上一轮重构的 `models/baselines/` wrapper tree 已退休；旧模型 import 路径不再受支持。
 
 `unified` 表示项目统一训练/评价接口下的实现；`paper_aligned` 表示项目内按论文结构实现，不等于 `author_official`；`project_variant` 表示与作者官方实现存在明确差异。当前 MultiDAG 项目实现不是作者官方完整复现，GS-MCC 两套实现均为 `project_variant`。
 
@@ -133,11 +133,23 @@
 13. `scripts/diagnostics/experiments/`：run、训练曲线、配置与输出异常诊断。
 14. `scripts/maintenance/`：可更新仓库或汇总资产的维护工具。
 15. `scripts/dev/`：配置验证、结构审计和开发门禁。
-16. 迁移前的 `scripts/analyze/`、`scripts/debug/`、`scripts/diagnose/`、`scripts/features/`、`scripts/prepare/`、`scripts/inspect/` 及相关旧 support 路径只保留 compatibility wrapper；新代码不得依赖这些 wrapper。
+16. 迁移前的 analysis/debug/diagnose/features/prepare/inspect/support wrapper 已退休；只支持本节列出的 canonical 路径。
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout、Phase 3B2 support layout 与 Config Phase 4A layout 已完成；旧 script/model 入口保留 compatibility wrapper，但旧 YAML 不保留 wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Batch 1--7 已完成，183 个 tracked YAML 全部位于 canonical tree；manual review、candidate collision、active old references 与未批准语义变化均为 0，Phase 4A strict plan audit 与 Batch 1--7 strict migration audit 均通过。作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始，必须作为后续独立任务部署。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout、Phase 3B2 support layout、Config Phase 4A layout 与 legacy wrapper 退休均已完成；仓库只保留 canonical model/script tree。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Batch 1--7 已完成，183 个 tracked YAML 全部位于 canonical tree；manual review、candidate collision、active old references 与未批准语义变化均为 0，Phase 4A strict plan audit 与 Batch 1--7 strict migration audit 均通过。作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始，必须作为后续独立任务部署。
+
+`LEGACY_MODEL_WRAPPERS=RETIRED`
+
+`LEGACY_SCRIPT_WRAPPERS=RETIRED`
+
+`CANONICAL_ONLY_LAYOUT=COMPLETED`
+
+`FORMAL_LONG_TRAINING_STARTED=NO`
+
+旧模型 import 路径和旧脚本执行命令不再受支持。后续代码、配置、测试、文档与命令必须使用 canonical 路径。本次退休不改变模型数学、训练行为、数据划分、checkpoint/state-dict schema 或配置语义，tracked YAML 数量保持 183。
+
+完整 wrapper 清单、删除结果与门禁见 `docs/refactors/LEGACY_WRAPPER_RETIREMENT_INVENTORY.csv`、`docs/refactors/LEGACY_WRAPPER_RETIREMENT.csv` 和 `docs/refactors/LEGACY_WRAPPER_RETIREMENT_REPORT.md`。
 
 Config migration 规则：
 
@@ -176,7 +188,7 @@ conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config co
 conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
 ```
 
-迁移前的旧命令仍通过 compatibility wrapper 工作；新自动化与新文档应使用 canonical 路径。
+迁移前的旧命令已不再受支持；自动化与文档必须使用 canonical 路径。
 
 ## 典型 run 输出结构
 

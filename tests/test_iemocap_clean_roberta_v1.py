@@ -16,15 +16,15 @@ import torch
 import yaml
 
 from models.registry.causal import build_new_causal_baseline
-import scripts.baselines.train_multidag_cl as train_multidag_module
-import scripts.baselines.train_new_causal_graph_baseline as train_causal_module
-import scripts.train_mmgcn as train_mmgcn_module
+import scripts.models.multidag_cl.unified.train as train_multidag_module
+import scripts.models.mmgcn.unified.train as train_mmgcn_module
+import scripts.workflows.causal_graph.train as train_causal_module
 from scripts.diagnostics.data.audit_iemocap_feature_pkl import (
     audit_feature_pkls,
     write_audit_outputs,
 )
 from scripts.diagnostics.data.probe_iemocap_text_features import run_probes
-from scripts.baselines.train_multidag_cl import build_model as build_multidag
+from scripts.models.multidag_cl.unified.train import build_model as build_multidag
 from scripts.dev.validate_config_tree import (
     validate_clean_roberta_v1_formal_pipeline,
     validate_clean_roberta_v1_formal_training,
@@ -39,11 +39,11 @@ from scripts.data.build.build_iemocap_clean_text_features import (
     mean_pool_without_padding_or_special,
     verify_sha256,
 )
-from scripts.run_experiment_pipeline import (
+from scripts.workflows.run_pipeline import (
     PipelineLock,
     resolve_current_run_info,
 )
-from scripts.train_mmgcn import build_model as build_mmgcn
+from scripts.models.mmgcn.unified.train import build_model as build_mmgcn
 from utils.evaluation import build_prediction_row, compute_calibration_metrics
 from utils.iemocap_features import (
     UNPINNED_SHA256,

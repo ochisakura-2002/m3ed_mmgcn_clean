@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from scripts.baselines.train_new_causal_graph_baseline import (
+from scripts.workflows.causal_graph.train import (
     run_training,
     strictly_better_val_weighted_f1,
 )

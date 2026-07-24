@@ -36,7 +36,7 @@
 根据当前上下文和本地 `tmp/smoke_outputs/latest_run.txt`，最近一次 smoke test 使用了 fake dialogue 配置：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
+conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
 ```
 
 生成的 checkpoint 随 run id 变化。最近一次已知 run id 是：
@@ -48,13 +48,13 @@ conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\mmgcn\uni
 对应评估命令是：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\evaluate_checkpoint.py --checkpoint tmp\smoke_outputs\runs\20260626_150801_mmgcn_smoke_fake_dialogues\checkpoints\best_model.pt --split test
+conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint tmp\smoke_outputs\runs\20260626_150801_mmgcn_smoke_fake_dialogues\checkpoints\best_model.pt --split test
 ```
 
 最近一次语法检查命令是：
 
 ```powershell
-conda run -n m3ed_mmgcn python -m py_compile datasets\smoke\mmgcn_smoke_dataset.py scripts\train_mmgcn.py scripts\evaluate_checkpoint.py
+conda run -n m3ed_mmgcn python -m py_compile datasets\smoke\mmgcn_smoke_dataset.py scripts\models\mmgcn\unified\train.py scripts\evaluation\unified_checkpoint.py
 ```
 
 如果未来 `tmp/` 被清理，最近 smoke test 的精确 run id 可能不可从当前文件可靠恢复。此时不要编造，重新运行 smoke train 后读取 `tmp/smoke_outputs/latest_run.txt`。
@@ -84,7 +84,7 @@ conda run -n m3ed_mmgcn python -m py_compile <changed_python_files>
 4. fake dialogue smoke train：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\train_mmgcn.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
+conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config configs\mmgcn\unified\synthetic\full_context\synthetic\smoke.yaml
 ```
 
 5. 读取最新 run：
@@ -96,7 +96,7 @@ Get-Content tmp\smoke_outputs\latest_run.txt
 6. 用最新 `best_model.pt` 评估：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\evaluate_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
+conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
 ```
 
 7. 检查输出是否存在：

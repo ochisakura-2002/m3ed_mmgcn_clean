@@ -574,13 +574,13 @@ def known_tie_policy(model: str, metric_name: str) -> Tuple[str, bool, str]:
         return (
             "earliest_tied_epoch_strict_greater_than",
             True,
-            "scripts/train_mmgcn.py:is_better_monitor_value",
+            "scripts/models/mmgcn/unified/train.py:is_better_monitor_value",
         )
     if model == "MultiDAG":
         return (
             "earliest_tied_epoch_strict_greater_than",
             True,
-            "scripts/baselines/train_multidag_cl.py:is_better_monitor_value",
+            "scripts/models/multidag_cl/unified/train.py:is_better_monitor_value",
         )
     return UNCONFIRMED, False, ""
 

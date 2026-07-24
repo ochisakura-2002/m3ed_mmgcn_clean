@@ -66,14 +66,24 @@ EVALUATE_SCRIPT_REGISTRY = {
     "causal_dialoguegcn": "scripts/workflows/causal_graph/evaluate.py",
 }
 
-BUILD_ANALYSIS_TABLES_SCRIPT = "scripts/analyze/build_analysis_tables.py"
-PLOT_SINGLE_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_single_run_training_curves.py"
-PLOT_SINGLE_RUN_FINAL_ANALYSIS_SCRIPT = "scripts/analyze/plot_single_run_final_analysis.py"
-PLOT_MULTI_RUN_TRAINING_CURVES_SCRIPT = "scripts/analyze/plot_multi_run_training_curves.py"
-PLOT_MULTI_RUN_FINAL_ANALYSIS_SCRIPT = "scripts/analyze/plot_multi_run_final_analysis.py"
+BUILD_ANALYSIS_TABLES_SCRIPT = "scripts/analysis/common/build_analysis_tables.py"
+PLOT_SINGLE_RUN_TRAINING_CURVES_SCRIPT = (
+    "scripts/analysis/common/plot_single_run_training_curves.py"
+)
+PLOT_SINGLE_RUN_FINAL_ANALYSIS_SCRIPT = (
+    "scripts/analysis/common/plot_single_run_final_analysis.py"
+)
+PLOT_MULTI_RUN_TRAINING_CURVES_SCRIPT = (
+    "scripts/analysis/common/plot_multi_run_training_curves.py"
+)
+PLOT_MULTI_RUN_FINAL_ANALYSIS_SCRIPT = (
+    "scripts/analysis/common/plot_multi_run_final_analysis.py"
+)
 EVALUATE_MISSING_MODALITIES_SCRIPT = "scripts/workflows/ablations/evaluate_missing_modalities.py"
-PLOT_MISSING_MODALITY_SUMMARY_SCRIPT = "scripts/analyze/plot_missing_modality_summary.py"
-EXPORT_PAPER_ARTIFACTS_SCRIPT = "scripts/analyze/export_paper_artifacts.py"
+PLOT_MISSING_MODALITY_SUMMARY_SCRIPT = (
+    "scripts/analysis/common/plot_missing_modality_summary.py"
+)
+EXPORT_PAPER_ARTIFACTS_SCRIPT = "scripts/analysis/common/export_paper_artifacts.py"
 
 from utils.output_paths import (  # noqa: E402
     EXPERIMENT_DATE_ENV,

@@ -16,7 +16,7 @@ import sys
 
 
 # 当前文件路径是：
-#   m3ed_mmgcn_clean/scripts/debug_io.py
+#   m3ed_mmgcn_clean/scripts/diagnostics/experiments/debug_io.py
 # parents[1] 是项目根目录：
 #   m3ed_mmgcn_clean/
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 import yaml
 
-from scripts.analyze.analyze_original_merc_results import (
+from scripts.analysis.paper_aligned.analyze_original_merc_results import (
     CLEAN_FIVEFOLD_TRACK,
     FORMAL_ORIGINAL_MERC,
     LEGACY_FIVEFOLD_TRACK,

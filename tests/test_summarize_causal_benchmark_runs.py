@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.analyze.summarize_causal_benchmark_runs import (
+from scripts.analysis.causal.summarize_causal_benchmark_runs import (
     write_csv_outputs,
     write_markdown_report,
 )

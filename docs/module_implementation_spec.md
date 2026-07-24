@@ -96,10 +96,10 @@ logits:                    [B, T, C]
 
 涉及 `MMGCN` 的实现前，优先查看：
 
-1. `models/baselines/mmgcn/mm_gcn.py`
-2. `models/baselines/mmgcn/dense_graph.py`
-3. `scripts/train_mmgcn.py`
-4. `scripts/evaluate_checkpoint.py`
+1. `models/mmgcn/unified/mm_gcn.py`
+2. `models/mmgcn/unified/dense_graph.py`
+3. `scripts/models/mmgcn/unified/train.py`
+4. `scripts/evaluation/unified_checkpoint.py`
 5. `configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml`
 
 ## YAML 配置开关
@@ -175,11 +175,11 @@ module_name:
 
 模型模块任务通常允许修改：
 
-1. `models/baselines/mmgcn/mm_gcn.py`
-2. `models/baselines/mmgcn/dense_graph.py`
+1. `models/mmgcn/unified/mm_gcn.py`
+2. `models/mmgcn/unified/dense_graph.py`
 3. `configs/` 下相关 YAML。
-4. `scripts/train_mmgcn.py`，仅限配置读取和参数传递。
-5. `scripts/evaluate_checkpoint.py`，仅限配置读取和参数传递。
+4. `scripts/models/mmgcn/unified/train.py`，仅限配置读取和参数传递。
+5. `scripts/evaluation/unified_checkpoint.py`，仅限配置读取和参数传递。
 6. `docs/` 下相关设计和结果记录。
 7. `datasets/smoke/` 或 smoke 配置，仅限最小测试需要。
 

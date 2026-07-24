@@ -180,16 +180,16 @@ modality:
 Required modifications:
 
 ```text
-models/baselines/mmgcn/mm_gcn.py
-models/baselines/mmgcn/dense_graph.py
-scripts/train_mmgcn.py
-scripts/evaluate_checkpoint.py
+models/mmgcn/unified/mm_gcn.py
+models/mmgcn/unified/dense_graph.py
+scripts/models/mmgcn/unified/train.py
+scripts/evaluation/unified_checkpoint.py
 ```
 
 Recommended later modification:
 
 ```text
-scripts/analyze/build_analysis_tables.py
+scripts/analysis/common/build_analysis_tables.py
 ```
 
 Possible new files later:
@@ -391,7 +391,7 @@ Thus the existing training and evaluation metrics remain compatible.
 
 ## 11. Training Script Changes
 
-### 11.1 `scripts/train_mmgcn.py`
+### 11.1 `scripts/models/mmgcn/unified/train.py`
 
 In `build_model(config)`, read:
 
@@ -418,7 +418,7 @@ Old configs without a `modality` field must still train as full tri-modal MMGCN.
 
 ## 12. Evaluation Script Changes
 
-### 12.1 `scripts/evaluate_checkpoint.py`
+### 12.1 `scripts/evaluation/unified_checkpoint.py`
 
 Evaluation reconstructs the model from `checkpoint["config"]`.
 
@@ -524,7 +524,7 @@ cat outputs/latest_run.txt
 
 RUN_DIR=$(grep '^run_dir=' outputs/latest_run.txt | cut -d= -f2-)
 
-python scripts/evaluate_checkpoint.py \
+python scripts/evaluation/unified_checkpoint.py \
   --checkpoint "$RUN_DIR/checkpoints/best_model.pt" \
   --split test
 
@@ -537,7 +537,7 @@ cp -r "$RUN_DIR/logs/evaluations/test_best_model" \
 After code modification:
 
 ```bash
-python scripts/evaluate_checkpoint.py \
+python scripts/evaluation/unified_checkpoint.py \
   --checkpoint "$RUN_DIR/checkpoints/best_model.pt" \
   --split test
 ```
@@ -619,7 +619,7 @@ These two experiment types must not be mixed in interpretation.
 
 ## 17. Analysis Table Extension
 
-Later, `scripts/analyze/build_analysis_tables.py` should record:
+Later, `scripts/analysis/common/build_analysis_tables.py` should record:
 
 ```text
 active_modalities

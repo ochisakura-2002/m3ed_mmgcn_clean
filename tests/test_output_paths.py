@@ -157,7 +157,7 @@ def test_common_run_metadata_contains_resolved_date_paths(tmp_path: Path) -> Non
 def test_original_pipeline_passes_one_frozen_date_to_every_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts.baselines import run_original_merc_pipeline as pipeline
+    from scripts.workflows.paper_aligned import run_pipeline as pipeline
 
     config_path = tmp_path / "train.yaml"
     config_path.write_text("model: {name: placeholder}\n", encoding="utf-8")
@@ -197,7 +197,7 @@ def test_original_pipeline_passes_one_frozen_date_to_every_job(
 def test_original_pipeline_discovers_dated_top2_selection_without_legacy_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts.baselines import run_original_merc_pipeline as pipeline
+    from scripts.workflows.paper_aligned import run_pipeline as pipeline
 
     selection_dir = (
         tmp_path / "outputs" / "20260716" / "analysis" / "original_merc"
@@ -231,8 +231,8 @@ def test_original_pipeline_discovers_dated_top2_selection_without_legacy_path(
 def test_original_pipeline_marks_numeric_failure_invalid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts.baselines import run_original_merc_pipeline as pipeline
-    from scripts.baselines.original_merc_runtime import NumericValidationError
+    from scripts.workflows.paper_aligned import run_pipeline as pipeline
+    from scripts.runtime.paper_aligned import NumericValidationError
 
     manifest_path = tmp_path / "pipeline.yaml"
     manifest_path.write_text(

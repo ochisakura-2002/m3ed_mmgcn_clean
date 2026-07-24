@@ -8,13 +8,13 @@ import yaml
 import pytest
 
 from models.registry.paper_aligned import build_original_repro_model
-from scripts.baselines.original_merc_runtime import (
+from scripts.runtime.paper_aligned import (
     SyntheticDialogueDataset,
     load_checkpoint,
     rebuild_model_from_checkpoint,
 )
-import scripts.baselines.train_original_merc_baseline as train_module
-from scripts.baselines.train_original_merc_baseline import run_training
+import scripts.workflows.paper_aligned.train as train_module
+from scripts.workflows.paper_aligned.train import run_training
 
 
 def _synthetic_config(output_root: Path) -> dict:

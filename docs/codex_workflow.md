@@ -45,8 +45,8 @@ Git、本地/远程同步、实验执行：
 
 1. `docs/module_implementation_spec.md`
 2. `docs/experiment_protocol.md`
-3. `models/baselines/mmgcn/mm_gcn.py`
-4. `models/baselines/mmgcn/dense_graph.py`
+3. `models/mmgcn/unified/mm_gcn.py`
+4. `models/mmgcn/unified/dense_graph.py`
 
 本地 smoke test：
 
@@ -100,7 +100,7 @@ conda run -n m3ed_mmgcn python <script> <args>
 
 1. `models/` 下的模型结构修改。
 2. `datasets/` 下的数据读取或 collate 修改。
-3. `scripts/train_mmgcn.py`、`scripts/evaluate_checkpoint.py`、`scripts/run_experiment_pipeline.py` 修改。
+3. `scripts/models/mmgcn/unified/train.py`、`scripts/evaluation/unified_checkpoint.py`、`scripts/workflows/run_pipeline.py` 修改。
 4. `configs/` 下正式实验配置修改。
 5. `utils/metrics.py` 或指标计算逻辑修改。
 6. 任何影响 checkpoint 可复现性的代码修改。

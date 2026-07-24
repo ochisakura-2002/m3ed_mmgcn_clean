@@ -28,7 +28,7 @@ Clean v1 只替换九项 PKL 的 `videoText`（索引 3）。`videoIDs`、speake
 远程机器准备好本地 RoBERTa 权重后运行构建脚本，并显式传入旧 PKL 的固定 SHA256。脚本输出新 PKL、metadata JSON 和 SHA256 文件；不要把 PKL 或模型权重提交到 Git。
 
 ```bash
-python scripts/features/build_iemocap_clean_text_features.py \
+python scripts/data/build/build_iemocap_clean_text_features.py \
   --input-pkl third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl \
   --expected-input-sha256 ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3 \
   --model-dir <LOCAL_ROBERTA_BASE_DIR> \
@@ -42,7 +42,7 @@ python scripts/features/build_iemocap_clean_text_features.py \
 ```
 
 ```bash
-python scripts/analyze/audit_iemocap_feature_pkl.py \
+python scripts/diagnostics/data/audit_iemocap_feature_pkl.py \
   --legacy-pkl third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl \
   --candidate-pkl data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl \
   --expected-legacy-sha256 ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3 \
@@ -51,7 +51,7 @@ python scripts/analyze/audit_iemocap_feature_pkl.py \
   --strict
 ```
 
-Clean v1 已使用 `scripts/analyze/audit_iemocap_feature_pkl.py --strict` 对照旧 PKL，严格审计结果为 `PASS`。审计确认只有 `videoText` 被替换，非文本字段以及 audio/visual 的 shape、dtype 和数值保持不变。
+Clean v1 已使用 `scripts/diagnostics/data/audit_iemocap_feature_pkl.py --strict` 对照旧 PKL，严格审计结果为 `PASS`。审计确认只有 `videoText` 被替换，非文本字段以及 audio/visual 的 shape、dtype 和数值保持不变。
 
 最终产物 SHA256 为：
 

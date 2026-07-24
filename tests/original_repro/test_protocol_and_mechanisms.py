@@ -16,7 +16,7 @@ from models.dialoguegcn.paper_aligned import (
     build_dialoguegcn_graph,
     dialoguegcn_relation_id,
 )
-from scripts.baselines.original_merc_runtime import curriculum_train_loader
+from scripts.runtime.paper_aligned import curriculum_train_loader
 from models.gsmcc.project_variant.full_context.model import (
     build_sliding_multimodal_graph,
     cross_frequency_contrastive_loss,

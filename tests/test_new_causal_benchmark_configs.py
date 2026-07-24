@@ -24,13 +24,45 @@ def _load(path: Path) -> dict:
 
 
 def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
-    for family, model_name in (
-        ("gsmcc", "causal_gsmcc_inspired"),
-        ("dialoguegcn", "causal_dialoguegcn"),
+    for family, model_name, train_dir, train_name_by_pipeline_name in (
+        (
+            "gsmcc",
+            "causal_gsmcc_inspired",
+            ROOT
+            / "configs"
+            / "baselines"
+            / "gsmcc"
+            / "iemocap"
+            / "causal_benchmark",
+            {name: name for name in VARIANTS},
+        ),
+        (
+            "dialoguegcn",
+            "causal_dialoguegcn",
+            ROOT
+            / "configs"
+            / "dialoguegcn"
+            / "unified"
+            / "iemocap"
+            / "causal_context"
+            / "legacy_mmgcn_features",
+            {
+                name: (
+                    "val_official_prefix.yaml"
+                    if name == "official_prefix.yaml"
+                    else name
+                )
+                for name in VARIANTS
+            },
+        ),
     ):
-        train_dir = ROOT / "configs" / "baselines" / family / "iemocap" / "causal_benchmark"
         pipeline_dir = ROOT / "configs" / "pipeline" / family / "iemocap" / "causal_benchmark"
-        assert {path.name for path in train_dir.glob("*.yaml")} == VARIANTS
+        expected_train_names = set(train_name_by_pipeline_name.values())
+        if family == "dialoguegcn":
+            expected_train_names.add("smoke_real_2epoch.yaml")
+        assert {
+            path.name for path in train_dir.glob("*.yaml")
+        } == expected_train_names
         assert {path.name for path in pipeline_dir.glob("*.yaml")} == VARIANTS
         folds = []
         for session in range(1, 5):
@@ -58,7 +90,7 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
             pipeline = _load(pipeline_dir / name)
             assert pipeline["model"]["name"] == model_name
             target = ROOT / pipeline["train"]["train_config_path"]
-            assert target == train_dir / name
+            assert target == train_dir / train_name_by_pipeline_name[name]
             assert target.is_file()
 
 

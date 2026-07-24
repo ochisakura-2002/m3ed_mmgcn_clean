@@ -286,6 +286,16 @@ def build_run_plan() -> list[RunSpec]:
                 "clean_roberta_features/multidag_cl_clean.yaml"
             ),
         },
+        "dialoguegcn": {
+            "legacy": Path(
+                "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+            "clean": Path(
+                "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/dialoguegcn_clean.yaml"
+            ),
+        },
     }
     for track, config_dir in (
         ("legacy", "screening"),

@@ -28,7 +28,7 @@ def test_four_model_synthetic_audit_passes_and_preserves_legacy_models(
         "mmgcn": _load("configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml"),
         "multidag": _load("configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml"),
         "gsmcc": _load("configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml"),
-        "dialoguegcn": _load("configs/baselines/dialoguegcn/iemocap/causal_benchmark/official_prefix.yaml"),
+        "dialoguegcn": _load("configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml"),
     }
     configs["mmgcn"]["model"].update(
         {"text_feature_dim": 4, "audio_feature_dim": 3, "visual_feature_dim": 2, "hidden_dim": 8}

@@ -6,7 +6,7 @@ models:
   gsmcc:
     config: configs/baselines/gsmcc/iemocap/causal_benchmark/official_prefix.yaml
   dialoguegcn:
-    config: configs/baselines/dialoguegcn/iemocap/causal_benchmark/official_prefix.yaml
+    config: configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 
 audit:
   mode: synthetic

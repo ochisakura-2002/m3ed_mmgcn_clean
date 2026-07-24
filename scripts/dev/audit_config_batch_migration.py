@@ -105,11 +105,12 @@ BATCH3_SEMANTIC_DIFF_COLUMNS = (
     "status",
     "notes",
 )
-EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17}
-EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4}
+EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10}
+EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0}
 EXPECTED_IMPLEMENTATION_COUNTS = {
     2: {"unified": 13, "paper_aligned": 4},
     3: {"unified": 13, "paper_aligned": 4},
+    4: {"unified": 6, "paper_aligned": 4},
 }
 DEFAULT_TRACKED_YAML_COUNT = 183
 SNAPSHOT_IDENTITY_FIELDS = {
@@ -793,14 +794,14 @@ def audit_batch_migration(
     ):
         errors.append(f"plan is missing column: {column}")
     required_move_columns = (
-        BATCH3_MOVE_COLUMNS if batch == 3 else MOVE_COLUMNS
+        BATCH3_MOVE_COLUMNS if batch in {3, 4} else MOVE_COLUMNS
     )
     required_reference_columns = (
-        BATCH3_REFERENCE_COLUMNS if batch == 3 else REFERENCE_COLUMNS
+        BATCH3_REFERENCE_COLUMNS if batch in {3, 4} else REFERENCE_COLUMNS
     )
     required_semantic_columns = (
         BATCH3_SEMANTIC_DIFF_COLUMNS
-        if batch == 3
+        if batch in {3, 4}
         else SEMANTIC_DIFF_COLUMNS
     )
     for column in _missing_columns(move_columns, required_move_columns):
@@ -840,6 +841,10 @@ def audit_batch_migration(
         row.get("model") != "multidag_cl" for row in batch_plan
     ):
         errors.append("Batch 3 must contain only MultiDAG configs")
+    if batch == 4 and any(
+        row.get("model") != "dialoguegcn" for row in batch_plan
+    ):
+        errors.append("Batch 4 must contain only DialogueGCN configs")
     if len(moves) != len(batch_plan):
         errors.append(
             f"moves row count {len(moves)} does not match plan {len(batch_plan)}"
@@ -877,20 +882,13 @@ def audit_batch_migration(
     errors.extend(snapshot_errors)
     after_payload, after, snapshot_errors = _load_snapshot(after_snapshot_path)
     errors.extend(snapshot_errors)
-    current_head = (
-        git_head_commit_override
-        if git_head_commit_override is not None
-        else _git_head_commit(repo_root)
-    )
-    batch2_baseline_head = (
+    snapshot_baseline_head = (
         git_head_commit_override
         if git_head_commit_override is not None
         else str(before_payload.get("git_head", ""))
     )
-    if batch in {2, 3}:
-        expected_snapshot_head = (
-            batch2_baseline_head if batch == 2 else current_head
-        )
+    if batch in {2, 3, 4}:
+        expected_snapshot_head = snapshot_baseline_head
         if not expected_snapshot_head:
             errors.append("Git HEAD commit cannot be resolved")
         expected_before_source = (
@@ -966,15 +964,20 @@ def audit_batch_migration(
             or move["implementation"] == "author_official"
         ):
             errors.append(f"{label}: author_official is forbidden")
-        if batch == 3:
-            expected_prefix = (
-                f"configs/multidag_cl/{move['implementation']}/"
+        if batch in {3, 4}:
+            expected_model = (
+                "multidag_cl" if batch == 3 else "dialoguegcn"
             )
-            if move["model"] != "multidag_cl":
-                errors.append(f"{label}: Batch 3 model must be multidag_cl")
+            expected_prefix = (
+                f"configs/{expected_model}/{move['implementation']}/"
+            )
+            if move["model"] != expected_model:
+                errors.append(
+                    f"{label}: Batch {batch} model must be {expected_model}"
+                )
             if move["implementation"] not in {"unified", "paper_aligned"}:
                 errors.append(
-                    f"{label}: Batch 3 implementation must be unified "
+                    f"{label}: Batch {batch} implementation must be unified "
                     "or paper_aligned"
                 )
             elif not new_path.startswith(expected_prefix):
@@ -991,7 +994,8 @@ def audit_batch_migration(
                 )
             if move["is_official"] != "NO":
                 errors.append(
-                    f"{label}: paper_aligned/Batch 3 configs must be non-official"
+                    f"{label}: paper_aligned/Batch {batch} configs "
+                    "must be non-official"
                 )
             for flag in (
                 "is_smoke",
@@ -1019,7 +1023,7 @@ def audit_batch_migration(
             encoding="utf-8-sig"
         ).lower():
             errors.append(f"{new_path}: YAML contains author_official")
-        if batch == 3:
+        if batch in {3, 4}:
             model_section = (
                 parsed_disk.get("model", {})
                 if isinstance(parsed_disk, dict)
@@ -1031,15 +1035,48 @@ def audit_batch_migration(
                 else None
             )
             expected_model_name = (
-                "MultiDAGCL"
-                if move["implementation"] == "unified"
-                else "original_repro_multidag_cl"
+                (
+                    "MultiDAGCL"
+                    if move["implementation"] == "unified"
+                    else "original_repro_multidag_cl"
+                )
+                if batch == 3
+                else (
+                    "causal_dialoguegcn"
+                    if move["implementation"] == "unified"
+                    else "original_repro_dialoguegcn"
+                )
             )
             if model_name != expected_model_name:
                 errors.append(
                     f"{new_path}: model registry/consumer key mismatch: "
                     f"{model_name!r} != {expected_model_name!r}"
                 )
+            elif batch == 4:
+                registry_root = repo_root
+                if not (registry_root / "models/registry").is_dir():
+                    registry_root = Path(__file__).resolve().parents[2]
+                registry_source = (
+                    registry_root / "models/registry/causal.py"
+                    if move["implementation"] == "unified"
+                    else registry_root / "models/registry/paper_aligned.py"
+                )
+                try:
+                    registry_text = registry_source.read_text(
+                        encoding="utf-8-sig"
+                    )
+                except OSError as exc:
+                    errors.append(
+                        f"{new_path}: DialogueGCN registry source unavailable: "
+                        f"{exc}"
+                    )
+                else:
+                    quoted_key = f'"{expected_model_name}"'
+                    if quoted_key not in registry_text:
+                        errors.append(
+                            f"{new_path}: DialogueGCN registry key is missing "
+                            f"from {registry_source}"
+                        )
 
         before_entry = before.get(old_path)
         after_entry = after.get(old_path)
@@ -1063,7 +1100,7 @@ def audit_batch_migration(
             if git_head_bytes_override is not None
             else _git_commit_bytes(
                 repo_root,
-                batch2_baseline_head if batch == 2 else "HEAD",
+                snapshot_baseline_head if batch == 2 else "HEAD",
                 old_path,
             )
         )
@@ -1115,7 +1152,7 @@ def audit_batch_migration(
             and not documented_later_reference_drift
         ):
             errors.append(f"{old_path}: after snapshot semantics do not match disk")
-        if batch in {2, 3}:
+        if batch in {2, 3, 4}:
             for snapshot_label, snapshot_entry in (
                 ("before", before_entry),
                 ("after", after_entry),
@@ -1174,7 +1211,10 @@ def audit_batch_migration(
         semantic_identical = "YES" if not changes else "NO"
         if semantic_row["new_path"] != new_path:
             errors.append(f"{old_path}: semantic diff new_path mismatch")
-        if batch == 3 and semantic_row["implementation"] != move["implementation"]:
+        if (
+            batch in {3, 4}
+            and semantic_row["implementation"] != move["implementation"]
+        ):
             errors.append(f"{old_path}: semantic diff implementation mismatch")
         if semantic_row["byte_identical"] != byte_identical:
             errors.append(f"{old_path}: semantic diff byte result mismatch")
@@ -1195,15 +1235,17 @@ def audit_batch_migration(
         if semantic_row["status"] != ("PASS" if expected_allowed else "FAIL"):
             errors.append(f"{old_path}: semantic diff status mismatch")
 
-    if batch in {2, 3}:
+    expected_source_changes = {2: 4, 3: 4, 4: 0}
+    if batch in expected_source_changes:
         declared_source_changes = sum(
             move["yaml_content_changed"] == "YES"
             and _split_keys(move["approved_changed_keys"]) == {"source_config"}
             for move in moves
         )
-        if declared_source_changes != 4:
+        expected_changes = expected_source_changes[batch]
+        if declared_source_changes != expected_changes:
             errors.append(
-                f"Batch {batch} must declare exactly four "
+                f"Batch {batch} must declare exactly {expected_changes} "
                 "source_config-only YAML changes; "
                 f"found {declared_source_changes}"
             )
@@ -1316,7 +1358,7 @@ def audit_batch_migration(
                     "historical reference is outside the approved categories: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
-        if batch == 3:
+        if batch in {3, 4}:
             if row["requires_update"] not in YES_NO:
                 errors.append(
                     f"reference audit {row['source_file']}: "
@@ -1330,7 +1372,7 @@ def audit_batch_migration(
                     f"reference audit {row['source_file']}: "
                     "requires_update disagrees with historical status"
                 )
-        if batch in {2, 3} and row["updated"] == "YES":
+        if batch in {2, 3, 4} and row["updated"] == "YES":
             if (
                 row["historical_reference"] != "NO"
                 or row["remaining_reference_allowed"] != "NO"
@@ -1350,7 +1392,7 @@ def audit_batch_migration(
                     f"{row['source_file']}:{row['source_line']}"
                 )
 
-    if batch in {2, 3}:
+    if batch in {2, 3, 4}:
         reference_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for row in references:
             if row["updated"] != "YES":
@@ -1360,7 +1402,7 @@ def audit_batch_migration(
                 category = "test"
             elif source.startswith("docs/"):
                 category = "doc"
-            elif batch == 3 and source.startswith("configs/"):
+            elif batch in {3, 4} and source.startswith("configs/"):
                 category = "yaml"
             else:
                 category = "active"
@@ -1372,7 +1414,7 @@ def audit_batch_migration(
                 "test_reference_count": counts["test"],
                 "doc_reference_count": counts["doc"],
             }
-            if batch == 3:
+            if batch in {3, 4}:
                 expected_counts["yaml_reference_count"] = counts["yaml"]
             for field, expected in expected_counts.items():
                 try:

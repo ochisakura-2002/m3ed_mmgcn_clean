@@ -55,7 +55,7 @@ python scripts/baselines/debug_new_causal_graph_real_batch.py \
 
 ```bash
 python scripts/baselines/debug_new_causal_graph_real_batch.py \
-  --config configs/baselines/dialoguegcn/iemocap/causal_benchmark/official_prefix.yaml
+  --config configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
 ```
 
 Return dialogue IDs, lengths, three modality shapes, logits/representation

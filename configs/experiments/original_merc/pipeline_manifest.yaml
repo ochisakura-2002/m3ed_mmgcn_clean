@@ -32,22 +32,22 @@ stages:
     - {config: configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml}
     - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml}
     - {config: configs/experiments/original_merc/screening/gsmcc_legacy.yaml}
-    - {config: configs/experiments/original_merc/screening/dialoguegcn_legacy.yaml}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml}
   clean_screening:
     - {config: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml}
     - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/multidag_cl_clean.yaml}
     - {config: configs/experiments/original_merc/clean_screening/gsmcc_clean.yaml}
-    - {config: configs/experiments/original_merc/clean_screening/dialoguegcn_clean.yaml}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/dialoguegcn_clean.yaml}
   legacy_folds:
     - {config: configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/legacy_fold_bases/gsmcc_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
-    - {config: configs/experiments/original_merc/legacy_fold_bases/dialoguegcn_legacy.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
   clean_folds:
     - {config: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
     - {config: configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
-    - {config: configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
+    - {config: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml, outer_test_sessions: [Ses01, Ses02, Ses03, Ses04, Ses05]}
   top2: []
 top2_policy:
   selection_source: clean_single_fold_screening_validation_only
@@ -67,4 +67,4 @@ clean_fold_candidates:
   - configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml
   - configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml
   - configs/experiments/original_merc/clean_fold_bases/gsmcc_clean.yaml
-  - configs/experiments/original_merc/clean_fold_bases/dialoguegcn_clean.yaml
+  - configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/fivefold_base.yaml

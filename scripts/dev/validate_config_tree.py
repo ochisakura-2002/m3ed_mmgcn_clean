@@ -39,7 +39,15 @@ CAUSAL_BENCHMARK_TRAIN_DIRS = {
         / "legacy_mmgcn_features"
     ),
     "gsmcc": ROOT / "configs" / "baselines" / "gsmcc" / "iemocap" / "causal_benchmark",
-    "dialoguegcn": ROOT / "configs" / "baselines" / "dialoguegcn" / "iemocap" / "causal_benchmark",
+    "dialoguegcn": (
+        ROOT
+        / "configs"
+        / "dialoguegcn"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "legacy_mmgcn_features"
+    ),
 }
 CAUSAL_BENCHMARK_PIPELINE_DIRS = {
     "mmgcn": ROOT / "configs" / "pipeline" / "mmgcn" / "iemocap" / "causal_benchmark",
@@ -66,15 +74,23 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
         / "causal_context"
         / "clean_roberta_features"
     ),
-    **{
-        family: ROOT
+    "dialoguegcn": (
+        ROOT
+        / "configs"
+        / "dialoguegcn"
+        / "unified"
+        / "iemocap"
+        / "causal_context"
+        / "clean_roberta_features"
+    ),
+    "gsmcc": (
+        ROOT
         / "configs"
         / "baselines"
-        / family
+        / "gsmcc"
         / "iemocap"
         / "clean_roberta_v1"
-        for family in ("gsmcc", "dialoguegcn")
-    },
+    ),
 }
 CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
 CLEAN_ROBERTA_V1_PIPELINE_DIRS = {
@@ -142,6 +158,28 @@ ORIGINAL_MERC_CANONICAL_FORMAL_CONFIGS = {
         "clean_fold_bases": (
             ROOT
             / "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/fivefold_base.yaml"
+        ),
+    },
+    "dialoguegcn": {
+        "screening": (
+            ROOT
+            / "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/screening.yaml"
+        ),
+        "clean_screening": (
+            ROOT
+            / "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+            "clean_roberta_features/dialoguegcn_clean.yaml"
+        ),
+        "legacy_fold_bases": (
+            ROOT
+            / "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+            "legacy_mmgcn_features/fivefold_base.yaml"
+        ),
+        "clean_fold_bases": (
+            ROOT
+            / "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
             "clean_roberta_features/fivefold_base.yaml"
         ),
     },
@@ -238,6 +276,7 @@ CAUSAL_BENCHMARK_VARIANTS = {
     "val_ses04.yaml": ("session_holdout", "Ses04"),
 }
 CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
+    "dialoguegcn": {"smoke_real_2epoch.yaml"},
     "multidag_cl": {
         "context_past_all_causal_tav_smoke.yaml",
         "context_w5_tav_quick.yaml",
@@ -248,7 +287,7 @@ CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
 
 def causal_training_name(family: str, pipeline_name: str) -> str:
     if (
-        family in {"mmgcn", "multidag_cl"}
+        family in {"mmgcn", "multidag_cl", "dialoguegcn"}
         and pipeline_name == "official_prefix.yaml"
     ):
         return "val_official_prefix.yaml"
@@ -257,7 +296,7 @@ def causal_training_name(family: str, pipeline_name: str) -> str:
 
 def causal_pipeline_name(family: str, training_name: str) -> str:
     if (
-        family in {"mmgcn", "multidag_cl"}
+        family in {"mmgcn", "multidag_cl", "dialoguegcn"}
         and training_name == "val_official_prefix.yaml"
     ):
         return "official_prefix.yaml"

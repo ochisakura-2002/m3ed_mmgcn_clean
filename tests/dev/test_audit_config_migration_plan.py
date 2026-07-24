@@ -154,7 +154,7 @@ def test_duplicate_candidate_path_fails(tmp_path: Path) -> None:
         [_mapping(OLD_A, CANDIDATE_A), _mapping(OLD_B, CANDIDATE_A)],
         {OLD_A, OLD_B},
     )
-    assert any("collision is not fully marked" in error for error in errors)
+    assert any("globally unique" in error for error in errors)
 
 
 def test_gsmcc_author_official_fails(tmp_path: Path) -> None:
@@ -198,7 +198,7 @@ def test_invalid_candidate_path_fails(
     assert any(expected in error for error in errors)
 
 
-def test_fully_marked_manual_review_collision_passes(tmp_path: Path) -> None:
+def test_fully_marked_manual_review_collision_still_fails(tmp_path: Path) -> None:
     first_classification = _classification(OLD_A, CANDIDATE_A)
     second_classification = _classification(OLD_B, CANDIDATE_A)
     first_mapping = _mapping(OLD_A, CANDIDATE_A)
@@ -214,7 +214,7 @@ def test_fully_marked_manual_review_collision_passes(tmp_path: Path) -> None:
         [first_mapping, second_mapping],
         {OLD_A, OLD_B},
     )
-    assert errors == []
+    assert any("globally unique" in error for error in errors)
 
 
 def test_unmarked_manual_review_collision_fails(tmp_path: Path) -> None:
@@ -231,4 +231,130 @@ def test_unmarked_manual_review_collision_fails(tmp_path: Path) -> None:
         [first_mapping, second_mapping],
         {OLD_A, OLD_B},
     )
-    assert any("collision is not fully marked" in error for error in errors)
+    assert any("globally unique" in error for error in errors)
+
+
+def test_missing_modality_source_config_is_required(tmp_path: Path) -> None:
+    classification = _classification(OLD_A, CANDIDATE_A)
+    mapping = _mapping(OLD_A, CANDIDATE_A)
+    for row in (classification, mapping):
+        row["model"] = "multidag_cl"
+        row["dataset"] = "iemocap"
+        row["feature_set"] = "legacy_mmgcn_features"
+        row["purpose"] = "missing_modality"
+        row["scope"] = "pipeline"
+    classification["is_pipeline"] = "YES"
+    classification["is_smoke"] = "NO"
+    classification["is_ablation"] = "YES"
+    classification["is_modality_missing"] = "YES"
+    errors = _run(tmp_path, [classification], [mapping], {OLD_A})
+    assert any("source_config equivalent" in error for error in errors)
+
+
+def test_distinct_context_source_runs_use_distinct_candidates(
+    tmp_path: Path,
+) -> None:
+    context_candidate = (
+        "configs/benchmarks/ablations/missing_modality/pipelines/"
+        "multidag_cl/legacy_mmgcn_features/"
+        "missing_eval_from_context_w5_tav.yaml"
+    )
+    stable_candidate = (
+        "configs/benchmarks/ablations/missing_modality/pipelines/"
+        "multidag_cl/legacy_mmgcn_features/"
+        "missing_eval_from_stable_context_w5_tav.yaml"
+    )
+    context_source = (
+        "configs/benchmarks/ablations/context/pipelines/"
+        "multidag_cl/context_w5_tav.yaml"
+    )
+    stable_source = (
+        "configs/benchmarks/ablations/stability/pipelines/"
+        "multidag_cl/context_w5_tav_stable_candidate.yaml"
+    )
+    classifications = [
+        _classification(OLD_A, context_candidate),
+        _classification(OLD_B, stable_candidate),
+    ]
+    mappings = [
+        _mapping(OLD_A, context_candidate),
+        _mapping(OLD_B, stable_candidate),
+    ]
+    for classification, source in zip(
+        classifications, (context_source, stable_source)
+    ):
+        classification.update(
+            {
+                "model": "multidag_cl",
+                "implementation": "unified",
+                "dataset": "iemocap",
+                "context_mode": "causal_context",
+                "feature_set": "legacy_mmgcn_features",
+                "purpose": "missing_modality",
+                "scope": "pipeline",
+                "is_pipeline": "YES",
+                "is_smoke": "NO",
+                "is_ablation": "YES",
+                "is_modality_missing": "YES",
+                "referenced_configs": source,
+            }
+        )
+    for mapping in mappings:
+        mapping.update(
+            {
+                "model": "multidag_cl",
+                "implementation": "unified",
+                "dataset": "iemocap",
+                "context_mode": "causal_context",
+                "feature_set": "legacy_mmgcn_features",
+                "purpose": "missing_modality",
+                "scope": "pipeline",
+                "migration_batch": "Batch 7",
+            }
+        )
+    errors = _run(
+        tmp_path,
+        classifications,
+        mappings,
+        {OLD_A, OLD_B},
+    )
+    assert errors == []
+
+
+def test_different_source_runs_cannot_share_candidate(tmp_path: Path) -> None:
+    classifications = [
+        _classification(OLD_A, CANDIDATE_A),
+        _classification(OLD_B, CANDIDATE_A),
+    ]
+    mappings = [
+        _mapping(OLD_A, CANDIDATE_A),
+        _mapping(OLD_B, CANDIDATE_A),
+    ]
+    classifications[0]["referenced_configs"] = (
+        "configs/benchmarks/ablations/context/pipelines/"
+        "multidag_cl/context_w5_tav.yaml"
+    )
+    classifications[1]["referenced_configs"] = (
+        "configs/benchmarks/ablations/stability/pipelines/"
+        "multidag_cl/context_w5_tav_stable_candidate.yaml"
+    )
+    for classification in classifications:
+        classification["purpose"] = "missing_modality"
+        classification["scope"] = "pipeline"
+        classification["is_pipeline"] = "YES"
+        classification["is_smoke"] = "NO"
+        classification["is_ablation"] = "YES"
+        classification["is_modality_missing"] = "YES"
+    for mapping in mappings:
+        mapping["purpose"] = "missing_modality"
+        mapping["scope"] = "pipeline"
+    errors = _run(
+        tmp_path,
+        classifications,
+        mappings,
+        {OLD_A, OLD_B},
+    )
+    assert any(
+        "different source-run semantics share candidate_new_path" in error
+        for error in errors
+    )

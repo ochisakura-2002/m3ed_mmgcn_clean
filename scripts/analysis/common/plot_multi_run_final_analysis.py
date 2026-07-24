@@ -6,7 +6,7 @@ Purpose:
 
 Input:
     Config YAML:
-        configs/analysis/multi_run_final_analysis.yaml
+        configs/benchmarks/paper/analysis/multi_run_metrics.yaml
 
     Master tables:
         outputs/<YYYYMMDD>/analysis/analysis_tables/evaluation_master.csv
@@ -30,7 +30,7 @@ Output:
 
 Usage:
     python scripts/analysis/common/plot_multi_run_final_analysis.py \
-      --config configs/analysis/multi_run_final_analysis.yaml
+      --config configs/benchmarks/paper/analysis/multi_run_metrics.yaml
 
 Important:
     If runs changed, rebuild master tables first:

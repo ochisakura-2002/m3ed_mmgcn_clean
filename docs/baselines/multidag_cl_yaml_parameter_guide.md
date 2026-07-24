@@ -123,7 +123,7 @@ logs, but it does not call the plotting scripts.
 | `single_run_analysis.final_analysis` | Calls `plot_single_run_final_analysis.py`. | Writes `figures/final_analysis/`. | `true`. | Uses `logs/evaluations/test_best_model/`. |
 | `missing_modalities.enabled` | Enables test-time missing-modality stage. | Calls the missing-modality evaluator when true. | `false` in context pipelines, `true` in missing-modality pipeline. | Keeps robustness evaluation separate from training. |
 | `multi_run_training_curves.enabled` | Enables cross-run training-curve plots. | Requires a multi-run analysis YAML with completed run ids. | `false` until formal runs exist. | Avoids hard-coding run ids before they are created. |
-| `multi_run_training_curves.config_path` | Config for cross-run training plots. | Used only when the stage is enabled. | `configs/analysis/multidag_cl/iemocap/context_compare.yaml`. | Template is ready but `runs` is empty. |
+| `multi_run_training_curves.config_path` | Config for cross-run training plots. | Used only when the stage is enabled. | `configs/benchmarks/ablations/analysis/multidag_cl/context_compare.yaml`. | Template is ready but `runs` is empty. |
 | `multi_run_final_analysis.enabled` | Enables cross-run final-metric plots. | Requires completed run ids and test evaluations. | `false` until formal runs exist. | Keeps context and modality comparisons separate. |
 | `multi_run_final_analysis.config_path` | Config for cross-run final plots. | Used only when the stage is enabled. | Context or modality comparison YAML. | Lets report figures be built after formal runs finish. |
 

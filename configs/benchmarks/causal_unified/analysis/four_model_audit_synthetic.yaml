@@ -1,6 +1,6 @@
 models:
   mmgcn:
-    config: configs/baselines/mmgcn/iemocap/causal_benchmark/official_prefix.yaml
+    config: configs/mmgcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
   multidag:
     config: configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/val_official_prefix.yaml
   gsmcc:

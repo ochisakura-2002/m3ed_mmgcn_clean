@@ -38,27 +38,27 @@
 3. `paper_aligned` 表示项目内按论文结构实现，不等于 `author_official`；当前 MultiDAG+CL 项目实现不是作者官方完整复现，GS-MCC 两套实现均为 `project_variant`。
 4. `MMGCN` 是当前经典复现锚点，不得表述为已经选定的最终 baseline；SDT 位于 `models/experimental/sdt/`，仍不进入正式 baseline 排名。
 5. 目录重构不得改变模型数学行为、forward 契约或 `state_dict` schema。
-6. 模型目录与 scripts layout 重构均已完成；`CONFIG_LAYOUT_AUDIT=COMPLETED`、`CONFIG_LAYOUT_REFACTOR=IN_PROGRESS`。Config Batch 1--6 已完成；Batch 6 迁移 37 个 YAML（2 个 cross-model benchmark、35 个 model-scoped ablation），YAML 内容变化与未批准语义变化均为 0。当前剩余 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group。
-7. 作者官方 MultiDAG+CL 与 GS-MCC 必须等全部 config migration batch 与门禁完成后再部署；当前不要提前移动 `configs/`。
+6. 模型目录、scripts layout 与 config layout 重构均已完成；`CONFIG_LAYOUT_AUDIT=COMPLETED`、`CONFIG_LAYOUT_REFACTOR=COMPLETED`。Config Batch 1--7 全部完成，183 个 tracked YAML 已进入 canonical tree，active old references、manual review、candidate collision 与未批准语义变化均为 0。
+7. 作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始；后续部署必须作为独立任务执行，不得把现有 `paper_aligned` 或 `project_variant` 误写为 `author_official`。
 8. 不要为定位模型代码扫描 `outputs/`、`data/`、`third_party/` 或 `tmp/`。
 
 ## 当前脚本目录与阶段
 
 1. 生产执行脚本的 canonical 路径位于 `scripts/models/`、`scripts/runtime/`、`scripts/evaluation/` 和 `scripts/workflows/`。
 2. 迁移前的训练、评估、pipeline 与实验 launcher 路径只保留 compatibility wrapper；新代码禁止依赖这些旧 wrapper。
-3. Config Batch 1--6 已迁移；Batch 7 的旧 YAML 中的 script path 继续由 compatibility wrapper 支持。
+3. Config Batch 1--7 已迁移；生产配置、脚本、测试与活动文档必须使用 canonical config path。
 4. Phase 3B1 analysis layout 已完成；canonical 分析实现位于 `scripts/analysis/{common,causal,paper_aligned,models}/`。
 5. 被迁移的 tracked `scripts/analyze/` 入口只保留 compatibility wrapper；新代码禁止 import 这些旧 analysis wrapper。
 6. Phase 3B2 support layout 已完成；canonical 支持脚本位于 `scripts/data/{build,prepare,inspect}/`、`scripts/diagnostics/{data,models,experiments}/`、`scripts/maintenance/` 与 `scripts/dev/`。
 7. `data/build` 生成数据或特征资产，`data/prepare` 做训练前数据准备，`data/inspect` 只读查看数据；`diagnostics` 判定数据、模型或实验异常；`maintenance` 可更新仓库/汇总资产，`dev` 只放静态验证与开发门禁。
 8. 迁移前的 debug、diagnose、features、prepare、inspect 及 deferred analyze/support 路径只保留 compatibility wrapper；新代码禁止 import 这些旧 support wrapper。
 9. 所有 tracked 生产 scripts 已切换到 canonical model import；旧 model import 只允许保留在专用兼容性测试中。
-10. `CONFIG_LAYOUT_REFACTOR=IN_PROGRESS`；`CONFIG_BATCH_1=COMPLETED`、`CONFIG_BATCH_2=COMPLETED`、`CONFIG_BATCH_3=COMPLETED`、`CONFIG_BATCH_4=COMPLETED`、`CONFIG_BATCH_5=COMPLETED`、`CONFIG_BATCH_6=COMPLETED`、`CONFIG_BATCH_7=NOT_STARTED`。
+10. `CONFIG_LAYOUT_REFACTOR=COMPLETED`；`CONFIG_BATCH_1=COMPLETED`、`CONFIG_BATCH_2=COMPLETED`、`CONFIG_BATCH_3=COMPLETED`、`CONFIG_BATCH_4=COMPLETED`、`CONFIG_BATCH_5=COMPLETED`、`CONFIG_BATCH_6=COMPLETED`、`CONFIG_BATCH_7=COMPLETED`。
 11. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不读取其内容作为生产依据、不修改、不 staged。
 12. 配置 provenance 必须依据 YAML 内容、registry 与真实 consumer，不得根据旧文件名中的 `original`、`official` 等字样猜测。
 13. YAML 迁移不保留双份真相，也不创建旧 YAML wrapper；发生候选路径碰撞时必须先人工消解。
-14. 后续配置迁移严格按 `docs/refactors/CONFIG_MIGRATION_PLAN_PHASE4A.csv` 的 batch 执行，每次任务只允许一个 batch。
-15. 下一阶段仅为 Config Batch 7；执行 Batch 7 前，必须先决定剩余 1 个 candidate collision group 是合并，还是通过独立任务补足机器可读 source-run 语义。
+14. Phase 4A 配置迁移已经结束；不得在没有新计划与独立审计的情况下继续移动 canonical YAML。
+15. Batch 7 的 missing-modality collision 已按普通 context 与 stable context 的不同 `source_config` 语义拆分为两个唯一 canonical path，两份配置均保留。
 
 ## 当前配置目录与阶段
 
@@ -76,5 +76,7 @@
 12. Config Batch 6 已完成：37 个 YAML 已按冻结计划移动；2 个 cross-model benchmark 分别位于 `configs/benchmarks/{causal_unified,original_merc}/`，35 个 model-scoped ablation 仍位于 MMGCN 或 MultiDAG-CL 的 canonical tree。smoke 是正交属性，不改变 `model_scoped_ablation` 角色。
 13. Batch 6 的 37 个 YAML 均 byte-identical 且 semantic-identical；共更新 59 个 active references，其中 27 个为尚未移动的 Batch 7 YAML 内部路径；保留并审计 109 个冻结历史引用，active old references、模型成员/顺序/provenance 变化、ablation/controlled-variable 变化与未批准语义变化均为 0。
 14. Batch 6 old/new 映射、快照、语义差异、引用审计、跨模型成员审计与门禁结果以 `docs/refactors/CONFIG_BATCH6_*` 为准；Phase 4A plan 与 classification 未修改，作者官方 MultiDAG+CL 和 GS-MCC 复现仍未开始。
-15. Config Batch 7 尚未开始；后续任务仍一次只执行一个 migration batch，且须先消解 Batch 7 的 candidate collision group。
-16. 两份本地 untracked 组会文件继续保持不读取为生产依据、不修改、不移动、不 staged。
+15. Config Batch 7 已完成：73 个 YAML 使用 `git mv` 迁入 `configs/benchmarks/{causal_unified,original_merc,ablations}/` 下的 canonical analysis、pipeline 与 manifest tree；旧路径剩余 0，新路径存在 73，tracked YAML 总数保持 183。
+16. Batch 7 的 context/stable-context collision 已拆为两个唯一 missing-modality canonical path；60 个 YAML 内容不变，13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。共审计 101 个更新引用和 204 个冻结历史引用，active old references 为 0。
+17. Batch 7 old/new 映射、快照、语义差异、引用审计、碰撞审查与门禁结果以 `docs/refactors/CONFIG_BATCH7_*` 为准；Phase 4A strict plan audit 与 Batch 1--7 strict migration audit 均通过。
+18. 两份本地 untracked 组会文件继续保持不读取为生产依据、不修改、不移动、不 staged。

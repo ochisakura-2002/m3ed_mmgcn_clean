@@ -10,7 +10,7 @@ from scripts.run_experiment_pipeline import choose_evaluate_script, choose_train
 
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = {
-    "official_prefix.yaml",
+    "val_official_prefix.yaml",
     "val_ses01.yaml",
     "val_ses02.yaml",
     "val_ses03.yaml",
@@ -35,14 +35,7 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
             / "iemocap"
             / "causal_context"
             / "legacy_mmgcn_features",
-            {
-                name: (
-                    "val_official_prefix.yaml"
-                    if name == "official_prefix.yaml"
-                    else name
-                )
-                for name in VARIANTS
-            },
+            {name: name for name in VARIANTS},
         ),
         (
             "dialoguegcn",
@@ -54,17 +47,18 @@ def test_new_benchmark_and_pipeline_trees_are_complete_and_consistent() -> None:
             / "iemocap"
             / "causal_context"
             / "legacy_mmgcn_features",
-            {
-                name: (
-                    "val_official_prefix.yaml"
-                    if name == "official_prefix.yaml"
-                    else name
-                )
-                for name in VARIANTS
-            },
+            {name: name for name in VARIANTS},
         ),
     ):
-        pipeline_dir = ROOT / "configs" / "pipeline" / family / "iemocap" / "causal_benchmark"
+        pipeline_dir = (
+            ROOT
+            / "configs"
+            / "benchmarks"
+            / "causal_unified"
+            / "pipelines"
+            / family
+            / "legacy_mmgcn_features"
+        )
         expected_train_names = set(train_name_by_pipeline_name.values())
         expected_train_names.add("smoke_real_2epoch.yaml")
         assert {

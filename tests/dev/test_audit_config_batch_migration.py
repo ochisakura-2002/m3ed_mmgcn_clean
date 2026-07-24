@@ -33,6 +33,7 @@ from scripts.dev.audit_config_batch_migration import (
     preview_batch_migration,
 )
 from scripts.dev.audit_config_migration_plan import MAPPING_COLUMNS
+from scripts.dev.audit_config_migration_plan import CLASSIFICATION_COLUMNS
 
 
 OLD_A = "configs/smoke/a.yaml"
@@ -340,6 +341,111 @@ def _make_fixture(tmp_path: Path) -> Fixture:
     )
     _persist(fixture)
     return fixture
+
+
+def _make_batch7_preview_fixture(
+    tmp_path: Path,
+) -> tuple[
+    Path,
+    Path,
+    list[dict[str, str]],
+    list[dict[str, str]],
+    set[str],
+    dict[str, str],
+]:
+    context_candidate = (
+        "configs/benchmarks/ablations/missing_modality/pipelines/"
+        "multidag_cl/legacy_mmgcn_features/"
+        "missing_eval_from_context_w5_tav.yaml"
+    )
+    stable_candidate = (
+        "configs/benchmarks/ablations/missing_modality/pipelines/"
+        "multidag_cl/legacy_mmgcn_features/"
+        "missing_eval_from_stable_context_w5_tav.yaml"
+    )
+    context_source = (
+        "configs/benchmarks/ablations/context/pipelines/"
+        "multidag_cl/context_w5_tav.yaml"
+    )
+    stable_source = (
+        "configs/benchmarks/ablations/stability/pipelines/"
+        "multidag_cl/context_w5_tav_stable_candidate.yaml"
+    )
+    candidates = [
+        context_candidate,
+        stable_candidate,
+        context_source,
+        stable_source,
+        *[
+            "configs/benchmarks/causal_unified/pipelines/"
+            f"multidag_cl/fixture_{index:02d}.yaml"
+            for index in range(69)
+        ],
+    ]
+    plan_rows: list[dict[str, str]] = []
+    classification_rows: list[dict[str, str]] = []
+    tracked: set[str] = set()
+    current: dict[str, str] = {}
+    for index, candidate in enumerate(candidates):
+        old_path = f"configs/batch7/old_{index:02d}.yaml"
+        plan_row = _plan_row(old_path, candidate, batch="Batch 7")
+        plan_row.update(
+            {
+                "model": "multidag_cl",
+                "implementation": "unified",
+                "dataset": "iemocap",
+                "context_mode": "causal_context",
+                "feature_set": "legacy_mmgcn_features",
+                "purpose": (
+                    "missing_modality" if index < 2 else "formal"
+                ),
+                "scope": "pipeline",
+            }
+        )
+        plan_rows.append(plan_row)
+        classification = {
+            column: "" for column in CLASSIFICATION_COLUMNS
+        }
+        classification.update(
+            {
+                "old_path": old_path,
+                "model": plan_row["model"],
+                "implementation": plan_row["implementation"],
+                "dataset": plan_row["dataset"],
+                "context_mode": plan_row["context_mode"],
+                "feature_set": plan_row["feature_set"],
+                "purpose": plan_row["purpose"],
+                "scope": plan_row["scope"],
+                "candidate_new_path": candidate,
+                "manual_review": "NO",
+                "referenced_configs": (
+                    context_source
+                    if index == 0
+                    else stable_source
+                    if index == 1
+                    else ""
+                ),
+            }
+        )
+        classification_rows.append(classification)
+        tracked.add(old_path)
+        current[old_path] = "project:\n  name: batch7_fixture\n"
+    plan_path = tmp_path / "plan.csv"
+    classification_path = tmp_path / "classification.csv"
+    _write_csv(plan_path, MAPPING_COLUMNS, plan_rows)
+    _write_csv(
+        classification_path,
+        CLASSIFICATION_COLUMNS,
+        classification_rows,
+    )
+    return (
+        plan_path,
+        classification_path,
+        plan_rows,
+        classification_rows,
+        tracked,
+        current,
+    )
 
 
 def _make_batch2_fixture(tmp_path: Path) -> Fixture:
@@ -1658,6 +1764,98 @@ def test_preview_does_not_pollute_actual_change_counts(tmp_path: Path) -> None:
         "ACTUAL_YAML_CONTENT_MODIFICATIONS": 0,
         "ACTUAL_UNAPPROVED_SEMANTIC_CHANGES": 0,
     }
+
+
+def test_batch7_resolved_collision_preview_passes_without_pollution(
+    tmp_path: Path,
+) -> None:
+    (
+        plan_path,
+        classification_path,
+        _,
+        _,
+        tracked,
+        current,
+    ) = _make_batch7_preview_fixture(tmp_path)
+
+    metrics, errors = preview_batch_migration(
+        tmp_path,
+        7,
+        plan_path,
+        classification_path=classification_path,
+        strict=True,
+        tracked_yaml_override=tracked,
+        working_text_override=current,
+        index_text_override=current,
+        expected_path_changes=0,
+    )
+
+    assert errors == []
+    assert metrics["BATCH7_PLANNED_YAML"] == 73
+    assert metrics["BATCH7_READY_YAML"] == 73
+    assert metrics["BATCH7_BLOCKED_YAML"] == 0
+    assert metrics["CANDIDATE_PATH_COLLISIONS"] == 0
+    assert metrics["MANUAL_REVIEW_REMAINING"] == 0
+    assert metrics["COLLISION_ROWS_REMAINING"] == 0
+    assert metrics["PREVIEW_STATE_POLLUTION_REMAINING"] == 0
+    assert metrics["ACTUAL_YAML_CONTENT_MODIFICATIONS"] == 0
+    assert metrics["ACTUAL_UNAPPROVED_SEMANTIC_CHANGES"] == 0
+
+
+def test_batch7_manual_review_blocks_preview(tmp_path: Path) -> None:
+    (
+        plan_path,
+        classification_path,
+        plan_rows,
+        _,
+        tracked,
+        current,
+    ) = _make_batch7_preview_fixture(tmp_path)
+    plan_rows[0]["manual_review"] = "YES"
+    plan_rows[0]["collision_status"] = "MANUAL_REVIEW"
+    _write_csv(plan_path, MAPPING_COLUMNS, plan_rows)
+
+    metrics, errors = preview_batch_migration(
+        tmp_path,
+        7,
+        plan_path,
+        classification_path=classification_path,
+        tracked_yaml_override=tracked,
+        working_text_override=current,
+        index_text_override=current,
+        expected_path_changes=0,
+    )
+
+    assert metrics["BATCH7_BLOCKED_YAML"] == 1
+    assert metrics["MANUAL_REVIEW_REMAINING"] == 1
+    assert any("manual_review rows remain" in error for error in errors)
+
+
+def test_batch7_candidate_collision_blocks_preview(tmp_path: Path) -> None:
+    (
+        plan_path,
+        classification_path,
+        plan_rows,
+        _,
+        tracked,
+        current,
+    ) = _make_batch7_preview_fixture(tmp_path)
+    plan_rows[1]["candidate_new_path"] = plan_rows[0]["candidate_new_path"]
+    _write_csv(plan_path, MAPPING_COLUMNS, plan_rows)
+
+    metrics, errors = preview_batch_migration(
+        tmp_path,
+        7,
+        plan_path,
+        classification_path=classification_path,
+        tracked_yaml_override=tracked,
+        working_text_override=current,
+        index_text_override=current,
+        expected_path_changes=0,
+    )
+
+    assert metrics["CANDIDATE_PATH_COLLISIONS"] == 1
+    assert any("candidate collisions remain" in error for error in errors)
 
 
 def test_preview_approved_source_config_is_not_unapproved_actual(

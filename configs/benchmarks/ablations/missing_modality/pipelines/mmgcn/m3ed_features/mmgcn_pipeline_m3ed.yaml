@@ -1,0 +1,46 @@
+project:
+  pipeline_name: M3ED_mmgcn_pipeline_full_missing_modalities
+dataset:
+  name: M3ED
+model:
+  name: MMGCN
+train:
+  enabled: true
+  train_config_path: configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml
+evaluation:
+  enabled: true
+  splits:
+  - val
+  - test
+  checkpoint_name: best_model.pt
+analysis_tables:
+  enabled: true
+single_run_analysis:
+  enabled: true
+  training_curves: true
+  final_analysis: true
+multi_run_training_curves:
+  enabled: false
+  config_path: configs/benchmarks/paper/analysis/multi_run_curves.yaml
+multi_run_final_analysis:
+  enabled: false
+  config_path: configs/benchmarks/paper/analysis/multi_run_metrics.yaml
+run_control:
+  skip_train_use_run_id: ''
+execution:
+  dry_run: false
+missing_modalities:
+  enabled: true
+  split: test
+  checkpoint_name: best_model.pt
+  settings:
+  - TAV
+  - TA
+  - TV
+  - AV
+  - T
+  - A
+  - V
+  output_subdir: missing_modalities
+  make_figures: true
+  skip_if_not_full_train_modalities: true

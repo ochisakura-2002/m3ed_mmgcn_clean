@@ -41,11 +41,26 @@ ORIGINAL_MERC_PROTOCOL_VERSION = "original_merc_three_track_v2"
 FORMAL_ORIGINAL_MERC = "formal_original_merc"
 SMOKE_ORIGINAL_MERC = "smoke_original_merc"
 OUT_OF_SCOPE = "out_of_scope"
-FORMAL_CONFIG_PREFIX = "configs/experiments/original_merc/"
-GSMCC_FORMAL_CONFIG_PREFIX = (
-    "configs/gsmcc/project_variant/iemocap/full_context/"
+CANONICAL_FORMAL_CONFIG_PATHS = frozenset(
+    {
+        "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/dialoguegcn_clean.yaml",
+        "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/screening.yaml",
+        "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/mmgcn_clean.yaml",
+        "configs/mmgcn/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/screening.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+        "clean_roberta_features/multidag_cl_clean.yaml",
+        "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+        "legacy_mmgcn_features/screening.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/"
+        "clean_roberta_features/gsmcc_clean.yaml",
+        "configs/gsmcc/project_variant/iemocap/full_context/"
+        "legacy_mmgcn_features/screening.yaml",
+    }
 )
-SMOKE_CONFIG_PREFIX = "configs/smoke/original_repro/"
 CANONICAL_SMOKE_CONFIG_PATHS = frozenset(
     {
         "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
@@ -229,12 +244,12 @@ def classify_run_scope(run_dir: Path) -> dict[str, Any]:
         config.get("model", {}).get("name"), metadata.get("model_name")
     ) or "unknown"
     exact_protocol = protocol_version == ORIGINAL_MERC_PROTOCOL_VERSION
-    formal_source = _path_belongs_to(
-        config_path, FORMAL_CONFIG_PREFIX
-    ) or _path_belongs_to(config_path, GSMCC_FORMAL_CONFIG_PREFIX)
-    smoke_source = _path_belongs_to(
-        config_path, SMOKE_CONFIG_PREFIX
-    ) or _path_matches_any(config_path, CANONICAL_SMOKE_CONFIG_PATHS)
+    formal_source = _path_matches_any(
+        config_path, CANONICAL_FORMAL_CONFIG_PATHS
+    )
+    smoke_source = _path_matches_any(
+        config_path, CANONICAL_SMOKE_CONFIG_PATHS
+    )
     generated_source = _path_belongs_to(config_path, GENERATED_CONFIG_PREFIX)
     generated_formal_fold = generated_source and str(profile or "").startswith(
         "formal_"

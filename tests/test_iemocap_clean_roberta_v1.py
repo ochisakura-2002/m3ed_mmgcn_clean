@@ -67,7 +67,11 @@ CLEAN_CONFIGS = (
     ROOT / "configs/dialoguegcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml",
 )
 CLEAN_FORMAL_PIPELINE_CONFIGS = tuple(
-    ROOT / f"configs/pipeline/{family}/iemocap/clean_roberta_v1/val_ses0{session}.yaml"
+    ROOT
+    / (
+        "configs/benchmarks/causal_unified/pipelines/"
+        f"{family}/clean_roberta_features/val_ses0{session}.yaml"
+    )
     for family in ("mmgcn", "multidag_cl")
     for session in range(1, 5)
 )

@@ -208,8 +208,33 @@ BATCH6_MODEL_MEMBERSHIP_COLUMNS = (
     "status",
     "notes",
 )
-EXPECTED_BATCH_COUNTS = {1: 16, 2: 17, 3: 17, 4: 10, 5: 13, 6: 37}
-EXPECTED_PREVIEW_PATH_CHANGES = {2: 4, 3: 4, 4: 0, 5: 0, 6: 0}
+BATCH7_MOVE_COLUMNS = (
+    BATCH3_MOVE_COLUMNS[:14]
+    + ("source_config", "source_run_semantics")
+    + BATCH3_MOVE_COLUMNS[14:]
+)
+BATCH7_SEMANTIC_DIFF_COLUMNS = (
+    BATCH3_SEMANTIC_DIFF_COLUMNS[:3]
+    + ("source_config", "source_run_semantics")
+    + BATCH3_SEMANTIC_DIFF_COLUMNS[3:]
+)
+EXPECTED_BATCH_COUNTS = {
+    1: 16,
+    2: 17,
+    3: 17,
+    4: 10,
+    5: 13,
+    6: 37,
+    7: 73,
+}
+EXPECTED_PREVIEW_PATH_CHANGES = {
+    2: 4,
+    3: 4,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 20,
+}
 EXPECTED_IMPLEMENTATION_COUNTS = {
     2: {"unified": 13, "paper_aligned": 4},
     3: {"unified": 13, "paper_aligned": 4},
@@ -332,6 +357,18 @@ def _is_relative_repo_path(value: str) -> bool:
 def _batch_number(value: str) -> int | None:
     match = re.fullmatch(r"Batch ([1-7])", value)
     return int(match.group(1)) if match else None
+
+
+def _config_references(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split("|") if item.strip())
+
+
+def _source_run_semantics(references: Sequence[str]) -> str:
+    if any("stable" in PurePosixPath(reference).stem for reference in references):
+        return "stable_context"
+    if any("context" in PurePosixPath(reference).stem for reference in references):
+        return "context"
+    return "declared_source_config" if references else ""
 
 
 def _canonical_json(value: Any) -> str:
@@ -730,7 +767,7 @@ def _validate_path_changes(
     errors: list[str] = []
     for path in sorted(changed_paths):
         leaf = _path_leaf(path)
-        if leaf not in APPROVED_PATH_KEYS:
+        if not _is_approved_path_change(path):
             errors.append(f"{path}: key is not an approved path key")
             continue
         try:
@@ -748,7 +785,7 @@ def _validate_path_changes(
             errors.append(f"{path}: after value is not a safe repository path")
             continue
 
-        if leaf in CONFIG_PATH_KEYS:
+        if leaf in CONFIG_PATH_KEYS or ".source_templates." in path:
             if not before_value.startswith("configs/"):
                 errors.append(f"{path}: before value must be under configs/")
             if not after_value.startswith("configs/"):
@@ -839,6 +876,128 @@ def preview_batch_migration(
         errors.append(f"{batch_label} plan contains duplicate old_path values")
     if len(plan_by_candidate) != len(batch_plan):
         errors.append(f"{batch_label} plan contains duplicate candidate_new_path values")
+
+    batch7_metrics: dict[str, int] = {}
+    if batch == 7:
+        classification_path = classification_path or (
+            repo_root / "docs/refactors/CONFIG_CLASSIFICATION_PHASE4A.csv"
+        )
+        try:
+            classification_columns, classification = _read_csv(
+                classification_path
+            )
+        except OSError as exc:
+            return {}, [f"cannot load classification: {exc}"]
+        required_classification = (
+            "old_path",
+            "purpose",
+            "scope",
+            "referenced_configs",
+            "candidate_new_path",
+            "manual_review",
+        )
+        for column in _missing_columns(
+            classification_columns, required_classification
+        ):
+            errors.append(f"classification is missing column: {column}")
+        classification_by_old = {
+            row["old_path"]: row
+            for row in classification
+            if row.get("old_path")
+        }
+        candidate_counts = Counter(
+            row["candidate_new_path"] for row in batch_plan
+        )
+        collision_groups = sum(
+            count > 1 for count in candidate_counts.values()
+        )
+        manual_remaining = sum(
+            row.get("manual_review") != "NO" for row in batch_plan
+        )
+        unresolved_collision_rows = sum(
+            row.get("collision_status") != "CLEAR" for row in batch_plan
+        )
+        blocked_rows = sum(
+            row.get("manual_review") != "NO"
+            or row.get("collision_status") != "CLEAR"
+            for row in batch_plan
+        )
+        batch7_metrics = {
+            "BATCH7_PLANNED_YAML": len(batch_plan),
+            "BATCH7_READY_YAML": len(batch_plan) - blocked_rows,
+            "BATCH7_BLOCKED_YAML": blocked_rows,
+            "CANDIDATE_PATH_COLLISIONS": collision_groups,
+            "MANUAL_REVIEW_REMAINING": manual_remaining,
+            "COLLISION_ROWS_REMAINING": unresolved_collision_rows,
+            "PREVIEW_STATE_POLLUTION_REMAINING": 0,
+        }
+        if manual_remaining:
+            errors.append(
+                "Batch 7 cannot execute while manual_review rows remain"
+            )
+        if collision_groups or unresolved_collision_rows:
+            errors.append(
+                "Batch 7 cannot execute while candidate collisions remain"
+            )
+        all_plan_paths = {
+            row["old_path"] for row in plan
+        } | {
+            row["candidate_new_path"] for row in plan
+        }
+        for row in batch_plan:
+            classification_row = classification_by_old.get(row["old_path"])
+            if classification_row is None:
+                errors.append(
+                    f"{row['old_path']}: classification row is missing"
+                )
+                continue
+            if (
+                classification_row.get("purpose") == "missing_modality"
+                and classification_row.get("scope") == "pipeline"
+            ):
+                references = _config_references(
+                    classification_row.get("referenced_configs", "")
+                )
+                if not references:
+                    errors.append(
+                        f"{row['old_path']}: missing-modality pipeline lacks "
+                        "source_config semantics"
+                    )
+                    continue
+                unknown = [
+                    reference
+                    for reference in references
+                    if reference not in all_plan_paths
+                ]
+                if unknown:
+                    errors.append(
+                        f"{row['old_path']}: source_config is outside the "
+                        f"migration inventory: {unknown}"
+                    )
+                source_semantics = _source_run_semantics(references)
+                candidate_is_stable = (
+                    "stable" in PurePosixPath(row["candidate_new_path"]).stem
+                )
+                if (source_semantics == "stable_context") != candidate_is_stable:
+                    errors.append(
+                        f"{row['old_path']}: source-run semantics are not "
+                        "preserved by candidate_new_path"
+                    )
+        if strict:
+            expected_metrics = {
+                "BATCH7_PLANNED_YAML": 73,
+                "BATCH7_READY_YAML": 73,
+                "BATCH7_BLOCKED_YAML": 0,
+                "CANDIDATE_PATH_COLLISIONS": 0,
+                "MANUAL_REVIEW_REMAINING": 0,
+                "COLLISION_ROWS_REMAINING": 0,
+                "PREVIEW_STATE_POLLUTION_REMAINING": 0,
+            }
+            for key, expected in expected_metrics.items():
+                if batch7_metrics[key] != expected:
+                    errors.append(
+                        f"{key} mismatch: {batch7_metrics[key]} != {expected}"
+                    )
 
     batch6_metrics: dict[str, int] = {}
     if batch == 6:
@@ -1033,6 +1192,7 @@ def preview_batch_migration(
         "ACTUAL_UNAPPROVED_SEMANTIC_CHANGES": actual_unapproved,
     }
     metrics.update(batch6_metrics)
+    metrics.update(batch7_metrics)
     expected_path_changes = (
         expected_path_changes
         if expected_path_changes is not None
@@ -1147,6 +1307,13 @@ def _path_leaf(path: str) -> str:
     return path.rsplit(".", 1)[-1].split("[", 1)[0]
 
 
+def _is_approved_path_change(path: str) -> bool:
+    return (
+        _path_leaf(path) in APPROVED_PATH_KEYS
+        or ".source_templates." in path
+    )
+
+
 def _is_audit_record(path: str) -> bool:
     return path.startswith("docs/refactors/CONFIG_")
 
@@ -1202,7 +1369,7 @@ def _is_documented_later_reference_drift(
         source_file,
     )
     return bool(documented) and all(
-        _path_leaf(path) in APPROVED_PATH_KEYS
+        _is_approved_path_change(path)
         and isinstance(old_value, str)
         and isinstance(new_value, str)
         and (old_value, new_value) in documented
@@ -1326,13 +1493,14 @@ def audit_batch_migration(
     classification: list[dict[str, str]] = []
     membership_columns: list[str] = []
     membership_rows: list[dict[str, str]] = []
-    if batch == 6:
+    if batch in {6, 7}:
         try:
             classification_columns, classification = _read_csv(
                 classification_path
             )
         except OSError as exc:
             return [f"cannot load classification: {exc}"]
+    if batch == 6:
         try:
             membership_columns, membership_rows = _read_csv(
                 model_membership_audit_path
@@ -1346,7 +1514,9 @@ def audit_batch_migration(
     ):
         errors.append(f"plan is missing column: {column}")
     required_move_columns = (
-        BATCH6_MOVE_COLUMNS
+        BATCH7_MOVE_COLUMNS
+        if batch == 7
+        else BATCH6_MOVE_COLUMNS
         if batch == 6
         else BATCH5_MOVE_COLUMNS
         if batch == 5
@@ -1356,11 +1526,13 @@ def audit_batch_migration(
     )
     required_reference_columns = (
         BATCH3_REFERENCE_COLUMNS
-        if batch in {3, 4, 5, 6}
+        if batch in {3, 4, 5, 6, 7}
         else REFERENCE_COLUMNS
     )
     required_semantic_columns = (
-        BATCH6_SEMANTIC_DIFF_COLUMNS
+        BATCH7_SEMANTIC_DIFF_COLUMNS
+        if batch == 7
+        else BATCH6_SEMANTIC_DIFF_COLUMNS
         if batch == 6
         else BATCH5_SEMANTIC_DIFF_COLUMNS
         if batch == 5
@@ -1398,6 +1570,19 @@ def audit_batch_migration(
             membership_columns, BATCH6_MODEL_MEMBERSHIP_COLUMNS
         ):
             errors.append(f"model membership audit is missing column: {column}")
+    if batch == 7:
+        required_classification = (
+            "old_path",
+            "purpose",
+            "scope",
+            "referenced_configs",
+            "candidate_new_path",
+            "manual_review",
+        )
+        for column in _missing_columns(
+            classification_columns, required_classification
+        ):
+            errors.append(f"classification is missing column: {column}")
     if errors:
         return errors
 
@@ -1456,6 +1641,44 @@ def audit_batch_migration(
         for row in classification
         if row.get("old_path")
     }
+    if batch == 7:
+        candidate_counts = Counter(
+            row["candidate_new_path"] for row in batch_plan
+        )
+        if any(count > 1 for count in candidate_counts.values()):
+            errors.append("Batch 7 candidate paths must be globally unique")
+        if any(row.get("manual_review") != "NO" for row in batch_plan):
+            errors.append("Batch 7 manual_review count must be zero")
+        if any(row.get("collision_status") != "CLEAR" for row in batch_plan):
+            errors.append("Batch 7 collision count must be zero")
+        for plan_row in batch_plan:
+            old_path = plan_row["old_path"]
+            classification_row = classification_by_old.get(old_path)
+            if classification_row is None:
+                errors.append(f"{old_path}: classification row is missing")
+                continue
+            if (
+                classification_row.get("purpose") == "missing_modality"
+                and classification_row.get("scope") == "pipeline"
+            ):
+                source_references = _config_references(
+                    classification_row.get("referenced_configs", "")
+                )
+                if not source_references:
+                    errors.append(
+                        f"{old_path}: missing-modality pipeline lacks "
+                        "source_config semantics"
+                    )
+                source_semantics = _source_run_semantics(source_references)
+                candidate_is_stable = (
+                    "stable"
+                    in PurePosixPath(plan_row["candidate_new_path"]).stem
+                )
+                if (source_semantics == "stable_context") != candidate_is_stable:
+                    errors.append(
+                        f"{old_path}: source-run semantics are not preserved "
+                        "by candidate_new_path"
+                    )
     batch6_layouts: dict[str, tuple[str, str]] = {}
     if batch == 6:
         for plan_row in batch_plan:
@@ -1553,7 +1776,11 @@ def audit_batch_migration(
         )
 
     plan_by_old = {row["old_path"]: row for row in batch_plan}
+    full_plan_by_old = {row["old_path"]: row for row in plan}
     plan_by_candidate = {row["candidate_new_path"]: row for row in batch_plan}
+    full_plan_by_candidate = {
+        row["candidate_new_path"]: row for row in plan
+    }
     moves_by_old = {row["old_path"]: row for row in moves}
     if len(plan_by_old) != len(batch_plan):
         errors.append(f"{batch_label} plan contains duplicate old_path values")
@@ -1589,7 +1816,7 @@ def audit_batch_migration(
         if git_head_commit_override is not None
         else str(before_payload.get("git_head", ""))
     )
-    if batch in {2, 3, 4, 5, 6}:
+    if batch in {2, 3, 4, 5, 6, 7}:
         expected_snapshot_head = snapshot_baseline_head
         if not expected_snapshot_head:
             errors.append("Git HEAD commit cannot be resolved")
@@ -1986,6 +2213,9 @@ def audit_batch_migration(
             layout_role, benchmark_family = batch6_layouts.get(
                 old_path, ("UNKNOWN", "UNKNOWN")
             )
+            batch6_integrity_yaml = after.get(old_path, {}).get(
+                "parsed_yaml", parsed_disk
+            )
             if layout_role == "model_scoped_ablation":
                 model_section = (
                     parsed_disk.get("model", {})
@@ -2009,10 +2239,10 @@ def audit_batch_migration(
                         f"{model_name!r} != {expected_model_name!r}"
                     )
             ablation_variable = _batch6_ablation_variable(
-                plan_row, parsed_disk
+                plan_row, batch6_integrity_yaml
             )
             controlled_variables = _batch6_controlled_variables(
-                plan_row, parsed_disk
+                plan_row, batch6_integrity_yaml
             )
             if move["ablation_variable"] != _canonical_json(
                 ablation_variable
@@ -2117,7 +2347,7 @@ def audit_batch_migration(
             and not documented_later_reference_drift
         ):
             errors.append(f"{old_path}: after snapshot semantics do not match disk")
-        if batch in {2, 3, 4, 5, 6}:
+        if batch in {2, 3, 4, 5, 6, 7}:
             for snapshot_label, snapshot_entry in (
                 ("before", before_entry),
                 ("after", after_entry),
@@ -2178,6 +2408,26 @@ def audit_batch_migration(
                                 f"{old_path}: {snapshot_label} snapshot "
                                 f"{field} mismatch"
                             )
+                if batch == 7:
+                    classification_row = classification_by_old.get(
+                        old_path, {}
+                    )
+                    source_config = classification_row.get(
+                        "referenced_configs", ""
+                    )
+                    source_run_semantics = _source_run_semantics(
+                        _config_references(source_config)
+                    )
+                    expected_source_fields = {
+                        "source_config": source_config,
+                        "source_run_semantics": source_run_semantics,
+                    }
+                    for field, expected_value in expected_source_fields.items():
+                        if audit_fields.get(field) != expected_value:
+                            errors.append(
+                                f"{old_path}: {snapshot_label} snapshot "
+                                f"{field} mismatch"
+                            )
 
         changes = _semantic_changes(
             before_entry.get("parsed_yaml"), after_entry.get("parsed_yaml")
@@ -2199,7 +2449,7 @@ def audit_batch_migration(
                     f"{old_path}: approved_changed_keys do not match semantic diff"
                 )
             unapproved = sorted(
-                path for path in changes if _path_leaf(path) not in APPROVED_PATH_KEYS
+                path for path in changes if not _is_approved_path_change(path)
             )
             if unapproved:
                 errors.append(
@@ -2210,8 +2460,8 @@ def audit_batch_migration(
                 before_entry.get("parsed_yaml"),
                 after_entry.get("parsed_yaml"),
                 changes,
-                plan_by_old,
-                plan_by_candidate,
+                full_plan_by_old,
+                full_plan_by_candidate,
                 tracked,
             )
             errors.extend(f"{old_path}: {error}" for error in path_change_errors)
@@ -2221,7 +2471,7 @@ def audit_batch_migration(
         if semantic_row["new_path"] != new_path:
             errors.append(f"{old_path}: semantic diff new_path mismatch")
         if (
-            batch in {3, 4}
+            batch in {3, 4, 7}
             and semantic_row["implementation"] != move["implementation"]
         ):
             errors.append(f"{old_path}: semantic diff implementation mismatch")
@@ -2245,6 +2495,24 @@ def audit_batch_migration(
                     errors.append(
                         f"{old_path}: semantic diff {field} mismatch"
                     )
+        if batch == 7:
+            classification_row = classification_by_old.get(old_path, {})
+            expected_source_config = classification_row.get(
+                "referenced_configs", ""
+            )
+            expected_source_semantics = _source_run_semantics(
+                _config_references(expected_source_config)
+            )
+            for field, expected_value in (
+                ("source_config", expected_source_config),
+                ("source_run_semantics", expected_source_semantics),
+            ):
+                if move[field] != expected_value:
+                    errors.append(f"{old_path}: moves {field} mismatch")
+                if semantic_row[field] != expected_value:
+                    errors.append(
+                        f"{old_path}: semantic diff {field} mismatch"
+                    )
         if semantic_row["byte_identical"] != byte_identical:
             errors.append(f"{old_path}: semantic diff byte result mismatch")
         if semantic_row["semantic_identical"] != semantic_identical:
@@ -2255,7 +2523,7 @@ def audit_batch_migration(
             not changes
             or (
                 semantic_changed_keys == changed_keys
-                and all(_path_leaf(path) in APPROVED_PATH_KEYS for path in changes)
+                and all(_is_approved_path_change(path) for path in changes)
                 and not path_change_errors
             )
         )
@@ -2381,7 +2649,7 @@ def audit_batch_migration(
     if batch == 6 and any(
         move["yaml_content_changed"] != "NO" for move in moves
     ):
-        errors.append("Batch 6 YAML content changes must be zero")
+        errors.append(f"Batch {batch} YAML content changes must be zero")
 
     completed_batches = {batch}
     for candidate_batch in range(1, 8):
@@ -2491,7 +2759,7 @@ def audit_batch_migration(
                     "historical reference is outside the approved categories: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
-        if batch in {3, 4, 5, 6}:
+        if batch in {3, 4, 5, 6, 7}:
             if row["requires_update"] not in YES_NO:
                 errors.append(
                     f"reference audit {row['source_file']}: "
@@ -2505,7 +2773,7 @@ def audit_batch_migration(
                     f"reference audit {row['source_file']}: "
                     "requires_update disagrees with historical status"
                 )
-        if batch in {2, 3, 4, 5, 6} and row["updated"] == "YES":
+        if batch in {2, 3, 4, 5, 6, 7} and row["updated"] == "YES":
             if (
                 row["historical_reference"] != "NO"
                 or row["remaining_reference_allowed"] != "NO"
@@ -2514,18 +2782,32 @@ def audit_batch_migration(
                     f"updated reference has invalid flags: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
-            plan_row = plan_by_old.get(row["old_config_path"])
-            if (
-                plan_row is None
-                or row["new_config_path"]
+            plan_row = full_plan_by_old.get(row["old_config_path"])
+            dynamic_template = row["reference_type"] == "dynamic_template"
+            if plan_row is None and not dynamic_template:
+                errors.append(
+                    f"updated reference does not use a planned old path: "
+                    f"{row['source_file']}:{row['source_line']}"
+                )
+            elif (
+                plan_row is not None
+                and row["new_config_path"]
                 != plan_row["candidate_new_path"]
             ):
                 errors.append(
                     f"updated reference does not use the planned candidate: "
                     f"{row['source_file']}:{row['source_line']}"
                 )
+            elif dynamic_template and (
+                not row["old_config_path"].startswith("configs/")
+                or not row["new_config_path"].startswith("configs/")
+            ):
+                errors.append(
+                    f"dynamic template reference must remain under configs/: "
+                    f"{row['source_file']}:{row['source_line']}"
+                )
 
-    if batch in {2, 3, 4, 5, 6}:
+    if batch in {2, 3, 4, 5, 6, 7}:
         reference_counts: dict[str, Counter[str]] = defaultdict(Counter)
         for row in references:
             if row["updated"] != "YES":
@@ -2535,7 +2817,7 @@ def audit_batch_migration(
                 category = "test"
             elif source.startswith("docs/"):
                 category = "doc"
-            elif batch in {3, 4, 5, 6} and source.startswith("configs/"):
+            elif batch in {3, 4, 5, 6, 7} and source.startswith("configs/"):
                 category = "yaml"
             else:
                 category = "active"
@@ -2547,7 +2829,7 @@ def audit_batch_migration(
                 "test_reference_count": counts["test"],
                 "doc_reference_count": counts["doc"],
             }
-            if batch in {3, 4, 5, 6}:
+            if batch in {3, 4, 5, 6, 7}:
                 expected_counts["yaml_reference_count"] = counts["yaml"]
             for field, expected in expected_counts.items():
                 try:
@@ -2655,6 +2937,12 @@ def main() -> int:
             strict=bool(args.strict),
         )
         for key in (
+            "BATCH7_PLANNED_YAML",
+            "BATCH7_READY_YAML",
+            "BATCH7_BLOCKED_YAML",
+            "CANDIDATE_PATH_COLLISIONS",
+            "MANUAL_REVIEW_REMAINING",
+            "COLLISION_ROWS_REMAINING",
             "BATCH6_PLANNED_YAML",
             "CROSS_MODEL_BENCHMARK_COUNT",
             "MODEL_SCOPED_ABLATION_COUNT",

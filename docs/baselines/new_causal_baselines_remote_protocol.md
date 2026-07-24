@@ -66,7 +66,7 @@ padding-loss exclusion status.
 
 ```bash
 python scripts/analyze/run_four_model_causal_audit.py \
-  --config configs/analysis/four_model_causal_audit.yaml \
+  --config configs/benchmarks/causal_unified/analysis/four_model_audit_formal.yaml \
   --strict
 ```
 

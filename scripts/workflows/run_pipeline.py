@@ -16,7 +16,7 @@ Pipeline stages:
 
 Typical usage:
     python scripts/workflows/run_pipeline.py \
-      --config configs/pipeline/m3ed_mmgcn_pipeline.yaml
+      --config configs/benchmarks/ablations/missing_modality/pipelines/mmgcn/m3ed_features/mmgcn_pipeline_m3ed.yaml
 
 Design rule:
     Do not modify train_mmgcn.py just because the pipeline has an import problem.

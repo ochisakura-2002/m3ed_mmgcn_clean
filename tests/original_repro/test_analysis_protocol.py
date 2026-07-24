@@ -547,6 +547,48 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
         "project_paper_oriented_gsmcc": "gsmcc",
         "original_repro_dialoguegcn": "dialoguegcn",
     }
+    formal_config_sources = {
+        "original_repro_mmgcn": {
+            "clean": (
+                "configs/mmgcn/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/mmgcn_clean.yaml"
+            ),
+            "legacy": (
+                "configs/mmgcn/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+        },
+        "original_repro_multidag_cl": {
+            "clean": (
+                "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/multidag_cl_clean.yaml"
+            ),
+            "legacy": (
+                "configs/multidag_cl/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+        },
+        "project_paper_oriented_gsmcc": {
+            "clean": (
+                "configs/gsmcc/project_variant/iemocap/full_context/"
+                "clean_roberta_features/gsmcc_clean.yaml"
+            ),
+            "legacy": (
+                "configs/gsmcc/project_variant/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+        },
+        "original_repro_dialoguegcn": {
+            "clean": (
+                "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+                "clean_roberta_features/dialoguegcn_clean.yaml"
+            ),
+            "legacy": (
+                "configs/dialoguegcn/paper_aligned/iemocap/full_context/"
+                "legacy_mmgcn_features/screening.yaml"
+            ),
+        },
+    }
 
     formal_run_ids = set()
     for model_name, test_score in clean_test_scores.items():
@@ -557,10 +599,7 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
             run_name=run_name,
             model_name=model_name,
             profile="clean_screening",
-            config_source=(
-                "configs/experiments/original_merc/clean_screening/"
-                f"{config_stems[model_name]}_clean.yaml"
-            ),
+            config_source=formal_config_sources[model_name]["clean"],
             experiment_track=CLEAN_FIVEFOLD_TRACK,
             text_feature_dim=768,
             val_weighted_f1=clean_val_scores[model_name],
@@ -574,10 +613,7 @@ def test_analysis_isolates_formal_smoke_and_unrelated_history() -> None:
             run_name=run_name,
             model_name=model_name,
             profile="screening",
-            config_source=(
-                "configs/experiments/original_merc/screening/"
-                f"{config_stems[model_name]}_legacy.yaml"
-            ),
+            config_source=formal_config_sources[model_name]["legacy"],
             experiment_track=LEGACY_OFFICIAL_TRACK,
             text_feature_dim=100,
             val_weighted_f1=0.4,

@@ -81,8 +81,8 @@
 2. `configs/mmgcn/unified/m3ed/causal_context/m3ed_features/skeleton.yaml`：causal context 版本配置。
 3. `configs/mmgcn/unified/iemocap/full_context/legacy_mmgcn_features/val_official_prefix.yaml`：IEMOCAP official feature 配置。
 4. `configs/simple_mlp/unified/m3ed/full_context/m3ed_features/development.yaml`：`SimpleMLP` baseline 配置。
-5. `configs/pipeline/`：pipeline 配置。
-6. `configs/modality_ablation/`：模态消融配置。
+5. `configs/benchmarks/**/pipelines/`：跨模型、消融与缺失模态 pipeline 配置。
+6. 各模型 canonical tree 与 `configs/benchmarks/ablations/`：模型级和跨模型消融配置。
 7. `configs/mmgcn/unified/synthetic/full_context/synthetic/smoke.yaml`：本地 fake dialogue smoke 配置。
 8. Config Phase 4A audit/correction 已覆盖全部 183 个 tracked YAML；Config Batch 1 已将 16 个 YAML 移入 `_shared/data`、各模型 canonical tree 与 `benchmarks/`，字节内容不变。精确 old/new mapping 见 `docs/refactors/CONFIG_BATCH1_MOVES.csv`。
 9. Config Batch 2 已将 17 个 MMGCN YAML 移入 `configs/mmgcn/{unified,paper_aligned}/`：13 个 `unified`、4 个 `paper_aligned`；13 个内容不变，4 个仅更新同批次精确 target 的 `source_config`，未批准语义变化为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH2_*`。
@@ -90,7 +90,7 @@
 11. Config Batch 4 已将 10 个 DialogueGCN YAML 移入 `configs/dialoguegcn/{unified,paper_aligned}/`：6 个 `unified`、4 个 `paper_aligned`；10 个 YAML 内容不变，30 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH4_*`。
 12. Config Batch 5 已将 13 个 GS-MCC YAML 移入 `configs/gsmcc/project_variant/iemocap/{causal_context,full_context}/`：7 个 `causal_context`、6 个 `full_context`；13 个 YAML 内容不变，46 个 active references 已更新（其中 5 个 pipeline references），历史旧引用、active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH5_*`。
 13. Config Batch 6 已迁移 37 个 YAML：2 个 cross-model benchmark 分别进入 `configs/benchmarks/{causal_unified,original_merc}/`，35 个 model-scoped ablation 进入对应 MMGCN 或 MultiDAG-CL canonical tree；37 个 YAML 内容不变。共更新 59 个 active references（其中 27 个为 Batch 7 YAML 内部路径），保留 109 个冻结历史引用，active old references 与未批准语义变化均为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH6_*`。
-14. Batch 1--6 旧 YAML 路径已失效且没有 wrapper；Config Batch 7 尚未开始，当前仍有 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group。Batch 6 的 smoke 是正交属性，不改变其 model-scoped ablation 角色；Phase 4A plan 与 classification 未修改。
+14. Config Batch 7 已迁移 73 个 analysis、pipeline 与 manifest YAML 至 `configs/benchmarks/{causal_unified,original_merc,ablations}/` canonical tree；普通 context 与 stable context 的 missing-modality collision 已拆为两个唯一目标。旧路径剩余 0、新路径存在 73、tracked YAML 总数保持 183；60 个 YAML 内容不变，13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。共审计 101 个更新引用与 204 个冻结历史引用，active old references 为 0。完整 mapping 与审计见 `docs/refactors/CONFIG_BATCH7_*`。
 
 ### 数据读取
 
@@ -137,14 +137,14 @@
 
 ## 当前重构阶段
 
-模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout 与 Phase 3B2 support layout 已完成；旧入口保留 compatibility wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Phase 4A audit/correction 与 Config Batch 1--6 已完成：183 个 tracked YAML 全部分类，Batch 6 的 37 个 YAML 已按 2 个 cross-model benchmark 与 35 个 model-scoped ablation 的职责迁移且内容不变，59 个 active references 已更新（其中 27 个 Batch 7 YAML references），109 个冻结历史引用保留，active old references 和未批准语义变化均为 0；Batch 1--6 严格回归通过，剩余 1 个 collision group 只属于 Batch 7。下一阶段只执行 Config Batch 7，且完整配置迁移和门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型目录重构、Script Phase 3A execution layout、Phase 3B1 analysis layout、Phase 3B2 support layout 与 Config Phase 4A layout 已完成；旧 script/model 入口保留 compatibility wrapper，但旧 YAML 不保留 wrapper。当前 canonical scripts 的完整分类为 `models`、`runtime`、`evaluation`、`workflows`、`analysis`、`data`、`diagnostics`、`maintenance`、`dev`。Config Batch 1--7 已完成，183 个 tracked YAML 全部位于 canonical tree；manual review、candidate collision、active old references 与未批准语义变化均为 0，Phase 4A strict plan audit 与 Batch 1--7 strict migration audit 均通过。作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始，必须作为后续独立任务部署。
 
 Config migration 规则：
 
 1. provenance 依据 YAML 内容、registry 和真实 consumer，不依据旧文件名猜测。
 2. `paper_aligned` 不等于 `author_official`；当前 GS-MCC 配置一律为 `project_variant`。
 3. 不创建旧 YAML wrapper，不保留新旧两份 YAML 真相。
-4. 后续每次只执行一个 migration batch；Config Batch 7 尚未开始，剩余 missing-modality candidate collision 必须在执行 Batch 7 前决定合并或通过独立任务补足机器可读 source-run 语义。
+4. Phase 4A migration batch 已全部完成；后续不得在没有新计划、独立审计和明确授权的情况下继续移动 canonical YAML。
 
 ## 入口脚本速查
 
@@ -163,7 +163,7 @@ conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkp
 canonical pipeline：
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\workflows\run_pipeline.py --config configs\pipeline\mmgcn_pipeline_m3ed.yaml
+conda run -n m3ed_mmgcn python scripts\workflows\run_pipeline.py --config configs\benchmarks\ablations\missing_modality\pipelines\mmgcn\m3ed_features\mmgcn_pipeline_m3ed.yaml
 ```
 
 本地 smoke test：

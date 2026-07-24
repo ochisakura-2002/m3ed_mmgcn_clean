@@ -103,14 +103,14 @@ def test_plan_has_causal_first_original_second_in_exact_order() -> None:
     assert [job.family for job in jobs[:8]] == ["causal"] * 8
     assert [job.family for job in jobs[8:]] == ["original"] * 8
     assert [job.config.as_posix() for job in jobs] == [
-        "configs/pipeline/mmgcn/iemocap/causal_benchmark/val_ses01.yaml",
-        "configs/pipeline/mmgcn/iemocap/causal_benchmark/val_ses02.yaml",
-        "configs/pipeline/mmgcn/iemocap/causal_benchmark/val_ses03.yaml",
-        "configs/pipeline/mmgcn/iemocap/causal_benchmark/val_ses04.yaml",
-        "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses01.yaml",
-        "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses02.yaml",
-        "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses03.yaml",
-        "configs/pipeline/multidag_cl/iemocap/causal_benchmark/val_ses04.yaml",
+        "configs/benchmarks/causal_unified/pipelines/mmgcn/legacy_mmgcn_features/val_ses01.yaml",
+        "configs/benchmarks/causal_unified/pipelines/mmgcn/legacy_mmgcn_features/val_ses02.yaml",
+        "configs/benchmarks/causal_unified/pipelines/mmgcn/legacy_mmgcn_features/val_ses03.yaml",
+        "configs/benchmarks/causal_unified/pipelines/mmgcn/legacy_mmgcn_features/val_ses04.yaml",
+        "configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/val_ses01.yaml",
+        "configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/val_ses02.yaml",
+        "configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/val_ses03.yaml",
+        "configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/val_ses04.yaml",
         "configs/mmgcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/multidag_cl/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",
         "configs/dialoguegcn/paper_aligned/iemocap/full_context/legacy_mmgcn_features/screening.yaml",

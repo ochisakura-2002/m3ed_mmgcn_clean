@@ -256,8 +256,9 @@ def build_run_plan() -> list[RunSpec]:
                     family="causal",
                     label=f"causal_{model_label}_ses{session:02d}",
                     config=Path(
-                        f"configs/pipeline/{model_dir}/iemocap/"
-                        f"causal_benchmark/val_ses{session:02d}.yaml"
+                        "configs/benchmarks/causal_unified/pipelines/"
+                        f"{model_dir}/legacy_mmgcn_features/"
+                        f"val_ses{session:02d}.yaml"
                     ),
                     entrypoint=Path("scripts/workflows/run_pipeline.py"),
                 )

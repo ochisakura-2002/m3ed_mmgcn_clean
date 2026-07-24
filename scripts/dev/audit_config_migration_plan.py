@@ -170,6 +170,14 @@ def _duplicates(rows: Sequence[Mapping[str, str]], key: str) -> dict[str, list[i
     return {value: lines for value, lines in positions.items() if value and len(lines) > 1}
 
 
+def _config_references(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split("|") if item.strip())
+
+
+def _is_stable_source(references: Sequence[str]) -> bool:
+    return any("stable" in PurePosixPath(reference).stem for reference in references)
+
+
 def audit_plan(
     repo_root: Path,
     classification_path: Path,
@@ -259,6 +267,7 @@ def audit_plan(
         "is_project_variant",
         "manual_review",
     )
+    source_semantics_by_old: dict[str, tuple[str, ...]] = {}
     for row_number, row in enumerate(classification, start=2):
         label = f"classification row {row_number}"
         errors.extend(_path_errors(f"{label} old_path", row["old_path"], candidate=False))
@@ -296,6 +305,37 @@ def audit_plan(
                 or row["is_official"] != "NO"
             ):
                 errors.append(f"{label}: every GS-MCC config must be project_variant")
+        if row["purpose"] == "missing_modality" and row["scope"] == "pipeline":
+            references = _config_references(row["referenced_configs"])
+            source_semantics_by_old[row["old_path"]] = references
+            if not references:
+                errors.append(
+                    f"{label}: missing-modality pipeline must record "
+                    "referenced_configs as its source_config equivalent"
+                )
+            for reference in references:
+                errors.extend(
+                    _path_errors(
+                        f"{label} source_config",
+                        reference,
+                        candidate=False,
+                    )
+                )
+                if not reference.startswith("configs/"):
+                    errors.append(
+                        f"{label}: source_config must be under configs/: "
+                        f"{reference}"
+                    )
+            if references:
+                source_is_stable = _is_stable_source(references)
+                candidate_is_stable = (
+                    "stable" in PurePosixPath(row["candidate_new_path"]).stem
+                )
+                if source_is_stable != candidate_is_stable:
+                    errors.append(
+                        f"{label}: stable source-run semantics must be "
+                        "preserved in candidate_new_path"
+                    )
 
     candidate_groups: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row_number, row in enumerate(mapping, start=2):
@@ -344,13 +384,17 @@ def audit_plan(
     for candidate, rows in sorted(candidate_groups.items()):
         if len(rows) < 2:
             continue
-        if not all(
-            row["collision_status"] == "MANUAL_REVIEW"
-            and row["manual_review"] == "YES"
+        errors.append(
+            "candidate_new_path must be globally unique: "
+            f"{candidate}"
+        )
+        source_semantics = {
+            source_semantics_by_old.get(row["old_path"], ())
             for row in rows
-        ):
+        }
+        if len(source_semantics) > 1:
             errors.append(
-                "candidate collision is not fully marked MANUAL_REVIEW: "
+                "different source-run semantics share candidate_new_path: "
                 f"{candidate}"
             )
 

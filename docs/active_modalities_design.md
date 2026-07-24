@@ -195,7 +195,7 @@ scripts/analyze/build_analysis_tables.py
 Possible new files later:
 
 ```text
-configs/modality_ablation/
+configs/mmgcn/unified/<dataset>/<context_mode>/<feature_set>/modality_ablation_*.yaml
 scripts/experiments/generate_m3ed_modality_configs.py
 scripts/evaluate_checkpoint_missing_modalities.py
 ```
@@ -504,7 +504,7 @@ Example:
 ```yaml
 train:
   enabled: true
-  train_config_path: configs/modality_ablation/m3ed_mmgcn_TA.yaml
+  train_config_path: configs/mmgcn/unified/m3ed/full_context/m3ed_features/modality_ablation_ta.yaml
 ```
 
 ---

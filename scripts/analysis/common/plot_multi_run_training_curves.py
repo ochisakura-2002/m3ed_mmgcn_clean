@@ -7,7 +7,7 @@ Purpose:
 
 Input:
     Config YAML, e.g.
-        configs/analysis/multi_run_training_curves.yaml
+        configs/benchmarks/paper/analysis/multi_run_curves.yaml
 
     Master table:
         outputs/<YYYYMMDD>/analysis/analysis_tables/epoch_metrics_master.csv
@@ -20,7 +20,7 @@ Output:
 
 Usage:
     python scripts/analysis/common/plot_multi_run_training_curves.py \
-      --config configs/analysis/multi_run_training_curves.yaml
+      --config configs/benchmarks/paper/analysis/multi_run_curves.yaml
 
 Important:
     Run this before plotting if runs changed:

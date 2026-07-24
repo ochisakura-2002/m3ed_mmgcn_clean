@@ -15,24 +15,24 @@ matrix on local Windows.
 Canonical training YAMLs live under:
 
 ```text
-configs/baselines/multidag_cl/iemocap/formal/
-configs/baselines/multidag_cl/iemocap/debug/
-configs/baselines/multidag_cl/iemocap/stabilize/
+configs/multidag_cl/unified/iemocap/causal_context/legacy_mmgcn_features/
 ```
 
 Canonical pipeline YAMLs live under:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/formal/
-configs/pipeline/multidag_cl/iemocap/debug/
-configs/pipeline/multidag_cl/iemocap/stabilize/
-configs/pipeline/multidag_cl/iemocap/missing/
+configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/
+configs/benchmarks/ablations/context/pipelines/multidag_cl/
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/
+configs/benchmarks/ablations/stability/pipelines/multidag_cl/
+configs/benchmarks/ablations/missing_modality/pipelines/multidag_cl/legacy_mmgcn_features/
 ```
 
 Canonical analysis templates live under:
 
 ```text
-configs/analysis/multidag_cl/iemocap/
+configs/benchmarks/ablations/analysis/multidag_cl/
+configs/benchmarks/paper/analysis/multidag_cl/
 ```
 
 Use `past_all_causal` for the all-past causal setting. Do not use `full` for
@@ -45,23 +45,23 @@ performance.
 Context-window formal pipelines:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml
-configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml
-configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml
-configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
-configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml
+configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w0_tav.yaml
+configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w1_tav.yaml
+configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w3_tav.yaml
+configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w5_tav.yaml
+configs/benchmarks/ablations/context/pipelines/multidag_cl/context_past_all_causal_tav.yaml
 ```
 
 Modality-ablation formal pipelines:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_t.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_a.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_v.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_ta.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tv.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_av.yaml
-configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tav.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_t.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_a.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_v.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_ta.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_tv.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_av.yaml
+configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_tav.yaml
 ```
 
 Every formal pipeline trains, evaluates `best_model.pt` on `val` and `test`,
@@ -75,10 +75,10 @@ single-seed candidate for the H-R causal baseline follow-up. These pipelines
 keep the formal 30-epoch setting and vary only the context span:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
-configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
-configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
-configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w0_tav_stable_candidate.yaml
+configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w3_tav_stable_candidate.yaml
+configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w5_tav_stable_candidate.yaml
+configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_past_all_causal_tav_stable_candidate.yaml
 ```
 
 All four use causal GRU, one graph layer, dropout `0.2`, LR `0.0005`, weight
@@ -88,7 +88,7 @@ checkpoint selection, and no train/validation/evaluation batch caps.
 Use this analysis template after the stable context runs finish:
 
 ```text
-configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
+configs/benchmarks/ablations/analysis/multidag_cl/stable_context_compare.yaml
 ```
 
 ## 5. Debug configs
@@ -96,9 +96,9 @@ configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
 Debug pipelines:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml
-configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_smoke.yaml
-configs/pipeline/multidag_cl/iemocap/debug/context_past_all_causal_tav_smoke.yaml
+configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/context_w5_tav_quick.yaml
+configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/context_w5_tav_smoke.yaml
+configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/context_past_all_causal_tav_smoke.yaml
 ```
 
 The quick config uses 5 epochs without train/eval caps. Smoke configs use
@@ -115,7 +115,7 @@ cd /home/zhiyuan/research/m3ed_mmgcn_clean
 conda activate m3ed_mmgcn
 
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w5_tav.yaml
 ```
 
 Use this activated-shell style for remote formal work. Do not use `conda run`
@@ -125,13 +125,13 @@ for the formal remote commands in this plan.
 
 Recommended order after the July 9, 2026 stabilization analysis:
 
-1. `configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml`
-2. `configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml`
-3. `configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml`
-4. `configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml`
-5. `configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml`
-6. `configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_stable_context_w5_tav.yaml` after the stable `context_w5_tav` run id is available
-7. Fill `configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml` after stable context run ids exist
+1. `configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/context_w5_tav_quick.yaml`
+2. `configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w5_tav_stable_candidate.yaml`
+3. `configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w0_tav_stable_candidate.yaml`
+4. `configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w3_tav_stable_candidate.yaml`
+5. `configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_past_all_causal_tav_stable_candidate.yaml`
+6. `configs/benchmarks/ablations/missing_modality/pipelines/multidag_cl/legacy_mmgcn_features/missing_eval_from_stable_context_w5_tav.yaml` after the stable `context_w5_tav` run id is available
+7. Fill `configs/benchmarks/ablations/analysis/multidag_cl/stable_context_compare.yaml` after stable context run ids exist
 
 The original formal context and modality configs remain available for paper
 comparisons and historical continuity.
@@ -140,54 +140,54 @@ comparisons and historical continuity.
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/debug/context_w5_tav_quick.yaml
+  --config configs/benchmarks/causal_unified/pipelines/multidag_cl/legacy_mmgcn_features/context_w5_tav_quick.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_w5_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w5_tav.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_past_all_causal_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_past_all_causal_tav.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_w0_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w0_tav.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_w3_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w3_tav.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/context_w1_tav.yaml
+  --config configs/benchmarks/ablations/context/pipelines/multidag_cl/context_w1_tav.yaml
 ```
 
 ## 9. Stable-candidate context commands
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/stabilize/context_w5_tav_stable_candidate.yaml
+  --config configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w5_tav_stable_candidate.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/stabilize/context_w0_tav_stable_candidate.yaml
+  --config configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w0_tav_stable_candidate.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/stabilize/context_w3_tav_stable_candidate.yaml
+  --config configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_w3_tav_stable_candidate.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/stabilize/context_past_all_causal_tav_stable_candidate.yaml
+  --config configs/benchmarks/ablations/stability/pipelines/multidag_cl/context_past_all_causal_tav_stable_candidate.yaml
 ```
 
 ## 10. Modality-ablation commands
@@ -197,37 +197,37 @@ modality evaluation.
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tav.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_tav.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_t.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_t.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_a.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_a.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_v.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_v.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_ta.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_ta.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_tv.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_tv.yaml
 ```
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/formal/modality_w5_av.yaml
+  --config configs/benchmarks/ablations/modality/pipelines/multidag_cl/modality_w5_av.yaml
 ```
 
 ## 11. Missing-modality commands
@@ -244,7 +244,7 @@ Then run:
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_context_w5_tav.yaml
+  --config configs/benchmarks/ablations/missing_modality/pipelines/multidag_cl/legacy_mmgcn_features/missing_eval_from_context_w5_tav.yaml
 ```
 
 This is test-time zeroing of unavailable modalities. It does not retrain the
@@ -253,14 +253,14 @@ checkpoint.
 For the stable-candidate checkpoint, fill `skip_train_use_run_id` in:
 
 ```text
-configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_stable_context_w5_tav.yaml
+configs/benchmarks/ablations/missing_modality/pipelines/multidag_cl/legacy_mmgcn_features/missing_eval_from_stable_context_w5_tav.yaml
 ```
 
 Then run:
 
 ```bash
 PYTHONUNBUFFERED=1 python -u scripts/run_experiment_pipeline.py \
-  --config configs/pipeline/multidag_cl/iemocap/missing/missing_eval_from_stable_context_w5_tav.yaml
+  --config configs/benchmarks/ablations/missing_modality/pipelines/multidag_cl/legacy_mmgcn_features/missing_eval_from_stable_context_w5_tav.yaml
 ```
 
 ## 12. Expected outputs for each single run
@@ -293,10 +293,10 @@ outputs/runs/<context_w5_tav_run_id>/figures/missing_modalities/test_best_model/
 Fill these templates after the formal run ids exist:
 
 ```text
-configs/analysis/multidag_cl/iemocap/context_compare.yaml
-configs/analysis/multidag_cl/iemocap/modality_compare.yaml
-configs/analysis/multidag_cl/iemocap/core_results_compare.yaml
-configs/analysis/multidag_cl/iemocap/stable_context_compare.yaml
+configs/benchmarks/ablations/analysis/multidag_cl/context_compare.yaml
+configs/benchmarks/ablations/analysis/multidag_cl/modality_compare.yaml
+configs/benchmarks/paper/analysis/multidag_cl/core_results_compare.yaml
+configs/benchmarks/ablations/analysis/multidag_cl/stable_context_compare.yaml
 ```
 
 Example:

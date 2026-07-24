@@ -26,7 +26,7 @@
 
 `CONFIG_PHASE4A_CORRECTION_STATUS=PASS`
 
-`CONFIG_LAYOUT_REFACTOR=IN_PROGRESS`
+`CONFIG_LAYOUT_REFACTOR=COMPLETED`
 
 `CONFIG_BATCH_1=COMPLETED`
 
@@ -40,7 +40,7 @@
 
 `CONFIG_BATCH_6=COMPLETED`
 
-`CONFIG_BATCH_7=NOT_STARTED`
+`CONFIG_BATCH_7=COMPLETED`
 
 `OFFICIAL_MULTIDAG_REPRODUCTION=NOT_STARTED`
 
@@ -48,7 +48,7 @@
 
 `FINAL_BASELINE_SELECTED=NO`
 
-模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout 与 Phase 3B2 support layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical script tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Phase 4A audit 与 correction 已完成，183 个 tracked YAML 均已分类并进入精确迁移计划。Config Batch 1--6 已完成；Batch 6 将 2 个 cross-model benchmark 与 35 个 model-scoped ablation 迁移到各自 canonical 路径。37 个 YAML 均 byte-identical 且 semantic-identical，更新 59 个 active references（其中 27 个 Batch 7 YAML references），保留 109 个冻结历史引用，active old references 与未批准语义变化均为 0；Batch 1--6 严格回归均通过。当前剩余 2 行 manual review 和 1 个只属于 Batch 7 的 candidate collision group；下一阶段只执行 Config Batch 7。配置迁移与门禁完成前不部署作者官方 MultiDAG+CL 或 GS-MCC。
+模型实现目录的模型优先重构、Phase 3A 生产执行脚本、Phase 3B1 analysis layout、Phase 3B2 support layout 与 Config Phase 4A layout 均已完成。模型训练/评估入口、跨模型 runtime、workflow、结果分析、数据构建/准备/检查、数据/模型/实验诊断、维护与开发门禁均已有 canonical tree；旧执行、分析和 support 路径保留 compatibility wrapper。Config Batch 1--7 已全部完成，183 个 tracked YAML 保持不变。Batch 7 将 73 个 analysis、pipeline 与 manifest YAML 迁入 canonical benchmark tree；普通 context 与 stable context 的 missing-modality collision 已拆为两个唯一目标，manual review、candidate collision、active old references 与未批准语义变化均为 0。Phase 4A strict plan audit、Batch 1--7 strict migration audit、config validation、无训练 dry-run与完整 pytest 均通过。作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始，必须作为后续独立任务部署。
 
 ## 模型路线与命名边界
 
@@ -164,6 +164,18 @@ Config Batch 6 已按冻结的 Phase 4A plan 迁移 37 个 YAML；完整 old/new
 - 唯一 smoke 配置同时保持 `is_smoke=YES` 与 `layout_role=model_scoped_ablation`；smoke 是正交属性。
 
 37 个 YAML 均 byte-identical 且 semantic-identical，模型成员、模型顺序、provenance、ablation variable 与 controlled variables 均无变化。引用审计记录 59 个 active references 已更新，其中 27 个为 Batch 7 YAML 的内部路径；109 个冻结历史引用继续保留，active old references 为 0。Phase 4A plan 与 classification 未修改。作者官方 MultiDAG+CL 和 GS-MCC 复现仍未开始。
+
+## Config Batch 7 canonical paths
+
+Config Batch 7 已按修正后的 Phase 4A plan 迁移 73 个 YAML；完整 old/new 映射及 SHA 见 `docs/refactors/CONFIG_BATCH7_MOVES.csv`。
+
+- analysis、pipeline 与 manifest 配置位于 `configs/benchmarks/{causal_unified,original_merc,ablations}/` 的 canonical tree。
+- `missing_eval_from_context_w5_tav.yaml` 指向普通 `context_w5_tav` source run；`missing_eval_from_stable_context_w5_tav.yaml` 指向 `context_w5_tav_stable_candidate` source run。两者保留为独立配置并具有唯一 canonical path。
+- 旧路径剩余 0，新路径存在 73，tracked YAML 总数保持 183。
+- 60 个 YAML 内容不变；13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。
+- reference audit 记录 101 个更新引用与 204 个冻结历史引用，active old references 为 0。
+
+Config tree validation、Phase 4A strict plan audit、Batch 1--7 strict migration audit、73-config 无训练 dry-run、6 个 canonical entrypoint `--help`、相关 150 项回归及完整 tracked pytest 均通过。作者官方 MultiDAG+CL 与 GS-MCC 复现仍未开始。
 
 ## Compatibility paths
 
@@ -324,6 +336,11 @@ Phase 3B2 canonical support paths 为：
 - Batch 6 reference audit 记录 59 个已更新 active references，其中 27 个为未移动的 Batch 7 YAML 内部路径；109 个冻结历史引用保留，active old references 为 0。
 - Batch 6 audit tests：`79 passed`；Phase 4A plan audit tests：`10 passed`；完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`430 passed, 3 skipped, 14 warnings`。
 - Batch 6 config validation、Phase 4A strict plan audit、Batch 1/2/3/4/5/6 strict audit、37-config 无训练 dry-run 与 `git diff --check` 均通过；正式训练启动次数为 0。
+- Config Batch 7 基于分支 `refactor/model-first-layout`、Git HEAD `10a31f79f9136d2109f8f3309364f1ebe65afe77` 执行；73 个 YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 73、tracked YAML 总数 183。
+- Batch 7 collision 依据两份 missing-modality YAML 各自的普通 context 与 stable-context `source_config`/来源配置消解；两份配置均保留并使用唯一 canonical path。60 个 YAML 内容不变，13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。
+- Batch 7 reference audit 记录 101 个更新引用与 204 个冻结历史引用，active old references 为 0；manual review 与 collision status 均清零。
+- Batch 7 相关回归：`150 passed`；完整 tracked pytest（显式忽略受保护的本地 `tests/analyze` 目录）：`436 passed, 3 skipped, 14 warnings`。
+- Batch 7 config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、73-config 无训练 dry-run、6 个 canonical entrypoint CLI help 均通过；正式训练启动次数为 0。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
@@ -334,8 +351,8 @@ Phase 3B2 canonical support paths 为：
 - `prepare_m3ed_metadata.py`、真实 batch/model 诊断与 summary rebuild 工具具有数据或资产写入风险；Phase 3B2 只做 import、CLI help、synthetic 或静态安全检查，没有执行这些真实动作。
 - `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
-- Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1--6 严格按迁移计划执行。历史 outputs 内冻结的配置快照不在迁移范围。
-- 当前只剩 1 个 candidate collision group，涉及两份 missing-modality pipeline。active docs 区分 original formal 与 stable-candidate source run，但 YAML 没有机器可读 source-run 字段；必须在执行 Config Batch 7 前决定合并为一份 canonical 配置，或由后续独立任务补足机器可读语义。该 collision 不属于 Batch 1--6。
+- Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1--7 严格按迁移计划执行。历史 outputs 内冻结的配置快照不在迁移范围。
+- Batch 7 的唯一 candidate collision 已依据普通 context 与 stable-context 的不同 source pipeline/source config 消解；两份 missing-modality 配置没有合并。当前 manual review 与 candidate collision 均为 0。
 - 配置 provenance 不得按旧路径或文件名猜测；`paper_aligned` 不是 `author_official`，全部 GS-MCC 配置均为 `project_variant`。
 
 已知论文叙事风险：
@@ -348,7 +365,7 @@ Phase 3B2 canonical support paths 为：
 
 ## 下一阶段工程顺序
 
-模型目录重构与 Script Phase 3A、3B1、3B2 已完成，Config Phase 4A audit/correction 与 Config Batch 1--6 也已完成。下一阶段只执行 `CONFIG_BATCH_7`。每次只执行一个 batch；执行 Batch 7 前必须先解决剩余 collision。完整 config migration 与门禁完成后，才部署作者官方 MultiDAG+CL 和 GS-MCC。
+模型目录重构、Script Phase 3A/3B1/3B2、Config Phase 4A audit/correction 与 Config Batch 1--7 均已完成。下一阶段可在独立任务中部署并审计作者官方 MultiDAG+CL 与 GS-MCC；当前实现与配置仍不得标记为 `author_official`，最终 baseline 也尚未选定。
 
 Phase 3B2 结果见 `docs/refactors/SCRIPT_SUPPORT_LAYOUT_REFACTOR_REPORT.md`、`docs/refactors/SCRIPT_SUPPORT_CLASSIFICATION_PHASE3B2.csv` 与 `docs/refactors/LEGACY_MODEL_IMPORTS_AFTER_SCRIPT_PHASE3B2.*`。后续 config 重构不得删除 Phase 3A/3B1/3B2 wrapper、改变 runtime/checkpoint schema，或把 `paper_aligned` 误写为 `author_official`。
 

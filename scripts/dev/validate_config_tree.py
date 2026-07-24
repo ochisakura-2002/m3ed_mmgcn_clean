@@ -12,9 +12,27 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
-FORMAL_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "formal"
-STABILIZE_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "stabilize"
-LOSS_STABILITY_PIPELINE_DIR = ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "loss_stability"
+FORMAL_PIPELINE_DIRS = (
+    ROOT
+    / "configs"
+    / "benchmarks"
+    / "ablations"
+    / family
+    / "pipelines"
+    / "multidag_cl"
+    for family in ("context", "modality")
+)
+FORMAL_PIPELINE_DIRS = tuple(FORMAL_PIPELINE_DIRS)
+STABILIZE_PIPELINE_DIR = (
+    ROOT
+    / "configs"
+    / "benchmarks"
+    / "ablations"
+    / "stability"
+    / "pipelines"
+    / "multidag_cl"
+)
+LOSS_STABILITY_PIPELINE_DIR = STABILIZE_PIPELINE_DIR
 MULTIDAG_ABLATION_TRAIN_DIR = (
     ROOT
     / "configs"
@@ -67,10 +85,16 @@ CAUSAL_BENCHMARK_TRAIN_DIRS = {
     ),
 }
 CAUSAL_BENCHMARK_PIPELINE_DIRS = {
-    "mmgcn": ROOT / "configs" / "pipeline" / "mmgcn" / "iemocap" / "causal_benchmark",
-    "multidag_cl": ROOT / "configs" / "pipeline" / "multidag_cl" / "iemocap" / "causal_benchmark",
-    "gsmcc": ROOT / "configs" / "pipeline" / "gsmcc" / "iemocap" / "causal_benchmark",
-    "dialoguegcn": ROOT / "configs" / "pipeline" / "dialoguegcn" / "iemocap" / "causal_benchmark",
+    family: (
+        ROOT
+        / "configs"
+        / "benchmarks"
+        / "causal_unified"
+        / "pipelines"
+        / family
+        / "legacy_mmgcn_features"
+    )
+    for family in ("mmgcn", "multidag_cl", "gsmcc", "dialoguegcn")
 }
 CLEAN_ROBERTA_V1_TRAIN_DIRS = {
     "mmgcn": (
@@ -112,7 +136,15 @@ CLEAN_ROBERTA_V1_TRAIN_DIRS = {
 }
 CLEAN_ROBERTA_V1_FORMAL_FAMILIES = ("mmgcn", "multidag_cl")
 CLEAN_ROBERTA_V1_PIPELINE_DIRS = {
-    family: ROOT / "configs" / "pipeline" / family / "iemocap" / "clean_roberta_v1"
+    family: (
+        ROOT
+        / "configs"
+        / "benchmarks"
+        / "causal_unified"
+        / "pipelines"
+        / family
+        / "clean_roberta_features"
+    )
     for family in CLEAN_ROBERTA_V1_FORMAL_FAMILIES
 }
 CLEAN_ROBERTA_V1_MANIFEST = (
@@ -324,7 +356,7 @@ ORIGINAL_MERC_TRACKS = {
     ),
 }
 CAUSAL_BENCHMARK_VARIANTS = {
-    "official_prefix.yaml": ("official_prefix", None),
+    "val_official_prefix.yaml": ("official_prefix", None),
     "val_ses01.yaml": ("session_holdout", "Ses01"),
     "val_ses02.yaml": ("session_holdout", "Ses02"),
     "val_ses03.yaml": ("session_holdout", "Ses03"),
@@ -333,6 +365,13 @@ CAUSAL_BENCHMARK_VARIANTS = {
 CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS = {
     "dialoguegcn": {"smoke_real_2epoch.yaml"},
     "gsmcc": {"smoke_real_2epoch.yaml"},
+    "multidag_cl": {
+        "context_past_all_causal_tav_smoke.yaml",
+        "context_w5_tav_quick.yaml",
+        "context_w5_tav_smoke.yaml",
+    },
+}
+CAUSAL_BENCHMARK_ALLOWED_PIPELINE_EXTRAS = {
     "multidag_cl": {
         "context_past_all_causal_tav_smoke.yaml",
         "context_w5_tav_quick.yaml",
@@ -371,20 +410,10 @@ MULTIDAG_BATCH6_ABLATION_NAMES = {
 
 
 def causal_training_name(family: str, pipeline_name: str) -> str:
-    if (
-        family in {"mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"}
-        and pipeline_name == "official_prefix.yaml"
-    ):
-        return "val_official_prefix.yaml"
     return pipeline_name
 
 
 def causal_pipeline_name(family: str, training_name: str) -> str:
-    if (
-        family in {"mmgcn", "multidag_cl", "dialoguegcn", "gsmcc"}
-        and training_name == "val_official_prefix.yaml"
-    ):
-        return "official_prefix.yaml"
     return training_name
 
 
@@ -968,15 +997,21 @@ def validate_causal_benchmark_pipeline(
 
 
 def validate_causal_benchmark_tree(errors: list[str]) -> None:
-    pipeline_names_expected = set(CAUSAL_BENCHMARK_VARIANTS)
+    benchmark_pipeline_names = set(CAUSAL_BENCHMARK_VARIANTS)
     for family, train_dir in CAUSAL_BENCHMARK_TRAIN_DIRS.items():
         pipeline_dir = CAUSAL_BENCHMARK_PIPELINE_DIRS[family]
         train_names_expected = {
             causal_training_name(family, name)
-            for name in pipeline_names_expected
+            for name in benchmark_pipeline_names
         }
         train_names_expected.update(
             CAUSAL_BENCHMARK_ALLOWED_TRAIN_EXTRAS.get(family, set())
+        )
+        pipeline_names_expected = (
+            benchmark_pipeline_names
+            | CAUSAL_BENCHMARK_ALLOWED_PIPELINE_EXTRAS.get(
+                family, set()
+            )
         )
         if family == "multidag_cl":
             train_names_expected.update(MULTIDAG_BATCH6_ABLATION_NAMES)
@@ -994,7 +1029,7 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
             f"{sorted(pipeline_names_expected)}; got {sorted(pipeline_names)}",
             errors,
         )
-        for pipeline_name in sorted(pipeline_names_expected):
+        for pipeline_name in sorted(benchmark_pipeline_names):
             train_path = train_dir / causal_training_name(
                 family, pipeline_name
             )
@@ -1003,6 +1038,12 @@ def validate_causal_benchmark_tree(errors: list[str]) -> None:
                 validate_causal_benchmark_training(train_path, family, errors)
             if pipeline_path.exists():
                 validate_causal_benchmark_pipeline(pipeline_path, family, errors)
+        for pipeline_name in sorted(
+            CAUSAL_BENCHMARK_ALLOWED_PIPELINE_EXTRAS.get(family, set())
+        ):
+            pipeline_path = pipeline_dir / pipeline_name
+            if pipeline_path.exists():
+                validate_pipeline(pipeline_path, errors)
 
         if family in {"gsmcc", "dialoguegcn"}:
             normalized_folds = []
@@ -1682,11 +1723,10 @@ def main() -> None:
     validate_clean_roberta_v1_tree(errors)
     validate_original_merc_tree(errors)
 
-    for path in sorted(FORMAL_PIPELINE_DIR.glob("*.yaml")):
-        validate_pipeline(path, errors)
+    for directory in FORMAL_PIPELINE_DIRS:
+        for path in sorted(directory.glob("*.yaml")):
+            validate_pipeline(path, errors)
     for path in sorted(STABILIZE_PIPELINE_DIR.glob("*.yaml")):
-        validate_pipeline(path, errors)
-    for path in sorted(LOSS_STABILITY_PIPELINE_DIR.glob("*.yaml")):
         validate_pipeline(path, errors)
 
     for name in sorted(MULTIDAG_BATCH6_ABLATION_NAMES):

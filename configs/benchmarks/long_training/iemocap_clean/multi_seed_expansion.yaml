@@ -1,0 +1,168 @@
+schema_version: '1.0'
+matrix_name: iemocap_clean_long_training_three_seed_expansion
+enabled: false
+matrix_role: optional_three_seed_expansion
+expected_run_count: 96
+
+feature:
+  registry_path: configs/_shared/data/iemocap/feature_sets.yaml
+  registry_key: clean_roberta_v1
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  text_dim: 768
+  audio_dim: 1582
+  visual_dim: 342
+  num_classes: 6
+  local_status: REMOTE_ASSET_REQUIRED
+  remote_dry_run_required: true
+
+protocol:
+  dataset: IEMOCAP
+  feature_track: CLEAN
+  seed_values: [13, 42, 77]
+  checkpoint_selection_metric: val_weighted_f1
+  checkpoint_selection_split: validation
+  checkpoint_name_for_test: best_model.pt
+  test_split_used_for_selection: false
+  test_selection_leakage_found: 0
+  full_context_future_context_allowed: true
+  causal_context_future_context_allowed: false
+  formal_batch_reference: causal8_original8_formal_20260722_012904
+
+session_rules:
+  full_session_holdout_ses01_ses04:
+    description: Paired formal split; each Ses01-Ses04 session is validation while official Ses05 remains test.
+    expansions:
+      - validation_id: val_ses01
+        validation_session: Ses01
+        test_session: Ses05
+        overrides:
+          dataset.val_split_strategy: session_holdout
+          dataset.val_session_id: Ses01
+          dataset.outer_test_session: Ses05
+      - validation_id: val_ses02
+        validation_session: Ses02
+        test_session: Ses05
+        overrides:
+          dataset.val_split_strategy: session_holdout
+          dataset.val_session_id: Ses02
+          dataset.outer_test_session: Ses05
+      - validation_id: val_ses03
+        validation_session: Ses03
+        test_session: Ses05
+        overrides:
+          dataset.val_split_strategy: session_holdout
+          dataset.val_session_id: Ses03
+          dataset.outer_test_session: Ses05
+      - validation_id: val_ses04
+        validation_session: Ses04
+        test_session: Ses05
+        overrides:
+          dataset.val_split_strategy: session_holdout
+          dataset.val_session_id: Ses04
+          dataset.outer_test_session: Ses05
+  causal_session_holdout_ses01_ses04:
+    description: Existing formal causal split; each Ses01-Ses04 session is validation while official Ses05 remains test.
+    expansions:
+      - validation_id: val_ses01
+        validation_session: Ses01
+        test_session: Ses05
+        overrides: {dataset.val_split_strategy: session_holdout, dataset.val_session_id: Ses01}
+      - validation_id: val_ses02
+        validation_session: Ses02
+        test_session: Ses05
+        overrides: {dataset.val_split_strategy: session_holdout, dataset.val_session_id: Ses02}
+      - validation_id: val_ses03
+        validation_session: Ses03
+        test_session: Ses05
+        overrides: {dataset.val_split_strategy: session_holdout, dataset.val_session_id: Ses03}
+      - validation_id: val_ses04
+        validation_session: Ses04
+        test_session: Ses05
+        overrides: {dataset.val_split_strategy: session_holdout, dataset.val_session_id: Ses04}
+
+expansion:
+  run_id_template: ltm_{model_family}_{context_mode}_{validation_id}_s{seed}
+  output_root_template: outputs/long_training/multi_seed/{run_id}
+  resolved_config_template: outputs/long_training/config_prep/multi_seed/{run_id}.yaml
+  require_unique_run_id: true
+  require_unique_output_root: true
+
+base_configs:
+  - model_family: mmgcn
+    display_name: MMGCN
+    context_mode: full_context
+    implementation_lineage: paper_aligned
+    model_provenance: paper_aligned_not_author_official
+    session_rule: full_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/mmgcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml
+  - model_family: mmgcn
+    display_name: MMGCN
+    context_mode: causal_context
+    implementation_lineage: unified
+    model_provenance: unified
+    session_rule: causal_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/mmgcn_causal_context.yaml
+    entrypoint: scripts/models/mmgcn/unified/train.py
+    parameter_source: configs/mmgcn/unified/iemocap/causal_context/clean_roberta_features/val_ses01.yaml
+  - model_family: multidag_cl
+    display_name: MultiDAG-inspired + CL
+    context_mode: full_context
+    implementation_lineage: paper_aligned
+    model_provenance: paper_aligned_not_author_official
+    session_rule: full_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/multidag_cl_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/multidag_cl_clean.yaml
+  - model_family: multidag_cl
+    display_name: MultiDAG-inspired + CL
+    context_mode: causal_context
+    implementation_lineage: unified
+    model_provenance: unified_not_author_official
+    session_rule: causal_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/multidag_cl_causal_context.yaml
+    entrypoint: scripts/models/multidag_cl/unified/train.py
+    parameter_source: configs/multidag_cl/unified/iemocap/causal_context/clean_roberta_features/val_ses01.yaml
+  - model_family: dialoguegcn
+    display_name: DialogueGCN
+    context_mode: full_context
+    implementation_lineage: paper_aligned
+    model_provenance: paper_aligned_not_author_official
+    session_rule: full_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/dialoguegcn_clean.yaml
+  - model_family: dialoguegcn
+    display_name: DialogueGCN
+    context_mode: causal_context
+    implementation_lineage: unified
+    model_provenance: unified_project_causal
+    session_rule: causal_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_causal_context.yaml
+    entrypoint: scripts/workflows/causal_graph/train.py
+    parameter_source: configs/dialoguegcn/unified/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml
+    clean_feature_source: configs/dialoguegcn/unified/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml
+  - model_family: gsmcc_project_variant
+    display_name: GS-MCC Project Variant
+    context_mode: full_context
+    implementation_lineage: project_variant
+    model_provenance: PROJECT_VARIANT_NOT_PAPER_REPRODUCTION
+    session_rule: full_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml
+    numerical_safety: angular_similarity_eps_1e-7_and_runtime_finite_checks
+  - model_family: gsmcc_project_variant
+    display_name: GS-MCC Project Variant
+    context_mode: causal_context
+    implementation_lineage: project_variant
+    model_provenance: PROJECT_VARIANT_NOT_PAPER_REPRODUCTION
+    session_rule: causal_session_holdout_ses01_ses04
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_causal_context.yaml
+    entrypoint: scripts/workflows/causal_graph/train.py
+    parameter_source: configs/gsmcc/project_variant/iemocap/causal_context/legacy_mmgcn_features/val_ses01.yaml
+    clean_feature_source: configs/gsmcc/project_variant/iemocap/causal_context/clean_roberta_features/smoke_real_2epoch.yaml
+    numerical_safety: zero_auxiliary_loss_weights_and_causal_runtime_contract

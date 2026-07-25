@@ -1,4 +1,5 @@
 schema_version: '1.0'
+protocol_version: long_training_session_holdout_v1
 run_name: long_training_dialoguegcn_full_context_base
 profile: formal_long_training_base
 
@@ -35,13 +36,14 @@ dataset:
   feature_protocol: clean_roberta_v1
   feature_cleanliness: frozen_self_supervised_utterance_only
   usage: fair_main_experiment
-  experiment_track: clean_roberta_fivefold_fair_comparison
+  experiment_track: clean_roberta_session_holdout_fair_comparison
   protocol_comparability: fair_comparison_not_paper_reproduction
   feature_pkl_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
   feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
   num_classes: 6
   label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
-  val_split_strategy: outer_session_stratified
+  val_split_strategy: session_holdout
+  val_session_id: Ses01
   outer_test_session: Ses05
   inner_val_ratio: 0.1
   split_seed: 42
@@ -84,4 +86,3 @@ provenance:
   formal_batch_reference: causal8_original8_formal_20260722_012904
   feature_registry_key: clean_roberta_v1
   implementation_status: paper_aligned_not_author_official
-

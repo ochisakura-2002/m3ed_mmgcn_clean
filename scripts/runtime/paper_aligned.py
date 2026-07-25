@@ -51,6 +51,7 @@ IGNORE_INDEX = -100
 LEGACY_OFFICIAL_TRACK = "legacy_official_split_safe_selection"
 LEGACY_FIVEFOLD_TRACK = "legacy_fivefold_fair_comparison"
 CLEAN_FIVEFOLD_TRACK = "clean_roberta_fivefold_fair_comparison"
+CLEAN_SESSION_HOLDOUT_TRACK = "clean_roberta_session_holdout_fair_comparison"
 EXPERIMENT_TRACKS = {
     LEGACY_OFFICIAL_TRACK: {
         "split_strategy": "official_train_stratified",
@@ -62,6 +63,10 @@ EXPERIMENT_TRACKS = {
     },
     CLEAN_FIVEFOLD_TRACK: {
         "split_strategy": "outer_session_stratified",
+        "protocol_comparability": "fair_comparison_not_paper_reproduction",
+    },
+    CLEAN_SESSION_HOLDOUT_TRACK: {
+        "split_strategy": "session_holdout",
         "protocol_comparability": "fair_comparison_not_paper_reproduction",
     },
 }
@@ -496,6 +501,7 @@ def build_dataloader(
             val_split_strategy=str(dataset["val_split_strategy"]),
             outer_test_session=str(dataset["outer_test_session"]),
             inner_val_ratio=float(dataset.get("inner_val_ratio", 0.1)),
+            val_session_id=dataset.get("val_session_id"),
             seed=int(dataset.get("split_seed", config["system"]["seed"])),
             shuffle=shuffle,
             num_workers=workers,
@@ -788,6 +794,7 @@ def rebuild_model_from_checkpoint(
 
 __all__ = [
     "CLEAN_FIVEFOLD_TRACK",
+    "CLEAN_SESSION_HOLDOUT_TRACK",
     "EXPERIMENT_TRACKS",
     "LEGACY_FIVEFOLD_TRACK",
     "LEGACY_OFFICIAL_TRACK",

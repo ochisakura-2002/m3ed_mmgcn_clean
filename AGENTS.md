@@ -66,8 +66,12 @@
 2. `LEGACY_SCRIPT_WRAPPERS=RETIRED`
 3. `CANONICAL_ONLY_LAYOUT=COMPLETED`
 4. `FORMAL_LONG_TRAINING_STARTED=NO`
-5. 旧模型 import 路径和旧脚本执行命令均不再受支持；后续代码、配置、测试、文档与命令必须使用 canonical 路径。
-6. Wrapper 退休没有修改模型数学、forward、loss、optimizer、训练逻辑、数据划分、checkpoint/state-dict schema 或配置语义；tracked YAML 数量仍为 183。
+5. `LONG32_TRACK_SPLIT_REPAIR=COMPLETED`
+6. 2026-07-25 远程批次 `outputs/launcher_logs/formal_long32_20260725_213652` 在首个 run `ltp_mmgcn_full_context_val_ses01_s42` 的 runtime config validation 阶段失败，未进入 epoch；根因是 full-context base 的 `clean_roberta_fivefold_fair_comparison` track 被矩阵仅覆盖 split 为 `session_holdout`，形成非法组合。
+7. 32-run 长训练现统一使用 `protocol_version=long_training_session_holdout_v1` 与 `clean_roberta_session_holdout_fair_comparison -> session_holdout`，固定 Ses05 Test、轮换 Ses01--Ses04 Validation；4 个模型、16 个 full-context、16 个 causal-context 与 16 个 pair key 不变，test 不参与选择。
+8. 旧模型 import 路径和旧脚本执行命令均不再受支持；后续代码、配置、测试、文档与命令必须使用 canonical 路径。
+9. Wrapper 退休没有修改模型数学、forward、loss、optimizer、训练逻辑、数据划分、checkpoint/state-dict schema 或配置语义；tracked YAML 数量仍为 183。
+10. Long32 修复回归在临时目录生成 32 个 resolved config 并按各自实际 entrypoint 完成 32/32 config-only runtime validation；定向回归 `15 passed`，完整 pytest `321 passed, 3 skipped`，正式训练启动次数仍为 0。
 
 ## 当前配置目录与阶段
 

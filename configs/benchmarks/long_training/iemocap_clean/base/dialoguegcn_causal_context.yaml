@@ -1,4 +1,5 @@
 schema_version: '1.0'
+protocol_version: long_training_session_holdout_v1
 causal: true
 causal_contract_version: '1.0'
 run_name: long_training_dialoguegcn_causal_context_base
@@ -22,6 +23,8 @@ dataset:
   feature_pkl_path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
   feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
   feature_sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  experiment_track: clean_roberta_session_holdout_fair_comparison
+  protocol_comparability: fair_comparison_not_paper_reproduction
   num_classes: 6
   label_list: [Happy, Sad, Neutral, Angry, Excited, Frustrated]
   text_feature_dim: 768
@@ -90,4 +93,3 @@ provenance:
   feature_registry_key: clean_roberta_v1
   implementation_status: unified_project_causal
   clean_adaptation: feature_declaration_and_text_dimensions_only
-

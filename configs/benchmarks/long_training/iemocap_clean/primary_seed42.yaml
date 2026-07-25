@@ -18,8 +18,12 @@ feature:
   remote_dry_run_required: true
 
 protocol:
+  protocol_version: long_training_session_holdout_v1
   dataset: IEMOCAP
   feature_track: CLEAN
+  experiment_track: clean_roberta_session_holdout_fair_comparison
+  val_split_strategy: session_holdout
+  protocol_comparability: fair_comparison_not_paper_reproduction
   seed_values: [42]
   checkpoint_selection_metric: val_weighted_f1
   checkpoint_selection_split: validation

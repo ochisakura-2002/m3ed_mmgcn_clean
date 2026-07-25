@@ -50,6 +50,8 @@
 
 `FORMAL_LONG_TRAINING_STARTED=NO`
 
+`LONG32_TRACK_SPLIT_REPAIR=COMPLETED`
+
 `OFFICIAL_MULTIDAG_REPRODUCTION=NOT_STARTED`
 
 `OFFICIAL_GSMCC_REPRODUCTION=NOT_STARTED`
@@ -207,6 +209,22 @@ Config tree validation、Phase 4A strict plan audit、Batch 1--7 strict migratio
 
 当前正式实验批次为 `causal8_original8_formal_20260722_012904`：包含 8 个 causal run 和 8 个 Original run，共 16 个正式实验；全部 `PASS`，数值状态均为 `FINITE`。该批次证明统一运行链路已完成并通过数值门禁，不等于作者官方复现完成，也不等于最终 baseline 已选定。
 
+2026-07-25 首次长训练启动批次
+`outputs/launcher_logs/formal_long32_20260725_213652` 在首个
+`ltp_mmgcn_full_context_val_ses01_s42` 的 runtime config validation 阶段停止，
+未进入任何 epoch。根因是 4 个 full-context base 沿用 parameter source 的
+`clean_roberta_fivefold_fair_comparison` / `outer_session_stratified` 元数据，而
+矩阵展开只把 split 改为 `session_holdout`，没有同步 experiment track。
+
+当前 8 个长训练 base 与 primary/disabled multi-seed matrix 已统一声明
+`protocol_version=long_training_session_holdout_v1` 与
+`clean_roberta_session_holdout_fair_comparison -> session_holdout`，固定 Ses05
+为 Test、Ses01--Ses04 轮流作为整 session Validation，避免 paper-aligned
+normalizer 回填旧 `original_merc_three_track_v2`。Paper-aligned runtime 继续
+保留严格 track/split 与 track/comparability 联动拒绝逻辑，并加入该精确
+allowlist 映射；其 dataloader 现在透传 `val_session_id`。模型实现、模型数学、
+parameter source、训练超参数、checkpoint 选择指标与 test 隔离规则均未改变。
+
 ## Canonical runtime entries 与输出规则
 
 Phase 3A canonical execution entries 为：
@@ -341,6 +359,7 @@ wrapper 已退休。`scripts/maintenance/` 中的 evaluation/experiment summary 
 - Legacy wrapper retirement 基于分支 `refactor/model-first-layout`、Git HEAD `adebf052e640146c3f1c43db95df9247d511c1ec` 执行；扫描 236 个 tracked model/script Python，确认并删除 33 个 model wrapper、64 个 script wrapper 与 1 个仅服务 wrapper tree 的 package init，歧义文件为 0。
 - Retirement 更新或移除 245 个唯一 active reference line；最终 active legacy model imports、active legacy script references、active legacy entrypoints 与 active old config references 均为 0。Canonical model implementation、模型数学、训练行为、数据划分、checkpoint/state-dict schema 与 YAML 语义均未改变。
 - Retirement config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、6-case no-epoch/no-output dry-run 与 canonical-only retirement gate 均通过；完整 tracked pytest（显式忽略受保护的本地 `tests/analyze` 目录）：`309 passed, 3 skipped, 14 warnings`；正式训练启动次数为 0。
+- Long32 track/split 修复于 2026-07-25 完成：临时 prepare 生成 32 个 resolved config 与 32 条唯一命令，按实际 entrypoint 完成 32/32 config-only runtime validation；16 个 full-context、16 个 causal-context、16 个 pair key、0 个未配对 run、0 个输出碰撞、0 个 test-selection leakage。定向回归 `15 passed`，完整 `python -m pytest -q` 为 `321 passed, 3 skipped, 30 warnings`；未启动正式训练，未修改模型代码或数学。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 

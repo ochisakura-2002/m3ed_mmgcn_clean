@@ -21,6 +21,22 @@ clean Validation Weighted-F1、训练稳定性、复现可信度、模块插入�
 legacy paper-adjacent Validation 仅作辅助。Test 指标不得参与 checkpoint、epoch、
 超参数或 Top-2 选择。
 
+## 统一正式 fixed-test Session-holdout 比较轨
+
+32-run 正式长训练矩阵使用独立的
+`clean_roberta_session_holdout_fair_comparison` track。该轨道固定 Ses05 为
+Test，并依次将 Ses01、Ses02、Ses03、Ses04 整个 session 作为 Validation；
+对应 `dataset.val_split_strategy` 必须是 `session_holdout`。它不等于
+`clean_roberta_fivefold_fair_comparison`：后者以 Ses01--Ses05 轮流作为外层
+Test fold，并在其余 session 内产生 Validation。
+
+该 fixed-test 轨道仍使用
+`protocol_comparability: fair_comparison_not_paper_reproduction`，只表示统一工程
+比较，不表示作者官方复现。模型实现 lineage（`paper_aligned`、`unified`、
+`project_variant`）与 experiment track 分开记录；实现入口不得用来推断数据划分
+协议。Validation 以 `val_weighted_f1` 选择 best checkpoint，Ses05 Test 不参与
+checkpoint、epoch、超参数或模型选择。
+
 ## 当前主线
 
 当前主线是复现和分析 `M3ED + MMGCN` baseline。`SimpleMLP` 作为 sanity baseline 和对照模型保留。

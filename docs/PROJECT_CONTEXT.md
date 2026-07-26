@@ -477,6 +477,17 @@ Config Batch 6 的执行与审计依据为：
 - `docs/refactors/CONFIG_BATCH6_REFACTOR_REPORT.md`
 - `scripts/dev/audit_config_batch_migration.py`
 
+## 阶段 2.1：DialogueGCN full / GS-MCC Project Variant full 修复实验准备
+
+- 2026-07-27 已完成静态诊断、公共诊断能力和 12-run 修复矩阵的本地准备；本阶段只做配置解析、静态验证与测试，正式训练启动次数为 0。
+- DialogueGCN 的主要高置信风险是假设：Ses04 在原 `patience=10` 下于 epoch 11 停止，而其他 split 的有效选择点集中在 epoch 24--25；候选只比较原设置与 `min_epochs=30, patience=20`。
+- GS-MCC Project Variant full 的主要高置信风险是假设：Ses03/Ses04 分别到 epoch 175/205 才达到最佳验证结果，而 Ses01/Ses02 在 epoch 24/26 停止；候选比较原设置、`min_epochs=90, patience=40` 和 `learning_rate=3e-5`，并用 Ses03/Ses04 的延迟停止候选做正常 split 控制。
+- 12-run 矩阵固定 4 个 DialogueGCN run 和 8 个 GS-MCC run，只覆盖 Ses01--Ses04 validation，Ses05 test 不参与选择；prepare 入口只生成 resolved config、命令和 provenance，不执行训练。
+- 本阶段新增 1 份 repair matrix YAML；tracked YAML 预期总数由 193 增至 194，既有 126 份 output-owning YAML 及其 canonical output 语义不变。
+- 公共训练诊断默认关闭；开启时记录分项 loss、梯度范数、直接参数更新范数、非零梯度元素数、logit/entropy/class coverage/per-class recall 与 early-stopping 状态。`min_epochs` 默认 0，保留原 best-checkpoint 更新和停止语义。
+- 当前本地没有该正式批次的 raw split manifest、dialogue-length 明细或特征 tensor，因此这些资产级结论明确保留为 `UNKNOWN`；不得用 derived table 或配置声明替代实际 tensor 审计。
+- 正式 Long32 matrix/base config、模型数学、forward 与 checkpoint/state-dict schema 均未修改。详细证据、字段定义、候选矩阵、远程执行顺序和结果收集要求见 `docs/experiments/DIALOGUEGCN_GSMCC_FULL_REPAIR_PREPARATION.md`。
+
 ## 下一阶段研究路线
 
 1. 使用作者官方源码、官方特征和作者规程复现 MultiDAG+CL。

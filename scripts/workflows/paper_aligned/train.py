@@ -66,6 +66,16 @@ from utils.output_paths import (  # noqa: E402
     resolve_experiment_group,
     resolve_output_paths,
 )
+from utils.training_control import EarlyStoppingController  # noqa: E402
+from utils.training_diagnostics import (  # noqa: E402
+    DIAGNOSTIC_FIELDS,
+    PredictionDiagnosticsAccumulator,
+    TrainingEpochAccumulator,
+    diagnostics_enabled,
+    optimizer_parameter_audit,
+    should_collect_expensive_diagnostics,
+    write_diagnostic_csv,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -214,7 +224,8 @@ def train_one_epoch(
     max_batches: Optional[int],
     model_name: str = "unknown",
     epoch: int = 0,
-) -> dict[str, float]:
+    diagnostic_accumulator: Optional[TrainingEpochAccumulator] = None,
+) -> dict[str, Any]:
     model.train()
     total_loss = 0.0
     total_classification = 0.0
@@ -279,6 +290,10 @@ def train_one_epoch(
             learning_rate=learning_rate,
             amp_enabled=amp_enabled,
         )
+        parameter_snapshot = None
+        if diagnostic_accumulator is not None:
+            diagnostic_accumulator.record_gradients(model)
+            parameter_snapshot = diagnostic_accumulator.snapshot_parameter_update(model)
         scaler.step(optimizer)
         scaler.update()
         validate_named_tensors_finite(
@@ -292,16 +307,22 @@ def train_one_epoch(
             learning_rate=learning_rate,
             amp_enabled=amp_enabled,
         )
+        if diagnostic_accumulator is not None:
+            diagnostic_accumulator.record_parameter_update(model, parameter_snapshot)
+            diagnostic_accumulator.update_batch(output, batch)
         count = int((batch["attention_mask"].bool() & (batch["labels"] >= 0)).sum().item())
         total_count += count
         total_loss += float(loss.detach().item()) * count
         total_classification += float(output["classification_loss"].detach().item()) * count
     if total_count == 0:
         raise RuntimeError("training produced no valid utterances")
-    return {
+    result = {
         "loss": total_loss / total_count,
         "classification_loss": total_classification / total_count,
     }
+    if diagnostic_accumulator is not None:
+        result["diagnostics"] = diagnostic_accumulator.summary()
+    return result
 
 
 def checkpoint_payload(
@@ -587,6 +608,10 @@ def run_training(
     model = build_original_repro_model(config).to(device)
     optimizer = build_optimizer(model, config)
     scheduler = build_scheduler(optimizer, config)
+    diagnostics_on = diagnostics_enabled(config)
+    optimizer_audit = (
+        optimizer_parameter_audit(model, optimizer) if diagnostics_on else None
+    )
     amp_enabled = bool(config["training"].get("amp", True)) and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
 
@@ -610,12 +635,81 @@ def run_training(
     else:
         history = []
     patience = int(config["training"].get("early_stopping_patience", 0))
-    epochs_without_improvement = 0
+    min_epochs = int(config["training"].get("early_stopping_min_epochs", 0))
+    min_delta = float(config["training"].get("early_stopping_min_delta", 0.0))
+    early_stopping = EarlyStoppingController(
+        patience=patience,
+        min_epochs=min_epochs,
+        min_delta=min_delta,
+        best_metric=best_score,
+        best_epoch=best_epoch,
+    )
+    diagnostic_history_path = paths["logs"] / "training_diagnostics.csv"
+    if (
+        diagnostics_on
+        and resume_checkpoint is not None
+        and diagnostic_history_path.is_file()
+    ):
+        diagnostic_history = (
+            pd.read_csv(diagnostic_history_path)
+            .where(lambda frame: frame.notna(), None)
+            .to_dict(orient="records")
+        )
+    else:
+        diagnostic_history = []
+    if diagnostics_on:
+        dump_json(
+            {
+                "enabled": True,
+                "fields": list(DIAGNOSTIC_FIELDS),
+                "optimizer": optimizer_audit,
+                "scheduler": {
+                    "type": str(config["scheduler"].get("name", "none")).lower(),
+                    "initial_learning_rates": [
+                        float(group["lr"]) for group in optimizer.param_groups
+                    ],
+                    "epoch_update_point": "after_validation_before_epoch_logging",
+                },
+                "early_stopping": {
+                    "metric": "val_weighted_f1",
+                    "mode": "max",
+                    "patience": patience,
+                    "min_epochs": min_epochs,
+                    "min_delta": min_delta,
+                    "best_updates_before_min_epochs": True,
+                    "test_split_used_for_selection": False,
+                },
+                "parameter_update_norm_sampling": (
+                    "first_optimizer_step_of_sampled_epoch; direct before/after "
+                    "parameter comparison"
+                ),
+            },
+            paths["logs"] / "training_diagnostics_setup.json",
+        )
     last_epoch = start_epoch - 1
+    stopped_by_early_stopping = False
     max_train_batches = config["training"].get("max_train_batches")
     max_eval_batches = config["training"].get("max_eval_batches")
     for epoch in range(start_epoch, int(config["training"]["epochs"]) + 1):
         epoch_loader = curriculum_train_loader(train_loader, model, epoch, seed)
+        train_diagnostics = (
+            TrainingEpochAccumulator(
+                int(config["model"]["num_classes"]),
+                collect_parameter_update=should_collect_expensive_diagnostics(
+                    config, epoch
+                ),
+            )
+            if diagnostics_on
+            else None
+        )
+        validation_diagnostics = (
+            PredictionDiagnosticsAccumulator(
+                int(config["model"]["num_classes"]),
+                config["dataset"].get("label_list"),
+            )
+            if diagnostics_on
+            else None
+        )
         train_result = guarded_numeric(
             lambda: train_one_epoch(
                 model,
@@ -628,6 +722,7 @@ def run_training(
                 None if max_train_batches is None else int(max_train_batches),
                 model_name=str(config["model"]["name"]),
                 epoch=epoch,
+                diagnostic_accumulator=train_diagnostics,
             )
         )
         val_result = guarded_numeric(
@@ -637,6 +732,7 @@ def run_training(
                 val_loader,
                 device,
                 None if max_eval_batches is None else int(max_eval_batches),
+                prediction_diagnostics=validation_diagnostics,
             )
         )
         score = float(val_result["metrics"]["weighted_f1"])
@@ -659,10 +755,10 @@ def run_training(
         }
         history.append(row)
         pd.DataFrame(history).to_csv(history_path, index=False)
-        improved = score > best_score
-        if improved:
-            best_score, best_epoch = score, epoch
-            epochs_without_improvement = 0
+        stop_decision = early_stopping.update(epoch, score)
+        best_score = stop_decision.best_metric
+        best_epoch = stop_decision.best_epoch
+        if stop_decision.improved:
             guarded_numeric(
                 lambda: save_checkpoint(
                     paths["checkpoints"] / "best_model.pt",
@@ -677,14 +773,71 @@ def run_training(
                     split_ids=split_ids,
                 )
             )
-        else:
-            epochs_without_improvement += 1
+        if diagnostics_on:
+            assert optimizer_audit is not None
+            assert validation_diagnostics is not None
+            train_diagnostic_values = train_result["diagnostics"]
+            validation_diagnostic_values = validation_diagnostics.summary()
+            diagnostic_history.append(
+                {
+                    "epoch": epoch,
+                    "train_loss": train_result["loss"],
+                    "val_loss": val_result["loss"],
+                    "train_weighted_f1": train_diagnostic_values["weighted_f1"],
+                    "val_weighted_f1": score,
+                    "learning_rate": optimizer.param_groups[0]["lr"],
+                    "classification_loss": train_diagnostic_values[
+                        "classification_loss"
+                    ],
+                    "contrastive_loss": train_diagnostic_values[
+                        "contrastive_loss"
+                    ],
+                    "auxiliary_loss": train_diagnostic_values["auxiliary_loss"],
+                    "gradient_norm": train_diagnostic_values["gradient_norm"],
+                    "parameter_update_norm": train_diagnostic_values[
+                        "parameter_update_norm"
+                    ],
+                    "nonzero_gradient_parameter_count": train_diagnostic_values[
+                        "nonzero_gradient_parameter_count"
+                    ],
+                    "trainable_parameter_count": optimizer_audit[
+                        "trainable_parameter_count"
+                    ],
+                    "logit_mean": validation_diagnostic_values["logit_mean"],
+                    "logit_std": validation_diagnostic_values["logit_std"],
+                    "logit_min": validation_diagnostic_values["logit_min"],
+                    "logit_max": validation_diagnostic_values["logit_max"],
+                    "prediction_entropy": validation_diagnostic_values[
+                        "prediction_entropy"
+                    ],
+                    "predicted_class_count": validation_diagnostic_values[
+                        "predicted_class_count"
+                    ],
+                    "dominant_class_ratio": validation_diagnostic_values[
+                        "dominant_class_ratio"
+                    ],
+                    "per_class_recall": validation_diagnostic_values[
+                        "per_class_recall"
+                    ],
+                    "effective_batch_count": train_diagnostic_values[
+                        "effective_batch_count"
+                    ],
+                    "early_stopping_counter": stop_decision.counter,
+                    "best_epoch": best_epoch,
+                    "best_metric": best_score,
+                    "min_epochs": min_epochs,
+                    "patience": patience,
+                    "stopped_by_early_stopping": stop_decision.should_stop,
+                }
+            )
+            write_diagnostic_csv(diagnostic_history_path, diagnostic_history)
         last_epoch = epoch
         print(
             f"epoch={epoch} train_loss={train_result['loss']:.6f} "
             f"val_weighted_f1={score:.6f} best_epoch={best_epoch}"
         )
-        if patience > 0 and epochs_without_improvement >= patience:
+        if stop_decision.should_stop:
+            stopped_by_early_stopping = True
             break
 
     if best_epoch < 0:
@@ -748,6 +901,12 @@ def run_training(
         "nonfinite_batch": None,
         "best_epoch": best_epoch,
         "best_val_weighted_f1": best_score,
+        "early_stopping_counter": early_stopping.counter,
+        "early_stopping_min_epochs": min_epochs,
+        "early_stopping_patience": patience,
+        "early_stopping_min_delta": min_delta,
+        "stopped_by_early_stopping": stopped_by_early_stopping,
+        "training_diagnostics_enabled": diagnostics_on,
         "test_weighted_f1": test_best["metrics"]["weighted_f1"],
         "verified_feature_sha256": verified_sha,
         "checkpoint_reload": "passed",

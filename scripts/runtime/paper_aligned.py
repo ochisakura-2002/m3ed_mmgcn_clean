@@ -368,6 +368,7 @@ def validate_runtime_config(config: Mapping[str, Any]) -> None:
     training = config.get("training", {})
     optimizer = config.get("optimizer", {})
     scheduler = config.get("scheduler", {})
+    diagnostics = config.get("diagnostics", {})
     if str(dataset.get("name", "")).upper() not in {"IEMOCAP", "SYNTHETIC"}:
         raise ValueError("dataset.name must be IEMOCAP or SYNTHETIC")
     if str(dataset.get("name", "")).upper() == "IEMOCAP":
@@ -405,12 +406,31 @@ def validate_runtime_config(config: Mapping[str, Any]) -> None:
         raise ValueError("checkpoint selection must use val_weighted_f1")
     if int(training.get("early_stopping_patience", 0)) < 0:
         raise ValueError("early_stopping_patience must be non-negative")
+    min_epochs = int(training.get("early_stopping_min_epochs", 0))
+    if min_epochs < 0:
+        raise ValueError("early_stopping_min_epochs must be non-negative")
+    if min_epochs > int(training.get("epochs", 0)):
+        raise ValueError("early_stopping_min_epochs cannot exceed training.epochs")
+    min_delta = float(training.get("early_stopping_min_delta", 0.0))
+    if not math.isfinite(min_delta) or min_delta < 0:
+        raise ValueError("early_stopping_min_delta must be finite and non-negative")
     if str(optimizer.get("name", "")).lower() not in {"adam", "adamw"}:
         raise ValueError("optimizer.name must be Adam or AdamW")
     if float(optimizer.get("learning_rate", 0)) <= 0:
         raise ValueError("optimizer.learning_rate must be positive")
     if str(scheduler.get("name", "none")).lower() not in {"none", "plateau", "cosine"}:
         raise ValueError("scheduler.name must be none, plateau, or cosine")
+    if diagnostics and not isinstance(diagnostics, Mapping):
+        raise TypeError("diagnostics must be a mapping")
+    if isinstance(diagnostics, Mapping) and bool(diagnostics.get("enabled", False)):
+        if int(diagnostics.get("full_frequency_epochs", 15)) < 15:
+            raise ValueError(
+                "enabled diagnostics must sample every epoch through epoch 15"
+            )
+        if int(diagnostics.get("expensive_every_n_epochs", 5)) <= 0:
+            raise ValueError(
+                "diagnostics.expensive_every_n_epochs must be positive"
+            )
     get_model_constructor_args({"model": config["model"]})
 
 
@@ -585,6 +605,7 @@ def evaluate_model(
     loader: DataLoader,
     device: torch.device,
     max_batches: Optional[int] = None,
+    prediction_diagnostics: Any = None,
 ) -> dict[str, Any]:
     model.eval()
     total_loss = 0.0
@@ -625,6 +646,12 @@ def evaluate_model(
                     total_loss=output["loss"],
                     learning_rate=None,
                     amp_enabled=False,
+                )
+            if prediction_diagnostics is not None:
+                prediction_diagnostics.update(
+                    output["logits"],
+                    batch["labels"],
+                    batch["attention_mask"],
                 )
             predicted = probabilities.argmax(dim=-1)
             y_true.extend(int(value) for value in batch["labels"][valid].cpu().tolist())

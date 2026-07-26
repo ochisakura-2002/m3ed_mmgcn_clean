@@ -1,0 +1,294 @@
+schema_version: '1.0'
+matrix_name: dialoguegcn_gsmcc_full_repair
+enabled: true
+expected_run_count: 12
+experiment_group: dialoguegcn_gsmcc_full_repair
+output_base: outputs
+human_matrix_csv: configs/benchmarks/repairs/dialoguegcn_gsmcc_full/repair_matrix.csv
+
+protocol:
+  protocol_version: long_training_session_holdout_v1
+  dataset: IEMOCAP
+  feature_track: CLEAN
+  context_mode: full_context
+  validation_sessions: [Ses01, Ses02, Ses03, Ses04]
+  test_session: Ses05
+  seed: 42
+  checkpoint_selection_metric: val_weighted_f1
+  checkpoint_selection_split: validation
+  test_split_used_for_selection: false
+  historical_training_commit: d8a7701b62339a6908a39de5d800cb816174ec90
+  preserve_historical_outputs: true
+
+feature:
+  registry_key: clean_roberta_v1
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  text_dim: 768
+  audio_dim: 1582
+  visual_dim: 342
+  local_status: REMOTE_ASSET_REQUIRED
+
+diagnostics:
+  full_frequency_epochs: 15
+  expensive_every_n_epochs: 5
+
+candidate_rationale:
+  dialoguegcn_delayed_early_stop:
+    min_epochs: 30
+    patience: 20
+    evidence: Ses03 first exceeded validation weighted F1 0.4 at epoch 20 and selected epoch 24; epoch 30 adds a six-epoch margin.
+  gsmcc_delayed_early_stop:
+    min_epochs: 90
+    patience: 40
+    evidence: Ses03/Ses04 first exceeded validation weighted F1 0.3 at epochs 62/82; epoch 90 covers the later observed transition with margin.
+  gsmcc_lr_candidate:
+    learning_rate: 0.00003
+    evidence: At 1e-5 the successful controls first exceeded validation weighted F1 0.2 at epochs 47/37; a threefold diagnostic candidate targets a transition inside the original patience window while remaining below the other full-context baselines' rates.
+  gsmcc_control_choice:
+    candidate: delayed_early_stop
+    evidence: Existing Ses03/Ses04 runs prove that 1e-5 can learn when training survives long enough; static evidence for a higher learning rate is weaker.
+
+candidates:
+  - run_id: dialoguegcn_ses04_original_diagnostic
+    model_family: dialoguegcn
+    implementation_identity: paper_aligned_not_author_official
+    context_mode: full_context
+    validation_session: Ses04
+    test_session: Ses05
+    seed: 42
+    candidate_type: original_diagnostic
+    changed_variables: [diagnostics.enabled]
+    unchanged_variables: &dialogue_unchanged
+      - optimizer.learning_rate
+      - optimizer.weight_decay
+      - training.batch_size
+      - training.epochs
+      - model.context_hidden_dim
+      - model.graph_hidden_dim
+      - model.dropout
+      - model.active_modalities
+      - model.window_past
+      - model.window_future
+      - model.base_model
+      - model.use_class_weight
+      - scheduler.name
+      - loss.composition
+      - dataset.feature_sha256
+      - protocol.checkpoint_selection
+    control_group: historical_dialoguegcn_ses04
+    diagnostic_question: Does the original Ses04 trajectory reproduce the near-uniform single-class collapse with direct optimizer and logit evidence?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides: {}
+
+  - run_id: dialoguegcn_ses04_delayed_early_stop
+    model_family: dialoguegcn
+    implementation_identity: paper_aligned_not_author_official
+    context_mode: full_context
+    validation_session: Ses04
+    test_session: Ses05
+    seed: 42
+    candidate_type: delayed_early_stop
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *dialogue_unchanged
+    control_group: dialoguegcn_ses04_original_diagnostic
+    diagnostic_question: Does Ses04 enter a differentiated learning regime when stopping is gated through epoch 30?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 30
+      training.early_stopping_patience: 20
+
+  - run_id: dialoguegcn_ses03_original_diagnostic
+    model_family: dialoguegcn
+    implementation_identity: paper_aligned_not_author_official
+    context_mode: full_context
+    validation_session: Ses03
+    test_session: Ses05
+    seed: 42
+    candidate_type: original_diagnostic
+    changed_variables: [diagnostics.enabled]
+    unchanged_variables: *dialogue_unchanged
+    control_group: historical_dialoguegcn_ses03
+    diagnostic_question: What optimizer, logit, entropy, and class-coverage trajectory characterizes the previously successful near-session control?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides: {}
+
+  - run_id: dialoguegcn_ses03_delayed_early_stop
+    model_family: dialoguegcn
+    implementation_identity: paper_aligned_not_author_official
+    context_mode: full_context
+    validation_session: Ses03
+    test_session: Ses05
+    seed: 42
+    candidate_type: delayed_early_stop
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *dialogue_unchanged
+    control_group: dialoguegcn_ses03_original_diagnostic
+    diagnostic_question: Does the DialogueGCN delayed-stop candidate materially degrade the previously successful Ses03 control?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 30
+      training.early_stopping_patience: 20
+
+  - run_id: gsmcc_ses01_original_diagnostic
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses01
+    test_session: Ses05
+    seed: 42
+    candidate_type: original_diagnostic
+    changed_variables: [diagnostics.enabled]
+    unchanged_variables: &gsmcc_unchanged
+      - optimizer.weight_decay
+      - training.batch_size
+      - training.epochs
+      - model.hidden_dim
+      - model.graph_layers
+      - model.dropout
+      - model.window
+      - model.use_contrastive_loss
+      - model.contrastive_temperature
+      - model.contrastive_loss_weight
+      - scheduler.name
+      - loss.composition
+      - dataset.feature_sha256
+      - protocol.checkpoint_selection
+    control_group: historical_gsmcc_ses01
+    diagnostic_question: Does Ses01 reproduce low class coverage and near-uniform logits while gradients and true parameter updates remain nonzero?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides: {}
+
+  - run_id: gsmcc_ses01_delayed_early_stop
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses01
+    test_session: Ses05
+    seed: 42
+    candidate_type: delayed_early_stop
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: gsmcc_ses01_original_diagnostic
+    diagnostic_question: Does Ses01 reach a differentiated learning regime when stopping is gated through epoch 90 at the original learning rate?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 90
+      training.early_stopping_patience: 40
+
+  - run_id: gsmcc_ses01_lr_candidate
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses01
+    test_session: Ses05
+    seed: 42
+    candidate_type: lr_candidate
+    changed_variables: [optimizer.learning_rate, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: gsmcc_ses01_original_diagnostic
+    diagnostic_question: Does a 3e-5 learning rate move the effective learning transition inside the original patience window without numerical instability?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      optimizer.learning_rate: 0.00003
+
+  - run_id: gsmcc_ses02_original_diagnostic
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses02
+    test_session: Ses05
+    seed: 42
+    candidate_type: original_diagnostic
+    changed_variables: [diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: historical_gsmcc_ses02
+    diagnostic_question: Does Ses02 reproduce low class coverage and near-uniform logits while gradients and true parameter updates remain nonzero?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides: {}
+
+  - run_id: gsmcc_ses02_delayed_early_stop
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses02
+    test_session: Ses05
+    seed: 42
+    candidate_type: delayed_early_stop
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: gsmcc_ses02_original_diagnostic
+    diagnostic_question: Does Ses02 reach a differentiated learning regime when stopping is gated through epoch 90 at the original learning rate?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 90
+      training.early_stopping_patience: 40
+
+  - run_id: gsmcc_ses02_lr_candidate
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses02
+    test_session: Ses05
+    seed: 42
+    candidate_type: lr_candidate
+    changed_variables: [optimizer.learning_rate, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: gsmcc_ses02_original_diagnostic
+    diagnostic_question: Does a 3e-5 learning rate move the effective learning transition inside the original patience window without numerical instability?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      optimizer.learning_rate: 0.00003
+
+  - run_id: gsmcc_ses03_best_candidate_control
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses03
+    test_session: Ses05
+    seed: 42
+    candidate_type: best_candidate_control
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: historical_gsmcc_ses03
+    diagnostic_question: Does the evidence-preferred delayed-stop candidate materially degrade the previously successful Ses03 control?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 90
+      training.early_stopping_patience: 40
+
+  - run_id: gsmcc_ses04_best_candidate_control
+    model_family: gsmcc_project_variant
+    implementation_identity: project_variant_not_paper_reproduction
+    context_mode: full_context
+    validation_session: Ses04
+    test_session: Ses05
+    seed: 42
+    candidate_type: best_candidate_control
+    changed_variables:
+      [training.early_stopping_min_epochs, training.early_stopping_patience, diagnostics.enabled]
+    unchanged_variables: *gsmcc_unchanged
+    control_group: historical_gsmcc_ses04
+    diagnostic_question: Does the evidence-preferred delayed-stop candidate materially degrade the previously successful Ses04 control?
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    overrides:
+      training.early_stopping_min_epochs: 90
+      training.early_stopping_patience: 40

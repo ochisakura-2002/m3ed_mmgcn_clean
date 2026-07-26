@@ -327,7 +327,7 @@ def test_all_output_owning_yaml_resolves_to_canonical_outputs_layout() -> None:
             Path("outputs") / "20260726" / group / "runs" / "layout_audit"
         )
 
-    assert len(config_paths) == 193
+    assert len(config_paths) == 194
     assert len(output_owning) == 126
 
 

@@ -19,6 +19,7 @@ from scripts.analysis.causal.audit_model_causality import run_audit  # noqa: E40
 from utils.output_paths import (  # noqa: E402
     configured_output_root,
     resolve_experiment_date,
+    resolve_experiment_group,
     resolve_output_category,
     sanitize_run_name,
 )
@@ -144,6 +145,11 @@ def run_four_model_audit(
         cli_date=experiment_date,
         config=config,
     )
+    experiment_group = resolve_experiment_group(
+        config=config,
+        config_path=config_path,
+        default="causal_four_model_audit",
+    )
     output_root = resolve_path(str(configured_output_root(config)))
     output_name = sanitize_run_name(
         str(output_config.get("name", "four_model_causal_audit"))
@@ -155,7 +161,14 @@ def run_four_model_audit(
         if output_dir_override is not None
         else resolve_path(str(config["output_dir"]))
         if config.get("output_dir") is not None
-        else resolve_output_category("audits", frozen_date, output_root) / output_name
+        else resolve_output_category(
+            "review",
+            frozen_date,
+            output_root,
+            experiment_group=experiment_group,
+        )
+        / "audits"
+        / output_name
     )
     rows: List[Dict[str, Any]] = []
     sources: List[str] = []

@@ -30,6 +30,7 @@ from utils.output_paths import (  # noqa: E402
     find_run_directory,
     infer_experiment_date_from_run,
     resolve_experiment_date,
+    resolve_experiment_group,
     resolve_output_category,
     sanitize_run_name,
 )
@@ -2068,6 +2069,10 @@ def run_review(args: argparse.Namespace) -> int:
         config=review_config,
         inferred_date=inferred_date,
     )
+    experiment_group = resolve_experiment_group(
+        config=review_config,
+        config_path=review_config_path,
+    )
     output_config = review_config.get("output", {})
     review_name = sanitize_run_name(
         str(output_config.get("name", "causal_benchmark_8run_review"))
@@ -2079,7 +2084,13 @@ def run_review(args: argparse.Namespace) -> int:
         if args.output_dir is not None
         else resolve_project_path(review_config["output_dir"])
         if review_config.get("output_dir") is not None
-        else resolve_output_category("review", frozen_date, output_root) / review_name
+        else resolve_output_category(
+            "review",
+            frozen_date,
+            output_root,
+            experiment_group=experiment_group,
+        )
+        / review_name
     )
     report_path = (
         resolve_project_path(args.report_path)

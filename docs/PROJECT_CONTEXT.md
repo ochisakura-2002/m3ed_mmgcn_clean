@@ -48,9 +48,11 @@
 
 `CANONICAL_ONLY_LAYOUT=COMPLETED`
 
-`FORMAL_LONG_TRAINING_STARTED=NO`
+`FORMAL_LONG_TRAINING_STARTED=YES`
 
 `LONG32_TRACK_SPLIT_REPAIR=COMPLETED`
+
+`OUTPUT_LAYOUT_REFACTOR=COMPLETED_FOR_FUTURE_RUNS`
 
 `OFFICIAL_MULTIDAG_REPRODUCTION=NOT_STARTED`
 
@@ -225,6 +227,12 @@ normalizer 回填旧 `original_merc_three_track_v2`。Paper-aligned runtime 继�
 allowlist 映射；其 dataloader 现在透传 `val_session_id`。模型实现、模型数学、
 parameter source、训练超参数、checkpoint 选择指标与 test 隔离规则均未改变。
 
+用户确认当前 32-run 正式远程训练正在旧输出架构上运行，使用 commit
+`d8a7701` 或远程实际 `git rev-parse HEAD`。它不是上文 2026-07-25 的历史
+预检失败批次。本地输出目录重构不停止该训练、不修改远程工作区、不要求远程
+`git pull`，也不迁移其 resolved configs、run 或 launcher logs；新规则仅供
+未来完成正常 Git 交接后启动的新批次使用。
+
 ## Canonical runtime entries 与输出规则
 
 Phase 3A canonical execution entries 为：
@@ -265,7 +273,14 @@ wrapper 已退休。`scripts/maintenance/` 中的 evaluation/experiment summary 
 所有训练、评估、pipeline、analysis、diagnostics、data、maintenance 与 dev
 调用都必须使用上述 canonical 路径；迁移前 CLI 不再受支持。
 
-正式实验输出按启动日期写入 `outputs/<YYYYMMDD>/`；本地 smoke 使用 `tmp/`。显式 checkpoint/run/output 路径优先，旧输出只读兼容，不移动、不改名。不要提交数据、feature pkl、checkpoint、cache 或大体积输出。
+未来正式、消融、smoke、quick 与 debug 写入统一使用
+`outputs/<YYYYMMDD>/<experiment_group>/`，其第三级只允许 `runs`、`logs`、
+`manifests`、`review`、`reports`、`analysis`。`run_id` 标识训练 run，
+`batch_id` 隔离 launcher 与批次级产物；fixed `run_id` 已存在时必须在 epoch
+前失败，不得覆盖。旧 `outputs/<date>/runs`、`outputs/long_training/*` 与
+`outputs/launcher_logs` 仅只读兼容，不移动、不改名。完整规则见
+`docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`。不要提交数据、feature pkl、
+checkpoint、cache 或大体积输出。
 
 ## 已完成工作
 
@@ -360,6 +375,7 @@ wrapper 已退休。`scripts/maintenance/` 中的 evaluation/experiment summary 
 - Retirement 更新或移除 245 个唯一 active reference line；最终 active legacy model imports、active legacy script references、active legacy entrypoints 与 active old config references 均为 0。Canonical model implementation、模型数学、训练行为、数据划分、checkpoint/state-dict schema 与 YAML 语义均未改变。
 - Retirement config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、6-case no-epoch/no-output dry-run 与 canonical-only retirement gate 均通过；完整 tracked pytest（显式忽略受保护的本地 `tests/analyze` 目录）：`309 passed, 3 skipped, 14 warnings`；正式训练启动次数为 0。
 - Long32 track/split 修复于 2026-07-25 完成：临时 prepare 生成 32 个 resolved config 与 32 条唯一命令，按实际 entrypoint 完成 32/32 config-only runtime validation；16 个 full-context、16 个 causal-context、16 个 pair key、0 个未配对 run、0 个输出碰撞、0 个 test-selection leakage。定向回归 `15 passed`，完整 `python -m pytest -q` 为 `321 passed, 3 skipped, 30 warnings`；未启动正式训练，未修改模型代码或数学。
+- Future output layout 重构审计 193 个 tracked YAML，其中 126 个直接拥有输出配置，全部通过显式 `experiment_group` 或公共 runtime resolver 进入 `outputs/<date>/<group>`；9 个活动 smoke output base 从 `tmp/smoke_outputs` 统一为 `outputs`，两份 long-training matrix 显式声明 group 与 canonical templates。旧路径新写入为 0，历史路径只读兼容。最终定向回归 `50 passed`，完整 tracked pytest（显式忽略受保护本地 `tests/analyze`）为 `318 passed, 3 skipped, 14 warnings`。该任务没有启动正式训练、修改远程、移动或删除已有输出。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 

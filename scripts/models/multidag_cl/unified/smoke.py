@@ -30,10 +30,9 @@ from models.multidag_cl.unified import MultiDAGCLBaseline  # noqa: E402
 from utils.io import ensure_dir, load_yaml, resolve_project_path, sanitize_name, save_yaml  # noqa: E402
 from utils.seed import set_seed  # noqa: E402
 from utils.output_paths import (  # noqa: E402
+    allocate_configured_run,
     configured_output_root,
-    create_unique_run_dir,
     resolve_experiment_date,
-    resolve_output_category,
 )
 
 
@@ -53,6 +52,7 @@ def _parse_args() -> argparse.Namespace:
         help="Path to the smoke YAML config.",
     )
     parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--experiment-group", default=None)
     return parser.parse_args()
 
 
@@ -63,7 +63,12 @@ def _project_relative(path: Path) -> str:
         return str(path)
 
 
-def _make_run_dir(config: Dict[str, Any], experiment_date: str | None) -> Path:
+def _make_run_dir(
+    config: Dict[str, Any],
+    config_path: Path,
+    experiment_date: str | None,
+    experiment_group: str | None,
+) -> Path:
     output_config = config.setdefault("output", {})
     output_root = resolve_project_path(str(configured_output_root(config)))
     if output_root is None:
@@ -73,28 +78,53 @@ def _make_run_dir(config: Dict[str, Any], experiment_date: str | None) -> Path:
         config=config,
     )
     run_name = output_config.get("run_name", "multidag_cl_smoke")
-    run_dir = create_unique_run_dir(
-        sanitize_name(str(run_name)), frozen_date, output_root
+    layout = allocate_configured_run(
+        config=config,
+        config_path=config_path,
+        experiment_name=sanitize_name(str(run_name)),
+        experiment_date=frozen_date,
+        output_base=output_root,
+        experiment_group=experiment_group,
     )
-    manifest_dir = resolve_output_category(
-        "manifests", frozen_date, output_root
-    ) / run_dir.name
-    ensure_dir(manifest_dir)
+    assert layout.run_root is not None
+    run_dir = layout.run_root
+    manifest_dir = layout.manifest_root / "runs" / run_dir.name
+    logs_dir = run_dir / "logs"
+    checkpoints_dir = run_dir / "checkpoints"
+    metrics_dir = run_dir / "metrics"
+    artifacts_dir = run_dir / "artifacts"
+    for path in (
+        manifest_dir,
+        logs_dir,
+        checkpoints_dir,
+        metrics_dir,
+        artifacts_dir,
+    ):
+        ensure_dir(path)
     output_config.pop("run_root", None)
     output_config.update(
         {
-            "root": str(output_root),
+            "root": str(run_dir),
+            "output_base": str(output_root),
             "experiment_date": frozen_date,
+            "experiment_group": layout.experiment_group,
             "output_root": str(output_root),
             "day_output_root": str(output_root / frozen_date),
+            "experiment_root": str(layout.experiment_root),
+            "run_id": run_dir.name,
+            "run_root": str(run_dir),
             "run_dir": str(run_dir),
-            "log_dir": str(run_dir),
-            "analysis_dir": str(
-                resolve_output_category("analysis", frozen_date, output_root)
-            ),
+            "log_dir": str(logs_dir),
+            "checkpoint_dir": str(checkpoints_dir),
+            "metrics_dir": str(metrics_dir),
+            "artifacts_dir": str(artifacts_dir),
+            "analysis_dir": str(layout.analysis_root),
             "manifest_dir": str(manifest_dir),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
         }
     )
+    save_yaml(config, run_dir / "resolved_config.yaml")
 
     latest_path = manifest_dir / "latest_run.txt"
     with latest_path.open("w", encoding="utf-8") as file:
@@ -383,8 +413,16 @@ def main() -> None:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("Config requested CUDA, but CUDA is not available")
 
-    run_dir = _make_run_dir(config, args.experiment_date)
-    save_yaml(config, run_dir / "config.yaml")
+    run_dir = _make_run_dir(
+        config,
+        config_path,
+        args.experiment_date,
+        args.experiment_group,
+    )
+    logs_dir = run_dir / "logs"
+    checkpoints_dir = run_dir / "checkpoints"
+    metrics_dir = run_dir / "metrics"
+    save_yaml(config, logs_dir / "config.yaml")
 
     train_loader, val_loader = _build_dataloaders(config)
     model = _build_model(config).to(device)
@@ -438,7 +476,7 @@ def main() -> None:
             best_metric = float(row[best_metric_name])
             best_epoch = epoch
             _save_checkpoint(
-                path=run_dir / "best_model.pt",
+                path=checkpoints_dir / "best_model.pt",
                 model=model,
                 optimizer=optimizer,
                 config=config,
@@ -447,7 +485,7 @@ def main() -> None:
             )
 
         _save_checkpoint(
-            path=run_dir / "last_model.pt",
+            path=checkpoints_dir / "last_model.pt",
             model=model,
             optimizer=optimizer,
             config=config,
@@ -461,7 +499,7 @@ def main() -> None:
             f"{_metric_summary(row, prefix='val_')}"
         )
 
-    epoch_metrics_path = run_dir / "epoch_metrics.csv"
+    epoch_metrics_path = metrics_dir / "epoch_metrics.csv"
     _write_csv(
         path=epoch_metrics_path,
         rows=epoch_rows,
@@ -476,7 +514,7 @@ def main() -> None:
         ],
     )
 
-    best_path = run_dir / "best_model.pt"
+    best_path = checkpoints_dir / "best_model.pt"
     if not best_path.exists():
         raise RuntimeError("Best checkpoint was not saved")
 
@@ -491,7 +529,7 @@ def main() -> None:
     )
     reload_row = {
         "split": "val",
-        "checkpoint": "best_model.pt",
+        "checkpoint": "checkpoints/best_model.pt",
         "epoch": int(checkpoint["epoch"]),
         "loss": reload_metrics["loss"],
         "acc": reload_metrics["acc"],
@@ -500,7 +538,7 @@ def main() -> None:
         "uar": reload_metrics["uar"],
     }
     _write_csv(
-        path=run_dir / "smoke_eval_reload_metrics.csv",
+        path=metrics_dir / "smoke_eval_reload_metrics.csv",
         rows=[reload_row],
         fieldnames=[
             "split",
@@ -517,7 +555,10 @@ def main() -> None:
     print(f"Best epoch: {best_epoch} ({best_metric_name}={best_metric:.4f})")
     print(f"Reload val: loss={reload_metrics['loss']:.4f} | {_metric_summary(reload_metrics)}")
     print(f"Saved best checkpoint: {_project_relative(best_path)}")
-    print(f"Saved reload metrics: {_project_relative(run_dir / 'smoke_eval_reload_metrics.csv')}")
+    print(
+        "Saved reload metrics: "
+        f"{_project_relative(metrics_dir / 'smoke_eval_reload_metrics.csv')}"
+    )
 
 
 if __name__ == "__main__":

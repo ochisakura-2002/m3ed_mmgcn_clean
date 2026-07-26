@@ -91,7 +91,8 @@ from utils.output_paths import (  # noqa: E402
     create_unique_category_dir,
     find_run_directory,
     resolve_experiment_date,
-    resolve_output_category,
+    resolve_experiment_group,
+    resolve_output_paths,
     sanitize_run_name,
 )
 
@@ -117,6 +118,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Frozen pipeline launch date in YYYYMMDD format.",
     )
+    parser.add_argument("--experiment-group", default=None)
 
     return parser.parse_args()
 
@@ -583,6 +585,7 @@ def run_training_stage(
     config: Dict[str, Any],
     dry_run: bool,
     experiment_date: str,
+    experiment_group: str,
 ) -> Tuple[bool, Optional[Dict[str, str]]]:
     train_enabled = get_bool(config, ["train", "enabled"], False)
     if not train_enabled:
@@ -605,6 +608,8 @@ def run_training_stage(
             path_to_command_arg(train_config_path),
             "--experiment-date",
             experiment_date,
+            "--experiment-group",
+            experiment_group,
         ],
         dry_run=dry_run,
     )
@@ -975,26 +980,36 @@ def main() -> Optional[str]:
         cli_date=args.experiment_date,
         config=config,
     )
+    experiment_group = resolve_experiment_group(
+        cli_group=args.experiment_group,
+        config=config,
+        config_path=config_path,
+    )
     output_root = configured_output_root(config)
     if not output_root.is_absolute():
         output_root = PROJECT_ROOT / output_root
     pipeline_name = sanitize_run_name(
         str(safe_get(config, ["project", "experiment_name"], config_path.stem))
     )
+    layout = resolve_output_paths(
+        output_base=output_root,
+        experiment_date=frozen_date,
+        experiment_group=experiment_group,
+    )
     config.setdefault("output", {})
     config["output"].update(
         {
             "root": str(output_root),
+            "output_base": str(output_root),
             "experiment_date": frozen_date,
+            "experiment_group": experiment_group,
             "output_root": str(output_root),
             "day_output_root": str(output_root / frozen_date),
-            "log_dir": str(
-                resolve_output_category("logs", frozen_date, output_root)
-                / pipeline_name
-            ),
-            "analysis_dir": str(
-                resolve_output_category("analysis", frozen_date, output_root)
-            ),
+            "experiment_root": str(layout.experiment_root),
+            "log_dir": str(layout.logs_root / pipeline_name),
+            "analysis_dir": str(layout.analysis_root),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
         }
     )
     lock = PipelineLock(pipeline_lock_path(config_path), config_path)
@@ -1011,6 +1026,7 @@ def main() -> Optional[str]:
                 pipeline_name,
                 frozen_date,
                 output_root,
+                experiment_group=experiment_group,
             )
             config["output"]["manifest_dir"] = str(manifest_dir)
             with (manifest_dir / "pipeline_config_resolved.yaml").open(
@@ -1021,6 +1037,7 @@ def main() -> Optional[str]:
             config=config,
             dry_run=dry_run,
             experiment_date=frozen_date,
+            experiment_group=experiment_group,
         )
         run_info = resolve_current_run_info(
             config=config,
@@ -1046,6 +1063,8 @@ def main() -> Optional[str]:
                     {
                         "status": "completed",
                         "experiment_date": frozen_date,
+                        "experiment_group": experiment_group,
+                        "experiment_root": str(layout.experiment_root),
                         "day_output_root": str(output_root / frozen_date),
                         "run_info": run_info,
                     },

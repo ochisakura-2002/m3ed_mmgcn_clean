@@ -11,6 +11,7 @@ import yaml
 
 from scripts.workflows.benchmarks.run_causal8_original8 import (
     BATCH_PREFIX,
+    EXPERIMENT_GROUP,
     EXPERIMENT_DATE_ENV,
     MANIFEST_COLUMNS,
     STATUS_COLUMNS,
@@ -65,7 +66,9 @@ def _result(
     include_run: bool = True,
 ) -> dict[str, object]:
     run_id = f"new_run_{prepared.spec.index:02d}"
-    run_dir = output_root / experiment_date / "runs" / run_id
+    run_dir = (
+        output_root / experiment_date / EXPERIMENT_GROUP / "runs" / run_id
+    )
     if include_run:
         run_dir.mkdir(parents=True, exist_ok=True)
     return {
@@ -135,6 +138,15 @@ def test_prepared_commands_freeze_date_and_leave_formal_yaml_unchanged(
         job.config: job.config.read_text(encoding="utf-8") for job in jobs
     }
     paths = BatchPaths.create(tmp_path, "20260722", "batch")
+    assert paths.experiment_root == (
+        tmp_path / "20260722" / EXPERIMENT_GROUP
+    )
+    assert paths.log_dir == (
+        paths.experiment_root / "logs" / "launcher" / "batch"
+    )
+    assert paths.manifest_dir == (
+        paths.experiment_root / "manifests" / "batches" / "batch"
+    )
     prepared = prepare_runs(
         jobs,
         paths,
@@ -147,11 +159,14 @@ def test_prepared_commands_freeze_date_and_leave_formal_yaml_unchanged(
         assert item.command[1] == "-u"
         date_index = item.command.index("--experiment-date")
         assert item.command[date_index + 1] == "20260722"
+        group_index = item.command.index("--experiment-group")
+        assert item.command[group_index + 1] == EXPERIMENT_GROUP
     for item in prepared[:8]:
         assert item.spec.entrypoint.as_posix() == "scripts/workflows/run_pipeline.py"
         pipeline = yaml.safe_load(item.launch_config.read_text(encoding="utf-8"))
         train = yaml.safe_load(item.expected_config.read_text(encoding="utf-8"))
         assert pipeline["output"]["experiment_date"] == "20260722"
+        assert pipeline["output"]["experiment_group"] == EXPERIMENT_GROUP
         assert train["system"]["device"] == "cuda"
         assert train["output"]["root"] == str(tmp_path)
     for item in prepared[8:]:
@@ -208,11 +223,14 @@ def test_date_stays_frozen_across_midnight_and_final_summary_is_written(
     )
     assert calls == [(1, "20260722", "20260722"), (2, "20260722", "20260722")]
     assert summary["experiment_date"] == "20260722"
+    assert summary["experiment_group"] == EXPERIMENT_GROUP
     assert summary["counts"]["PASS"] == 2
     report = (
         tmp_path
         / "20260722"
+        / EXPERIMENT_GROUP
         / "reports"
+        / "batches"
         / summary["batch_id"]
         / "final_summary.json"
     )
@@ -399,7 +417,9 @@ def test_start_end_range_runs_only_requested_indices(tmp_path: Path) -> None:
     status_path = (
         tmp_path
         / "20260722"
+        / EXPERIMENT_GROUP
         / "manifests"
+        / "batches"
         / summary["batch_id"]
         / "run_status.tsv"
     )

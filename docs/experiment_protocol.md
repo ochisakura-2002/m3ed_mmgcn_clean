@@ -162,20 +162,18 @@ checkpoint、epoch、超参数或模型选择。
 
 如果本地和远程路径不同，文档中只记录相对项目路径或环境变量式描述。
 
-## 按实验启动日期组织输出
+## 按日期与实验组组织输出
 
-所有新的动态实验产物按 pipeline 或单次入口的启动日期写入：
+所有新的动态实验产物按 pipeline 或单次入口的启动日期和稳定实验组写入：
 
 ```text
-outputs/<YYYYMMDD>/
-  runs/
-  logs/
-  analysis/
-  reports/
-  manifests/
-  smoke/
-  audits/
-  review/
+outputs/<YYYYMMDD>/<experiment_group>/
+  runs/<run_id>/
+  logs/launcher/<batch_id>/
+  manifests/batches/<batch_id>/
+  review/batches/<batch_id>/
+  reports/batches/<batch_id>/
+  analysis/batches/<batch_id>/
 ```
 
 日期必须是合法的八位本地日历日期。解析优先级固定为命令行
@@ -186,21 +184,29 @@ outputs/<YYYYMMDD>/
 output:
   root: outputs
   experiment_date: null
+  experiment_group: stable_experiment_family
 ```
 
 `null` 表示在运行时解析；正式配置不得写死某一天。pipeline 启动时只解析
 一次日期，并把同一个值显式传给全部子进程。因此跨午夜的多 run 任务仍全部
 写入启动日目录，不会中途切换日期。
 
-run ID 仍包含时间和随机短后缀，并通过原子目录创建避免并发覆盖。
-`latest_run.txt` 只允许存在于当前 run/pipeline 自己的 manifest 目录中，不是
-跨 pipeline 的共享状态。resume 必须继续使用 checkpoint 所属的原 run 目录；
+`experiment_group` 表示稳定实验族，不能用每个 `run_id` 代替。自动推断时按
+显式 CLI、YAML、canonical config family 路径、稳定 caller default 的顺序
+解析。run ID 可包含时间和随机短后缀，并通过原子目录创建避免并发覆盖；
+矩阵 fixed `run_id` 已存在时直接失败。`batch_id` 隔离同日同 group 的
+launcher、manifest、review、report 和 analysis，重复 batch 不能静默合并。
+`latest_run.txt` 只允许存在于当前 run 自己的 manifest 目录中，不是跨
+pipeline 的共享状态。resume 必须继续使用 checkpoint 所属的原 run 目录；
 当前日期变化不会产生新日期目录。
 
-显式传入 checkpoint、`--run-dir` 或 `--output-dir` 时完全服从该路径。自动
-发现先查找日期目录，再查找旧结构 `outputs/runs`、`outputs/analysis`，并去重。
-旧结果只读兼容，不移动、不改名。以下全局静态目录不按日期分类，也不会被
-识别为日期：
+显式传入 checkpoint 或 `--run-dir` 时完全服从该已有 run 路径；
+`--output-root` 是 output base override，新 run 仍由公共 resolver 生成
+canonical 层级。自动发现先查找新结构，再只读查找旧
+`outputs/<date>/runs`、`outputs/runs`、`outputs/long_training/{primary,multi_seed}`、
+`outputs/<date>/analysis`、`outputs/analysis` 与 `outputs/launcher_logs`，并
+去重。旧结果不移动、不改名。以下全局静态目录不按日期分类，也不会被识别为
+日期：
 
 ```text
 outputs/environment/
@@ -211,9 +217,9 @@ outputs/cache/
 查找某一天的结果：
 
 ```bash
-find outputs/20260716/runs -maxdepth 1 -type d
-find outputs/20260716/logs -type f
-find outputs/20260716/analysis -maxdepth 2 -type f
+find outputs/20260716/<experiment_group>/runs -maxdepth 1 -type d
+find outputs/20260716/<experiment_group>/logs -type f
+find outputs/20260716/<experiment_group>/analysis -maxdepth 4 -type f
 ```
 
 显式指定日期的示例：
@@ -222,6 +228,10 @@ find outputs/20260716/analysis -maxdepth 2 -type f
 python scripts/models/mmgcn/unified/train.py --config configs/mmgcn/unified/m3ed/full_context/m3ed_features/skeleton.yaml --experiment-date 20260716
 MERC_EXPERIMENT_DATE=20260716 python scripts/workflows/run_pipeline.py --config configs/benchmarks/ablations/missing_modality/pipelines/mmgcn/m3ed_features/mmgcn_pipeline_m3ed.yaml
 ```
+
+目录语义、命名、重跑、batch 隔离和旧路径边界详见
+`docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`。当前正在远程运行的旧路径
+32-run 批次不迁移、不停止、不要求 `git pull`；本规则只约束未来写入。
 
 ## 结果解释边界
 

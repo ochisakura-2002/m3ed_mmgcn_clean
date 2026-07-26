@@ -32,6 +32,8 @@ from utils.output_paths import (  # noqa: E402
     create_unique_category_dir,
     discover_analysis_directories,
     resolve_experiment_date,
+    resolve_experiment_group,
+    resolve_output_paths,
 )
 
 
@@ -57,6 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default=None)
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--experiment-group", default=None)
     return parser.parse_args()
 
 
@@ -148,6 +151,7 @@ def run_pipeline(
     device: str | None,
     output_root: Path | None,
     experiment_date: str | None = None,
+    experiment_group: str | None = None,
 ) -> list[dict[str, Any]]:
     manifest = load_manifest(manifest_path)
     frozen_date = resolve_experiment_date(
@@ -156,13 +160,25 @@ def run_pipeline(
     )
     frozen_output_root = configured_output_root(manifest, override=output_root)
     frozen_output_root = resolve_path(str(frozen_output_root))
+    frozen_group = resolve_experiment_group(
+        cli_group=experiment_group,
+        config=manifest,
+        config_path=manifest_path,
+    )
+    layout = resolve_output_paths(
+        output_base=frozen_output_root,
+        experiment_date=frozen_date,
+        experiment_group=frozen_group,
+    )
     jobs = expand_jobs(manifest, stage)
     plan = {
         "stage": stage,
         "execute": execute,
         "jobs": jobs,
         "experiment_date": frozen_date,
+        "experiment_group": frozen_group,
         "day_output_root": str(frozen_output_root / frozen_date),
+        "experiment_root": str(layout.experiment_root),
     }
     print(json.dumps(plan, ensure_ascii=False, indent=2))
     if not execute:
@@ -172,6 +188,7 @@ def run_pipeline(
         f"original_merc_{stage}",
         frozen_date,
         frozen_output_root,
+        experiment_group=frozen_group,
     )
     (manifest_dir / "pipeline_plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
@@ -186,6 +203,7 @@ def run_pipeline(
                 output_root_override=frozen_output_root,
                 device_override=device,
                 experiment_date=frozen_date,
+                experiment_group=frozen_group,
             )
         except FloatingPointError as error:
             failure = (
@@ -260,6 +278,7 @@ def main() -> None:
         args.device,
         None if args.output_root is None else Path(args.output_root),
         args.experiment_date,
+        args.experiment_group,
     )
 
 

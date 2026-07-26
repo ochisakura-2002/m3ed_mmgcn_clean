@@ -58,6 +58,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Frozen experiment launch date in YYYYMMDD format.",
     )
+    parser.add_argument("--experiment-group", default=None)
 
     return parser.parse_args()
 
@@ -139,6 +140,7 @@ def main() -> None:
     run_info = prepare_run_environment(
         config,
         experiment_date=args.experiment_date,
+        experiment_group=args.experiment_group,
     )
 
     print_config_summary(

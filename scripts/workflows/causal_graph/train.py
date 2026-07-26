@@ -46,10 +46,9 @@ from scripts.runtime.causal_graph import (  # noqa: E402
 )
 from utils.run_metadata import build_run_metadata, write_run_metadata  # noqa: E402
 from utils.output_paths import (  # noqa: E402
+    allocate_configured_run,
     configured_output_root,
-    create_unique_run_dir,
     resolve_experiment_date,
-    resolve_output_category,
 )
 from utils.seed import set_seed  # noqa: E402
 
@@ -63,6 +62,7 @@ def parse_args() -> argparse.Namespace:
         help="Optional run-root override, primarily for isolated tests.",
     )
     parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--experiment-group", default=None)
     return parser.parse_args()
 
 
@@ -75,6 +75,7 @@ def prepare_run_environment(
     config: Dict[str, Any],
     config_path: Path,
     experiment_date: str | None = None,
+    experiment_group: str | None = None,
 ) -> Dict[str, Any]:
     output_root = resolve_path(str(configured_output_root(config)))
     frozen_date = resolve_experiment_date(
@@ -82,32 +83,54 @@ def prepare_run_environment(
         config=config,
     )
     run_name = sanitize_name(str(config.get("run_name", config["model"]["name"])))
-    run_dir = create_unique_run_dir(run_name, frozen_date, output_root)
+    layout = allocate_configured_run(
+        config=config,
+        config_path=config_path,
+        experiment_name=run_name,
+        experiment_date=frozen_date,
+        output_base=output_root,
+        experiment_group=experiment_group,
+    )
+    assert layout.run_root is not None
+    run_dir = layout.run_root
     run_id = run_dir.name
     checkpoints_dir = run_dir / "checkpoints"
     logs_dir = run_dir / "logs"
-    manifest_dir = resolve_output_category(
-        "manifests", frozen_date, output_root
-    ) / run_id
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    manifest_dir.mkdir(parents=True, exist_ok=True)
+    metrics_dir = run_dir / "metrics"
+    artifacts_dir = run_dir / "artifacts"
+    manifest_dir = layout.manifest_root / "runs" / run_id
+    for path in (
+        checkpoints_dir,
+        logs_dir,
+        metrics_dir,
+        artifacts_dir,
+        manifest_dir,
+    ):
+        path.mkdir(parents=True, exist_ok=True)
     config["output"].pop("run_root", None)
     config["output"].update(
         {
-            "root": str(output_root),
+            "root": str(run_dir),
+            "output_base": str(output_root),
             "experiment_date": frozen_date,
+            "experiment_group": layout.experiment_group,
             "output_root": str(output_root),
             "day_output_root": str(output_root / frozen_date),
+            "experiment_root": str(layout.experiment_root),
+            "run_id": run_id,
+            "run_root": str(run_dir),
             "run_dir": str(run_dir),
             "log_dir": str(logs_dir),
-            "analysis_dir": str(
-                resolve_output_category("analysis", frozen_date, output_root)
-            ),
+            "metrics_dir": str(metrics_dir),
+            "artifacts_dir": str(artifacts_dir),
+            "analysis_dir": str(layout.analysis_root),
             "manifest_dir": str(manifest_dir),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
         }
     )
     save_yaml_config(config, logs_dir / "experiment_config.yaml")
+    save_yaml_config(config, run_dir / "resolved_config.yaml")
     write_run_metadata(config, run_dir / "run_metadata.json", PROJECT_ROOT)
 
     latest_path = manifest_dir / "latest_run.txt"
@@ -124,7 +147,11 @@ def prepare_run_environment(
         "latest_path": latest_path,
         "manifest_dir": manifest_dir,
         "experiment_date": frozen_date,
+        "experiment_group": layout.experiment_group,
+        "experiment_root": layout.experiment_root,
         "day_output_root": output_root / frozen_date,
+        "metrics_dir": metrics_dir,
+        "artifacts_dir": artifacts_dir,
     }
 
 
@@ -215,11 +242,16 @@ def run_training(
     config_path: Path,
     output_root_override: Optional[Path] = None,
     experiment_date: Optional[str] = None,
+    experiment_group: Optional[str] = None,
 ) -> Dict[str, Any]:
     resolved_config_path = resolve_path(str(config_path))
     config = normalized_training_config(load_yaml_config(resolved_config_path))
     if output_root_override is not None:
-        config["output"]["root"] = str(Path(output_root_override))
+        config["output"]["output_base"] = str(Path(output_root_override))
+        if config["output"].get("run_id"):
+            config["output"].pop("root", None)
+        else:
+            config["output"]["root"] = str(Path(output_root_override))
     validate_runtime_config(config)
     verified_sha256 = verify_feature_sha256(config)
 
@@ -230,6 +262,7 @@ def run_training(
         config,
         resolved_config_path,
         experiment_date=experiment_date,
+        experiment_group=experiment_group,
     )
     print(
         "CODEX_RUN_INFO_JSON="
@@ -349,6 +382,7 @@ def main() -> None:
         Path(args.config),
         None if args.output_root is None else Path(args.output_root),
         args.experiment_date,
+        args.experiment_group,
     )
 
 

@@ -33,11 +33,14 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.output_paths import (  # noqa: E402
     EXPERIMENT_DATE_ENV,
     resolve_experiment_date,
+    resolve_experiment_group,
+    resolve_output_paths,
 )
 
 
 LAUNCHER_VERSION = "causal8_original8_formal_v1"
 BATCH_PREFIX = "causal8_original8_formal"
+EXPERIMENT_GROUP = "causal8_original8_formal"
 TOTAL_RUNS = 16
 HEARTBEAT_SECONDS = 60.0
 LEGACY_FEATURE_PATH = Path(
@@ -117,22 +120,43 @@ class PreparedRun:
 @dataclass(frozen=True)
 class BatchPaths:
     batch_id: str
+    experiment_root: Path
     manifest_dir: Path
     log_dir: Path
+    review_dir: Path
     report_dir: Path
+    analysis_dir: Path
 
     @classmethod
     def create(
-        cls, output_root: Path, experiment_date: str, batch_id: str
+        cls,
+        output_root: Path,
+        experiment_date: str,
+        batch_id: str,
+        experiment_group: str = EXPERIMENT_GROUP,
     ) -> "BatchPaths":
-        day_root = output_root / experiment_date
+        layout = resolve_output_paths(
+            output_base=output_root,
+            experiment_date=experiment_date,
+            experiment_group=experiment_group,
+            batch_id=batch_id,
+        )
         paths = cls(
             batch_id=batch_id,
-            manifest_dir=day_root / "manifests" / batch_id,
-            log_dir=day_root / "logs" / batch_id,
-            report_dir=day_root / "reports" / batch_id,
+            experiment_root=layout.experiment_root,
+            manifest_dir=layout.manifest_root,
+            log_dir=layout.launcher_log_root,
+            review_dir=layout.review_root,
+            report_dir=layout.report_root,
+            analysis_dir=layout.analysis_root,
         )
-        for path in (paths.manifest_dir, paths.log_dir, paths.report_dir):
+        for path in (
+            paths.manifest_dir,
+            paths.log_dir,
+            paths.review_dir,
+            paths.report_dir,
+            paths.analysis_dir,
+        ):
             path.mkdir(parents=True, exist_ok=False)
         return paths
 
@@ -223,6 +247,7 @@ class BatchLock:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--experiment-group", default=EXPERIMENT_GROUP)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--output-root", default="outputs")
     parser.add_argument("--start-index", type=int, default=1)
@@ -411,17 +436,25 @@ def _git_capture(*args: str) -> str:
     return result.stdout.rstrip()
 
 
-def _check_output_writable(output_root: Path, experiment_date: str) -> None:
-    day_root = output_root / experiment_date
+def _check_output_writable(
+    output_root: Path,
+    experiment_date: str,
+    experiment_group: str = EXPERIMENT_GROUP,
+) -> None:
+    experiment_root = resolve_output_paths(
+        output_base=output_root,
+        experiment_date=experiment_date,
+        experiment_group=experiment_group,
+    ).experiment_root
     try:
-        day_root.mkdir(parents=True, exist_ok=True)
-        probe = day_root / f".{BATCH_PREFIX}.write_probe_{os.getpid()}"
+        experiment_root.mkdir(parents=True, exist_ok=True)
+        probe = experiment_root / f".{BATCH_PREFIX}.write_probe_{os.getpid()}"
         with probe.open("x", encoding="utf-8") as file:
             file.write("writable\n")
         probe.unlink()
     except OSError as error:
         raise PublicGateError(
-            f"Output directory is not writable: {day_root}: {error}"
+            f"Output directory is not writable: {experiment_root}: {error}"
         ) from error
 
 
@@ -438,6 +471,7 @@ def run_preflight_checks(
     output_root: Path,
     experiment_date: str,
     device: str,
+    experiment_group: str = EXPERIMENT_GROUP,
     *,
     cuda_check: Callable[[], bool] = _cuda_available,
 ) -> PreflightResult:
@@ -503,7 +537,7 @@ def run_preflight_checks(
             }
         )
 
-    _check_output_writable(output_root, experiment_date)
+    _check_output_writable(output_root, experiment_date, experiment_group)
     try:
         git_commit = _git_capture("rev-parse", "HEAD")
         git_status = _git_capture("status", "--short")
@@ -536,6 +570,7 @@ def prepare_runs(
     experiment_date: str,
     device: str,
     output_root_argument: str,
+    experiment_group: str = EXPERIMENT_GROUP,
 ) -> list[PreparedRun]:
     prepared = []
     resolved_dir = paths.manifest_dir / "resolved_configs"
@@ -550,7 +585,9 @@ def prepare_runs(
             train_config.setdefault("output", {}).update(
                 {
                     "root": output_root_argument,
+                    "output_base": output_root_argument,
                     "experiment_date": experiment_date,
+                    "experiment_group": experiment_group,
                 }
             )
             train_destination = resolved_dir / f"{job.index:02d}_{job.label}_train.yaml"
@@ -559,7 +596,9 @@ def prepare_runs(
             pipeline_config.setdefault("output", {}).update(
                 {
                     "root": output_root_argument,
+                    "output_base": output_root_argument,
                     "experiment_date": experiment_date,
+                    "experiment_group": experiment_group,
                 }
             )
             pipeline_config.setdefault("train", {})["train_config_path"] = (
@@ -577,6 +616,8 @@ def prepare_runs(
                 _command_path(pipeline_destination),
                 "--experiment-date",
                 experiment_date,
+                "--experiment-group",
+                experiment_group,
             )
             prepared.append(
                 PreparedRun(
@@ -599,6 +640,8 @@ def prepare_runs(
                 output_root_argument,
                 "--experiment-date",
                 experiment_date,
+                "--experiment-group",
+                experiment_group,
             )
             prepared.append(
                 PreparedRun(
@@ -1055,7 +1098,7 @@ def execute_one_run(
     logger: LauncherLogger,
 ) -> dict[str, Any]:
     job = prepared.spec
-    runs_root = output_root / experiment_date / "runs"
+    runs_root = paths.experiment_root / "runs"
     snapshot = snapshot_runs(runs_root)
     marker_dir = paths.manifest_dir / "markers"
     marker_dir.mkdir(exist_ok=True)
@@ -1187,6 +1230,7 @@ def _write_launcher_metadata(
         "batch_id": paths.batch_id,
         "started_at": started_at,
         "experiment_date": experiment_date,
+        "experiment_group": args.experiment_group,
         "experiment_date_env": experiment_date,
         "device": args.device,
         "output_root": _record_path(output_root),
@@ -1243,15 +1287,31 @@ def launch_batch(
 ) -> dict[str, Any]:
     _validate_arguments(args)
     experiment_date = resolve_experiment_date(cli_date=args.experiment_date)
+    experiment_group = resolve_experiment_group(cli_group=args.experiment_group)
+    args.experiment_group = experiment_group
     output_root_argument = str(args.output_root)
     output_root = _resolve_project_path(output_root_argument).resolve()
+    experiment_layout = resolve_output_paths(
+        output_base=output_root,
+        experiment_date=experiment_date,
+        experiment_group=experiment_group,
+    )
     jobs = build_run_plan()
     preflight = preflight_fn(
-        jobs, output_root, experiment_date, args.device
+        jobs,
+        output_root,
+        experiment_date,
+        args.device,
+        experiment_group=experiment_group,
     )
     launched_at = now_provider()
     batch_id = f"{BATCH_PREFIX}_{launched_at.strftime('%Y%m%d_%H%M%S')}"
-    lock_path = output_root / f".{BATCH_PREFIX}.lock"
+    lock_path = (
+        experiment_layout.experiment_root
+        / "manifests"
+        / ".locks"
+        / f"{BATCH_PREFIX}.lock"
+    )
     old_experiment_date = os.environ.get(EXPERIMENT_DATE_ENV)
     os.environ[EXPERIMENT_DATE_ENV] = experiment_date
     paths: BatchPaths | None = None
@@ -1261,7 +1321,12 @@ def launch_batch(
     internal_error = ""
     try:
         with BatchLock(lock_path, batch_id):
-            paths = BatchPaths.create(output_root, experiment_date, batch_id)
+            paths = BatchPaths.create(
+                output_root,
+                experiment_date,
+                batch_id,
+                experiment_group,
+            )
             logger = LauncherLogger(paths.log_dir / "launcher.log")
             prepared = prepare_runs(
                 jobs,
@@ -1269,6 +1334,7 @@ def launch_batch(
                 experiment_date,
                 args.device,
                 output_root_argument,
+                experiment_group,
             )
             configured_by_index = {
                 item.spec.index: configured_epochs(item.expected_config)
@@ -1302,6 +1368,7 @@ def launch_batch(
             _write_batch_state(paths, statuses)
             logger.log(
                 f"[BATCH] id={batch_id} experiment_date={experiment_date} "
+                f"experiment_group={experiment_group} "
                 f"range={args.start_index}-{args.end_index}"
             )
             for item in prepared:
@@ -1384,6 +1451,8 @@ def launch_batch(
                 "batch_id": batch_id,
                 "status": launcher_status,
                 "experiment_date": experiment_date,
+                "experiment_group": experiment_group,
+                "experiment_root": _record_path(paths.experiment_root),
                 "started_at": _timestamp(launched_at),
                 "finished_at": _timestamp(),
                 "selected_range": [args.start_index, args.end_index],

@@ -29,6 +29,7 @@ from utils.output_paths import (  # noqa: E402
     find_run_directory,
     infer_experiment_date_from_run,
     resolve_experiment_date,
+    resolve_experiment_group,
     resolve_output_category,
     sanitize_run_name,
 )
@@ -1002,6 +1003,10 @@ def main() -> None:
         config=config,
         inferred_date=inferred_date,
     )
+    experiment_group = resolve_experiment_group(
+        config=config,
+        config_path=config_path,
+    )
     configured_root = resolve_path(str(configured_output_root(config)))
     analysis_name = sanitize_run_name(
         str(config.get("analysis_name", "multidag_cl_stabilization_compare"))
@@ -1011,7 +1016,12 @@ def main() -> None:
         if args.output_dir is not None
         else resolve_path(str(config["output_dir"]))
         if config.get("output_dir") is not None
-        else resolve_output_category("analysis", frozen_date, configured_root)
+        else resolve_output_category(
+            "analysis",
+            frozen_date,
+            configured_root,
+            experiment_group=experiment_group,
+        )
         / analysis_name
     )
     tables_dir = output_dir / "tables"

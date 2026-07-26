@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.output_paths import (  # noqa: E402
     find_run_directory,
     infer_experiment_date_from_run,
+    infer_experiment_group_from_run,
     resolve_experiment_date,
     resolve_output_category,
 )
@@ -315,10 +316,26 @@ def main() -> None:
         cli_date=args.experiment_date,
         inferred_date=inferred_date,
     )
+    experiment_group = next(
+        (
+            value
+            for value in (
+                infer_experiment_group_from_run(path)
+                for path in run_directories.values()
+            )
+            if value is not None
+        ),
+        "paper_multi_run_exports",
+    )
     output_dir = (
         resolve_path(args.output_dir)
         if args.output_dir is not None
-        else resolve_output_category("reports", frozen_date, OUTPUT_ROOT)
+        else resolve_output_category(
+            "reports",
+            frozen_date,
+            OUTPUT_ROOT,
+            experiment_group=experiment_group,
+        )
         / "paper_multi_run_tables"
     )
     output_dir.mkdir(parents=True, exist_ok=True)

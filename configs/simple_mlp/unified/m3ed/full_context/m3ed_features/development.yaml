@@ -1,6 +1,7 @@
 project:
   name: m3ed_mmgcn_clean
   experiment_name: simple_mlp_m3ed_debug
+  experiment_group: single_simple_mlp_debug
 
 system:
   seed: 42

@@ -63,6 +63,7 @@ from utils.output_paths import (  # noqa: E402
     find_run_directory,
     infer_experiment_date_from_run,
     resolve_experiment_date,
+    resolve_experiment_group,
     resolve_output_category,
     sanitize_run_name,
 )
@@ -175,11 +176,16 @@ def get_split(config: Dict[str, Any]) -> str:
 
 def get_output_dir(
     config: Dict[str, Any],
+    config_path: Path,
     explicit_output_dir: str | None,
     experiment_date: str,
 ) -> Path:
     analysis = config.get("analysis", {})
     output_root = resolve_path(str(configured_output_root(config)))
+    experiment_group = resolve_experiment_group(
+        config=config,
+        config_path=config_path,
+    )
     if explicit_output_dir is not None:
         output_dir = resolve_path(explicit_output_dir)
     elif analysis.get("output_dir") is not None:
@@ -187,7 +193,12 @@ def get_output_dir(
     else:
         name = sanitize_run_name(str(analysis.get("name", "multi_run_final_analysis")))
         output_dir = (
-            resolve_output_category("analysis", experiment_date, output_root)
+            resolve_output_category(
+                "analysis",
+                experiment_date,
+                output_root,
+                experiment_group=experiment_group,
+            )
             / name
             / "final_analysis"
         )
@@ -611,7 +622,7 @@ def main() -> None:
         config=config,
         inferred_date=inferred_date,
     )
-    output_dir = get_output_dir(config, args.output_dir, frozen_date)
+    output_dir = get_output_dir(config, config_path, args.output_dir, frozen_date)
     figure_config = get_figure_config(config)
     overall_metrics = get_overall_metrics(config)
     per_class_metrics = get_per_class_metrics(config)

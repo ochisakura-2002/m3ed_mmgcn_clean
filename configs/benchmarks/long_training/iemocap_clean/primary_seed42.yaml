@@ -3,6 +3,8 @@ matrix_name: iemocap_clean_long_training_primary_seed42
 enabled: true
 matrix_role: primary
 expected_run_count: 32
+output_base: outputs
+experiment_group: formal_long32_primary_seed42
 
 feature:
   registry_path: configs/_shared/data/iemocap/feature_sets.yaml
@@ -88,8 +90,8 @@ session_rules:
 
 expansion:
   run_id_template: ltp_{model_family}_{context_mode}_{validation_id}_s{seed}
-  output_root_template: outputs/long_training/primary/{run_id}
-  resolved_config_template: outputs/long_training/config_prep/primary/{run_id}.yaml
+  output_root_template: '{output_base}/{experiment_date}/{experiment_group}/runs/{run_id}'
+  resolved_config_template: '{output_base}/{experiment_date}/{experiment_group}/manifests/batches/{batch_id}/resolved_configs/{run_id}.yaml'
   require_unique_run_id: true
   require_unique_output_root: true
 

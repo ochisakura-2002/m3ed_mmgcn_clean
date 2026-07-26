@@ -57,11 +57,14 @@ from scripts.runtime.paper_aligned import (  # noqa: E402
     verify_feature_sha256,
 )
 from utils.output_paths import (  # noqa: E402
+    allocate_configured_run,
     configured_output_root,
-    create_unique_run_dir,
+    configured_run_id,
     infer_experiment_date_from_run,
+    infer_experiment_group_from_run,
     resolve_experiment_date,
-    resolve_output_category,
+    resolve_experiment_group,
+    resolve_output_paths,
 )
 
 
@@ -70,6 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-root", default=None)
     parser.add_argument("--experiment-date", default=None)
+    parser.add_argument("--experiment-group", default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--resume", default=None, help="Resume from a last_model.pt checkpoint")
     parser.add_argument("--dry-run", action="store_true")
@@ -99,52 +103,69 @@ def prepare_run_environment(
     config_path: Path,
     experiment_date: str,
     output_root: Path,
+    experiment_group: Optional[str] = None,
     resume_run_dir: Optional[Path] = None,
 ) -> dict[str, Any]:
     run_name = sanitize_name(str(config.get("run_name", config["model"]["name"])))
-    run_dir = create_unique_run_dir(
-        run_name,
-        experiment_date,
-        output_root,
+    layout = allocate_configured_run(
+        config=config,
+        config_path=config_path,
+        experiment_name=run_name,
+        experiment_date=experiment_date,
+        output_base=output_root,
+        experiment_group=experiment_group,
         resume_run_dir=resume_run_dir,
     )
+    assert layout.run_root is not None
+    run_dir = layout.run_root
     run_id = run_dir.name
     checkpoints = run_dir / "checkpoints"
     logs = run_dir / "logs"
-    checkpoints.mkdir(parents=True, exist_ok=True)
-    logs.mkdir(parents=True, exist_ok=True)
-    manifest_dir = resolve_output_category(
-        "manifests", experiment_date, output_root
-    ) / run_id
-    manifest_dir.mkdir(parents=True, exist_ok=True)
+    metrics = run_dir / "metrics"
+    artifacts = run_dir / "artifacts"
+    manifest_dir = layout.manifest_root / "runs" / run_id
+    for path in (checkpoints, logs, metrics, artifacts, manifest_dir):
+        path.mkdir(parents=True, exist_ok=True)
     config.setdefault("output", {})
     config["output"].update(
         {
-            "root": str(output_root),
+            "root": str(run_dir),
+            "output_base": str(output_root),
             "experiment_date": experiment_date,
+            "experiment_group": layout.experiment_group,
             "output_root": str(output_root),
             "day_output_root": str(output_root / experiment_date),
+            "experiment_root": str(layout.experiment_root),
+            "run_id": run_id,
+            "run_root": str(run_dir),
             "run_dir": str(run_dir),
             "log_dir": str(logs),
-            "analysis_dir": str(
-                resolve_output_category("analysis", experiment_date, output_root)
-            ),
+            "metrics_dir": str(metrics),
+            "artifacts_dir": str(artifacts),
+            "analysis_dir": str(layout.analysis_root),
             "manifest_dir": str(manifest_dir),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
         }
     )
     save_yaml_config(config, logs / "experiment_config.yaml")
+    save_yaml_config(config, run_dir / "resolved_config.yaml")
     dump_json(
         {
             "run_id": run_id,
             "run_dir": str(run_dir),
             "experiment_date": experiment_date,
+            "experiment_group": layout.experiment_group,
+            "experiment_root": str(layout.experiment_root),
             "output_root": str(output_root),
             "day_output_root": str(output_root / experiment_date),
             "log_dir": str(logs),
-            "analysis_dir": str(
-                resolve_output_category("analysis", experiment_date, output_root)
-            ),
+            "metrics_dir": str(metrics),
+            "artifacts_dir": str(artifacts),
+            "analysis_dir": str(layout.analysis_root),
             "manifest_dir": str(manifest_dir),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
             "config_path": project_relative(config_path),
             "model_source": get_source_metadata(config["model"]["name"]),
             "causal_grade": "noncausal_offline_full_context",
@@ -174,7 +195,11 @@ def prepare_run_environment(
         "logs": logs,
         "manifest_dir": manifest_dir,
         "experiment_date": experiment_date,
+        "experiment_group": layout.experiment_group,
+        "experiment_root": layout.experiment_root,
         "day_output_root": output_root / experiment_date,
+        "metrics": metrics,
+        "artifacts": artifacts,
     }
 
 
@@ -445,6 +470,7 @@ def run_training(
     resume_path: Optional[Path] = None,
     dry_run_only: bool = False,
     experiment_date: Optional[str] = None,
+    experiment_group: Optional[str] = None,
 ) -> dict[str, Any]:
     resolved_config = resolve_path(str(config_path))
     config = normalized_training_config(load_yaml_config(resolved_config))
@@ -454,9 +480,27 @@ def run_training(
     )
     output_root = configured_output_root(config, override=output_root_override)
     output_root = resolve_path(str(output_root))
-    config["output"].pop("run_root", None)
-    config["output"]["root"] = str(output_root)
+    frozen_group = resolve_experiment_group(
+        cli_group=experiment_group,
+        config=config,
+        config_path=resolved_config,
+    )
+    config["output"]["output_base"] = str(output_root)
     config["output"]["experiment_date"] = frozen_date
+    config["output"]["experiment_group"] = frozen_group
+    fixed_run_id = configured_run_id(config)
+    if fixed_run_id is None:
+        config["output"].pop("run_root", None)
+        config["output"]["root"] = str(output_root)
+    else:
+        fixed_layout = resolve_output_paths(
+            output_base=output_root,
+            experiment_date=frozen_date,
+            experiment_group=frozen_group,
+            run_id=fixed_run_id,
+        )
+        assert fixed_layout.run_root is not None
+        config["output"]["root"] = str(fixed_layout.run_root)
     validate_runtime_config(config)
     verified_sha = verify_feature_sha256(config)  # Must precede model construction.
     seed = int(config["system"]["seed"])
@@ -466,6 +510,7 @@ def run_training(
         result = dry_run(config, device)
         result["verified_feature_sha256"] = verified_sha
         result["experiment_date"] = frozen_date
+        result["experiment_group"] = frozen_group
         return result
 
     resume_checkpoint = None
@@ -479,6 +524,7 @@ def run_training(
             raise ValueError("resume checkpoint config does not exactly match requested config")
         resume_run_dir = resolved_resume.parent.parent
         inferred_date = infer_experiment_date_from_run(resume_run_dir)
+        inferred_group = infer_experiment_group_from_run(resume_run_dir)
         checkpoint_date = resume_checkpoint.get("config", {}).get("output", {}).get(
             "experiment_date"
         )
@@ -486,17 +532,25 @@ def run_training(
             frozen_date = inferred_date
         elif checkpoint_date is not None:
             frozen_date = resolve_experiment_date(cli_date=str(checkpoint_date))
-        if (
-            resume_run_dir.parent.name == "runs"
-            and resume_run_dir.parent.parent.name == frozen_date
-        ):
-            output_root = resume_run_dir.parent.parent.parent
+        if inferred_group is not None:
+            frozen_group = inferred_group
+        if resume_run_dir.parent.name == "runs":
+            runs_parent = resume_run_dir.parent.parent
+            if (
+                runs_parent.name == frozen_group
+                and runs_parent.parent.name == frozen_date
+            ):
+                output_root = runs_parent.parent.parent
+            elif runs_parent.name == frozen_date:
+                # Read-only/resume compatibility for outputs/<date>/runs/<id>.
+                output_root = runs_parent.parent
 
     paths = prepare_run_environment(
         config,
         resolved_config,
         frozen_date,
         output_root,
+        experiment_group=frozen_group,
         resume_run_dir=resume_run_dir,
     )
     run_start = time.perf_counter()
@@ -736,6 +790,7 @@ def main() -> None:
         None if args.resume is None else Path(args.resume),
         args.dry_run,
         args.experiment_date,
+        args.experiment_group,
     )
 
 

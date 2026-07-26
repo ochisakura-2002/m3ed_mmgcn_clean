@@ -21,6 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.output_paths import (  # noqa: E402
     discover_run_directories,
     infer_experiment_date_from_run,
+    infer_experiment_group_from_run,
     resolve_experiment_date,
     resolve_output_category,
 )
@@ -1280,10 +1281,26 @@ def main() -> None:
         cli_date=args.experiment_date,
         inferred_date=inferred_date,
     )
+    discovered_runs = discover_run_directories(output_root)
+    experiment_group = next(
+        (
+            value
+            for value in (
+                infer_experiment_group_from_run(path) for path in discovered_runs
+            )
+            if value is not None
+        ),
+        "original_merc_analysis",
+    )
     output_dir = (
         resolve(args.results_dir)
         if args.results_dir is not None
-        else resolve_output_category("analysis", frozen_date, output_root)
+        else resolve_output_category(
+            "analysis",
+            frozen_date,
+            output_root,
+            experiment_group=experiment_group,
+        )
         / "original_merc"
     )
     analyze(runs_root, output_dir, resolve(args.paper_targets))

@@ -86,12 +86,20 @@ def test_mmgcn_metadata_uses_effective_graph_semantics_and_stream_hash(
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
         "test_split_used_for_selection": False,
         "experiment_date": None,
+        "experiment_group": None,
+        "output_base": None,
         "output_root": None,
         "day_output_root": None,
+        "experiment_root": None,
+        "run_root": None,
         "run_dir": None,
         "log_dir": None,
+        "metrics_dir": None,
+        "artifacts_dir": None,
         "analysis_dir": None,
         "manifest_dir": None,
+        "review_dir": None,
+        "report_dir": None,
     }
 
 

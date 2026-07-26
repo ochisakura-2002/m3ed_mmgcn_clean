@@ -32,13 +32,17 @@ PROTOCOL_VERSION = "long_training_session_holdout_v1"
 
 @pytest.fixture
 def workspace_tmp_dir() -> Path:
-    temp_parent = ROOT / "tmp"
+    temp_parent = ROOT / "tests" / "_tmp_long_training"
     temp_parent.mkdir(parents=True, exist_ok=True)
     path = Path(tempfile.mkdtemp(prefix="pytest_long_training_", dir=temp_parent))
     try:
         yield path
     finally:
         shutil.rmtree(path)
+        try:
+            temp_parent.rmdir()
+        except OSError:
+            pass
 
 
 def _load_resolved(path: Path) -> dict:
@@ -93,11 +97,12 @@ def test_primary_long32_prepare_and_runtime_validation(
         "20260725",
         root=ROOT,
         resolved_root=resolved_root,
+        batch_id="pytest_primary",
     )
 
     records = result["records"]
     commands = result["commands"]
-    resolved_paths = sorted(resolved_root.glob("*.yaml"))
+    resolved_paths = [record["resolved_path"] for record in records]
     assert result["expanded_run_count"] == 32
     assert len(records) == 32
     assert len(resolved_paths) == 32
@@ -107,6 +112,31 @@ def test_primary_long32_prepare_and_runtime_validation(
     assert result["unpaired_context_run_count"] == 0
     assert result["duplicate_pair_member_count"] == 0
     assert result["output_collision_count"] == 0
+    assert result["experiment_group"] == "formal_long32_primary_seed42"
+    assert result["launcher_log_root"] == Path(
+        "outputs/20260725/formal_long32_primary_seed42/"
+        "logs/launcher/pytest_primary"
+    )
+    assert result["review_root"] == Path(
+        "outputs/20260725/formal_long32_primary_seed42/"
+        "review/batches/pytest_primary"
+    )
+    assert result["report_root"] == Path(
+        "outputs/20260725/formal_long32_primary_seed42/"
+        "reports/batches/pytest_primary"
+    )
+    assert result["analysis_root"] == Path(
+        "outputs/20260725/formal_long32_primary_seed42/"
+        "analysis/batches/pytest_primary"
+    )
+    for name in (
+        "commands.txt",
+        "matrix.yaml",
+        "matrix.csv",
+        "git_commit.txt",
+        "preparation_metadata.json",
+    ):
+        assert (workspace_tmp_dir / name).is_file()
     assert result["context_counts"] == Counter(
         {"full_context": 16, "causal_context": 16}
     )
@@ -141,6 +171,10 @@ def test_primary_long32_prepare_and_runtime_validation(
         )
 
         assert resolved_path == record["resolved_path"]
+        assert record["canonical_resolved_path"] == Path(
+            "outputs/20260725/formal_long32_primary_seed42/"
+            f"manifests/batches/pytest_primary/resolved_configs/{run_id}.yaml"
+        )
         assert run_id in resolved_path.name
         assert entrypoint in record["command"]
         assert resolved_path.as_posix() in record["command"]
@@ -152,6 +186,16 @@ def test_primary_long32_prepare_and_runtime_validation(
         assert test_session == "Ses05"
         assert protocol["checkpoint_selection_metric"] == "val_weighted_f1"
         assert protocol["test_split_used_for_selection"] is False
+        assert output_root == (
+            "outputs/20260725/formal_long32_primary_seed42/runs/" + run_id
+        )
+        assert config["output"]["run_root"] == output_root
+        assert config["output"]["run_id"] == run_id
+        assert config["output"]["output_base"] == "outputs"
+        assert (
+            config["output"]["experiment_group"]
+            == "formal_long32_primary_seed42"
+        )
 
         _validate_for_entrypoint(
             config,
@@ -180,6 +224,12 @@ def test_primary_long32_prepare_and_runtime_validation(
     assert validation_pass_count == 32
     assert len(run_ids) == 32
     assert len(output_roots) == 32
+    assert all(
+        root.startswith(
+            "outputs/20260725/formal_long32_primary_seed42/runs/"
+        )
+        for root in output_roots
+    )
     assert validation_sessions == Counter(
         {"Ses01": 8, "Ses02": 8, "Ses03": 8, "Ses04": 8}
     )
@@ -203,6 +253,11 @@ def test_long_training_base_and_parameter_source_protocols_are_explicit() -> Non
     assert matrix["protocol"]["experiment_track"] == SESSION_TRACK
     assert matrix["protocol"]["val_split_strategy"] == SESSION_STRATEGY
     assert matrix["protocol"]["protocol_version"] == PROTOCOL_VERSION
+    assert matrix["experiment_group"] == "formal_long32_primary_seed42"
+    assert (
+        matrix["expansion"]["output_root_template"]
+        == "{output_base}/{experiment_date}/{experiment_group}/runs/{run_id}"
+    )
     assert (
         matrix["protocol"]["protocol_comparability"] == PROTOCOL_COMPARABILITY
     )

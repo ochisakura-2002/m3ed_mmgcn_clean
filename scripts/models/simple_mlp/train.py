@@ -72,6 +72,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Frozen experiment launch date in YYYYMMDD format.",
     )
+    parser.add_argument("--experiment-group", default=None)
 
     return parser.parse_args()
 
@@ -400,6 +401,7 @@ def append_experiment_summary(
             "analysis",
             str(run_info["experiment_date"]),
             Path(run_info["output_root"]),
+            experiment_group=str(run_info["experiment_group"]),
         )
         / "experiment_summary"
         / "experiment_summary.csv"
@@ -484,6 +486,7 @@ def main() -> None:
     run_info = prepare_run_environment(
         config,
         experiment_date=args.experiment_date,
+        experiment_group=args.experiment_group,
     )
     print(
         "CODEX_RUN_INFO_JSON="

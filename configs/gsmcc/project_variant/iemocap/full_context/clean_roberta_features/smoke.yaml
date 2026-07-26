@@ -50,5 +50,5 @@ optimizer: {name: AdamW, learning_rate: 0.00001, weight_decay: 0.0001}
 scheduler: {name: none}
 system: {seed: 42, device: cpu}
 output:
-  root: tmp/smoke_outputs
+  root: outputs
   experiment_date: null

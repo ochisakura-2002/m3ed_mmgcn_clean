@@ -12,6 +12,8 @@
 后续 train.py / evaluate_best_model.py / analyze_run.py 都会调用这里的函数。
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -21,9 +23,11 @@ import yaml
 
 from utils.output_paths import (
     configured_output_root,
+    configured_run_id,
     create_unique_run_dir,
     resolve_experiment_date,
-    resolve_output_category,
+    resolve_experiment_group,
+    resolve_output_paths,
 )
 from utils.run_metadata import write_run_metadata
 
@@ -161,15 +165,19 @@ def create_run_dirs(
     output_dir: str,
     experiment_name: str,
     experiment_date: Optional[str] = None,
+    experiment_group: Optional[str] = None,
+    run_id: Optional[str] = None,
+    configured_run_root: Optional[str | Path] = None,
 ) -> Dict[str, Path]:
     """
     创建一次实验的输出目录。
 
     目录结构：
-        outputs/<YYYYMMDD>/runs/<run_id>/
+        outputs/<YYYYMMDD>/<experiment_group>/runs/<run_id>/
             logs/
             checkpoints/
-            figures/
+            metrics/
+            artifacts/
 
     参数：
         output_dir:
@@ -186,33 +194,55 @@ def create_run_dirs(
         raise ValueError("output_dir cannot be None")
 
     frozen_date = resolve_experiment_date(cli_date=experiment_date)
+    frozen_group = resolve_experiment_group(
+        cli_group=experiment_group,
+        default=f"single_{sanitize_name(experiment_name).lower()}",
+    )
     run_dir = create_unique_run_dir(
         experiment_name=experiment_name,
         experiment_date=frozen_date,
         output_root=output_root,
+        experiment_group=frozen_group,
+        run_id=run_id,
+        configured_run_root=configured_run_root,
     )
     run_id = run_dir.name
+    layout = resolve_output_paths(
+        output_base=output_root,
+        experiment_date=frozen_date,
+        experiment_group=frozen_group,
+        run_id=run_id,
+    )
     logs_dir = run_dir / "logs"
     checkpoints_dir = run_dir / "checkpoints"
-    figures_dir = run_dir / "figures"
-    manifest_dir = resolve_output_category(
-        "manifests", frozen_date, output_root
-    ) / run_id
+    metrics_dir = run_dir / "metrics"
+    artifacts_dir = run_dir / "artifacts"
+    figures_dir = artifacts_dir / "figures"
+    manifest_dir = layout.manifest_root / "runs" / run_id
 
     ensure_dir(logs_dir)
     ensure_dir(checkpoints_dir)
+    ensure_dir(metrics_dir)
     ensure_dir(figures_dir)
+    ensure_dir(manifest_dir)
 
     return {
         "run_id": run_id,
         "run_dir": run_dir,
         "logs_dir": logs_dir,
         "checkpoints_dir": checkpoints_dir,
+        "metrics_dir": metrics_dir,
+        "artifacts_dir": artifacts_dir,
         "figures_dir": figures_dir,
         "manifest_dir": manifest_dir,
         "experiment_date": frozen_date,
+        "experiment_group": frozen_group,
         "output_root": output_root,
         "day_output_root": output_root / frozen_date,
+        "experiment_root": layout.experiment_root,
+        "review_root": layout.review_root,
+        "report_root": layout.report_root,
+        "analysis_root": layout.analysis_root,
     }
 
 
@@ -233,7 +263,9 @@ def write_latest_run(run_id: str, run_dir: Path, manifest_dir: Path) -> Path:
 
 
 def prepare_run_environment(
-    config: Dict[str, Any], experiment_date: Optional[str] = None
+    config: Dict[str, Any],
+    experiment_date: Optional[str] = None,
+    experiment_group: Optional[str] = None,
 ) -> Dict[str, Path]:
     """
     根据配置文件创建实验输出目录，并保存本次实验配置。
@@ -241,7 +273,7 @@ def prepare_run_environment(
     这个函数后续会在 train.py 开头调用。
 
     它做三件事：
-    1. 创建 outputs/<YYYYMMDD>/runs/<run_id>/
+    1. 创建 outputs/<YYYYMMDD>/<experiment_group>/runs/<run_id>/
     2. 保存 logs/experiment_config.yaml
     3. 写当前 run manifest 目录内的 latest_run.txt
 
@@ -258,31 +290,51 @@ def prepare_run_environment(
         cli_date=experiment_date,
         config=config,
     )
+    experiment_group = resolve_experiment_group(
+        cli_group=experiment_group,
+        config=config,
+        default=f"single_{sanitize_name(experiment_name).lower()}",
+    )
+    fixed_run_id = configured_run_id(config)
+    configured_run_root = (
+        config.get("output", {}).get("root") if fixed_run_id is not None else None
+    )
 
     run_info = create_run_dirs(
         output_dir=str(output_dir),
         experiment_name=experiment_name,
         experiment_date=frozen_date,
+        experiment_group=experiment_group,
+        run_id=fixed_run_id,
+        configured_run_root=configured_run_root,
     )
 
     config.setdefault("output", {})
     config["output"].update(
         {
-            "root": str(output_dir),
+            "root": str(run_info["run_dir"]),
+            "output_base": str(output_dir),
             "experiment_date": frozen_date,
+            "experiment_group": experiment_group,
             "output_root": str(run_info["output_root"]),
             "day_output_root": str(run_info["day_output_root"]),
+            "experiment_root": str(run_info["experiment_root"]),
+            "run_id": str(run_info["run_id"]),
+            "run_root": str(run_info["run_dir"]),
             "run_dir": str(run_info["run_dir"]),
             "log_dir": str(run_info["logs_dir"]),
-            "analysis_dir": str(
-                resolve_output_category("analysis", frozen_date, run_info["output_root"])
-            ),
+            "metrics_dir": str(run_info["metrics_dir"]),
+            "artifacts_dir": str(run_info["artifacts_dir"]),
+            "analysis_dir": str(run_info["analysis_root"]),
             "manifest_dir": str(run_info["manifest_dir"]),
+            "review_dir": str(run_info["review_root"]),
+            "report_dir": str(run_info["report_root"]),
         }
     )
 
     config_save_path = run_info["logs_dir"] / "experiment_config.yaml"
     save_yaml(config, config_save_path)
+    save_yaml(config, run_info["run_dir"] / "resolved_config.yaml")
     write_run_metadata(
         config=config,
         output_path=run_info["run_dir"] / "run_metadata.json",

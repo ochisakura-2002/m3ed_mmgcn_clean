@@ -254,12 +254,22 @@ def build_run_metadata(
         "feature_causality_status": FEATURE_CAUSALITY_STATUS,
         "test_split_used_for_selection": False,
         "experiment_date": _optional_text(output.get("experiment_date")),
+        "experiment_group": _optional_text(output.get("experiment_group")),
+        "output_base": _optional_text(
+            output.get("output_base", output.get("output_root"))
+        ),
         "output_root": _optional_text(output.get("output_root", output.get("root"))),
         "day_output_root": _optional_text(output.get("day_output_root")),
+        "experiment_root": _optional_text(output.get("experiment_root")),
+        "run_root": _optional_text(output.get("run_root", output.get("run_dir"))),
         "run_dir": _optional_text(output.get("run_dir")),
         "log_dir": _optional_text(output.get("log_dir")),
+        "metrics_dir": _optional_text(output.get("metrics_dir")),
+        "artifacts_dir": _optional_text(output.get("artifacts_dir")),
         "analysis_dir": _optional_text(output.get("analysis_dir")),
         "manifest_dir": _optional_text(output.get("manifest_dir")),
+        "review_dir": _optional_text(output.get("review_dir")),
+        "report_dir": _optional_text(output.get("report_dir")),
     }
     normalized_name = _model_name(config).lower()
     if normalized_name in NEW_GSMCC_NAMES | NEW_DIALOGUEGCN_NAMES:

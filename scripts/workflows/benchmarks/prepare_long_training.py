@@ -4,13 +4,31 @@ from __future__ import annotations
 
 import argparse
 import copy
-import re
+import csv
+import json
 import shlex
+import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
 import yaml
+
+PROJECT_ROOT = next(
+    candidate
+    for candidate in Path(__file__).resolve().parents
+    if (candidate / "AGENTS.md").is_file() and (candidate / "scripts").is_dir()
+)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.output_paths import (
+    resolve_output_paths,
+    validate_batch_id,
+    validate_experiment_date,
+    validate_experiment_group,
+)
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
@@ -43,17 +61,28 @@ def prepare_long_training_matrix(
     *,
     root: Path | None = None,
     resolved_root: Path | None = None,
+    batch_id: str | None = None,
 ) -> dict[str, Any]:
     """Expand one matrix, enforce its protocol, and optionally write YAML files."""
 
     if mode not in {"check", "prepare"}:
         raise ValueError(f"Unsupported mode: {mode!r}")
-    if not re.fullmatch(r"\d{8}", experiment_date):
-        raise ValueError(f"Invalid experiment date: {experiment_date!r}")
+    experiment_date = validate_experiment_date(experiment_date)
 
     project_root = Path.cwd() if root is None else Path(root)
     matrix_file = _resolve(project_root, Path(matrix_path))
     matrix = load_yaml(matrix_file)
+    experiment_group = validate_experiment_group(matrix["experiment_group"])
+    output_base = Path(str(matrix.get("output_base", "outputs")))
+    resolved_batch_id = validate_batch_id(
+        batch_id or f"{experiment_group}_{experiment_date}_check"
+    )
+    batch_layout = resolve_output_paths(
+        output_base=output_base,
+        experiment_date=experiment_date,
+        experiment_group=experiment_group,
+        batch_id=resolved_batch_id,
+    )
     feature = matrix["feature"]
     matrix_protocol = matrix["protocol"]
     if matrix_protocol["checkpoint_selection_metric"] != "val_weighted_f1":
@@ -74,18 +103,20 @@ def prepare_long_training_matrix(
         if entry[key] != feature[key]:
             raise ValueError(f"Feature registry mismatch for {key}")
 
-    if resolved_root is None:
-        resolved_dir = (
-            Path("outputs")
-            / experiment_date
-            / "manifests"
-            / str(matrix["matrix_name"])
-            / "resolved_configs"
-        )
-    else:
-        resolved_dir = Path(resolved_root)
+    resolved_dir = (
+        batch_layout.manifest_root / "resolved_configs"
+        if resolved_root is None
+        else Path(resolved_root)
+    )
+    manifest_dir = resolved_dir.parent
     if mode == "prepare":
-        _resolve(project_root, resolved_dir).mkdir(parents=True, exist_ok=False)
+        if resolved_root is None:
+            _resolve(project_root, batch_layout.manifest_root).mkdir(
+                parents=True, exist_ok=False
+            )
+            _resolve(project_root, resolved_dir).mkdir(parents=False, exist_ok=False)
+        else:
+            _resolve(project_root, resolved_dir).mkdir(parents=True, exist_ok=False)
 
     run_ids: set[str] = set()
     output_roots: set[str] = set()
@@ -122,10 +153,26 @@ def prepare_long_training_matrix(
                     "context_mode": base_record["context_mode"],
                     "validation_id": session["validation_id"],
                     "seed": int(seed),
+                    "experiment_date": experiment_date,
+                    "experiment_group": experiment_group,
+                    "batch_id": resolved_batch_id,
+                    "output_base": output_base.as_posix(),
                 }
                 run_id = matrix["expansion"]["run_id_template"].format(**tokens)
                 tokens["run_id"] = run_id
                 output_root = matrix["expansion"]["output_root_template"].format(**tokens)
+                run_layout = resolve_output_paths(
+                    output_base=output_base,
+                    experiment_date=experiment_date,
+                    experiment_group=experiment_group,
+                    run_id=run_id,
+                )
+                assert run_layout.run_root is not None
+                if Path(output_root) != run_layout.run_root:
+                    raise ValueError(
+                        "output_root_template does not match the canonical run root: "
+                        f"{output_root} != {run_layout.run_root}"
+                    )
                 if run_id in run_ids:
                     raise ValueError(f"Duplicate run_id: {run_id}")
                 if output_root in output_roots:
@@ -183,8 +230,21 @@ def prepare_long_training_matrix(
                 if isinstance(config.get("project"), dict):
                     config["project"]["experiment_name"] = run_id
                 if isinstance(config.get("output"), dict):
-                    config["output"]["root"] = output_root
-                    config["output"]["experiment_date"] = experiment_date
+                    config["output"].update(
+                        {
+                            "output_base": output_base.as_posix(),
+                            "root": output_root,
+                            "experiment_date": experiment_date,
+                            "experiment_group": experiment_group,
+                            "experiment_root": run_layout.experiment_root.as_posix(),
+                            "run_id": run_id,
+                            "run_root": output_root,
+                            "manifest_root": batch_layout.manifest_root.as_posix(),
+                            "review_root": batch_layout.review_root.as_posix(),
+                            "report_root": batch_layout.report_root.as_posix(),
+                            "analysis_root": batch_layout.analysis_root.as_posix(),
+                        }
+                    )
                     if "experiment_name" in config["output"]:
                         config["output"]["experiment_name"] = run_id
                 if isinstance(config.get("system"), dict):
@@ -202,7 +262,23 @@ def prepare_long_training_matrix(
                 ):
                     config["dataset"]["split_seed"] = int(seed)
 
-                resolved_path = resolved_dir / f"{order:03d}_{run_id}.yaml"
+                canonical_resolved_path = Path(
+                    matrix["expansion"]["resolved_config_template"].format(**tokens)
+                )
+                expected_resolved_path = (
+                    batch_layout.manifest_root / "resolved_configs" / f"{run_id}.yaml"
+                )
+                if canonical_resolved_path != expected_resolved_path:
+                    raise ValueError(
+                        "resolved_config_template does not match the canonical batch "
+                        f"manifest path: {canonical_resolved_path} != "
+                        f"{expected_resolved_path}"
+                    )
+                resolved_path = (
+                    canonical_resolved_path
+                    if resolved_root is None
+                    else resolved_dir / f"{run_id}.yaml"
+                )
                 if mode == "prepare":
                     resolved_file = _resolve(project_root, resolved_path)
                     with resolved_file.open("x", encoding="utf-8") as file:
@@ -217,6 +293,8 @@ def prepare_long_training_matrix(
                     resolved_path.as_posix(),
                     "--experiment-date",
                     experiment_date,
+                    "--experiment-group",
+                    experiment_group,
                 ]
                 rendered_command = " ".join(shlex.quote(part) for part in command)
                 commands.append(rendered_command)
@@ -226,6 +304,7 @@ def prepare_long_training_matrix(
                         "output_root": output_root,
                         "entrypoint": entrypoint.as_posix(),
                         "resolved_path": resolved_path,
+                        "canonical_resolved_path": canonical_resolved_path,
                         "config": config,
                         "command": rendered_command,
                     }
@@ -251,8 +330,88 @@ def prepare_long_training_matrix(
     if duplicate_pair_member_count:
         raise ValueError(f"Duplicate pair members: {duplicate_pair_member_count}")
 
+    if mode == "prepare":
+        manifest_path = _resolve(project_root, manifest_dir)
+        with (manifest_path / "commands.txt").open(
+            "x", encoding="utf-8", newline="\n"
+        ) as file:
+            file.write("\n".join(commands) + "\n")
+        with (manifest_path / "matrix.yaml").open(
+            "x", encoding="utf-8", newline="\n"
+        ) as file:
+            yaml.safe_dump(matrix, file, sort_keys=False, allow_unicode=True)
+        with (manifest_path / "matrix.csv").open(
+            "x", encoding="utf-8", newline=""
+        ) as file:
+            writer = csv.DictWriter(
+                file,
+                fieldnames=(
+                    "run_id",
+                    "context_mode",
+                    "entrypoint",
+                    "output_root",
+                    "resolved_config",
+                ),
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            for record in records:
+                writer.writerow(
+                    {
+                        "run_id": record["run_id"],
+                        "context_mode": record["config"]["long_training"][
+                            "context_mode"
+                        ],
+                        "entrypoint": record["entrypoint"],
+                        "output_root": record["output_root"],
+                        "resolved_config": record["resolved_path"].as_posix(),
+                    }
+                )
+        try:
+            git_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=project_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            git_commit = "unavailable"
+        (manifest_path / "git_commit.txt").write_text(
+            git_commit + "\n", encoding="utf-8"
+        )
+        (manifest_path / "preparation_metadata.json").write_text(
+            json.dumps(
+                {
+                    "matrix_name": matrix["matrix_name"],
+                    "experiment_date": experiment_date,
+                    "experiment_group": experiment_group,
+                    "batch_id": resolved_batch_id,
+                    "expanded_run_count": order,
+                    "generated_command_count": len(commands),
+                    "test_selection_leakage_found": matrix_protocol[
+                        "test_selection_leakage_found"
+                    ],
+                    "formal_training_started": 0,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     return {
         "matrix": matrix,
+        "experiment_date": experiment_date,
+        "experiment_group": experiment_group,
+        "batch_id": resolved_batch_id,
+        "experiment_root": batch_layout.experiment_root,
+        "launcher_log_root": batch_layout.launcher_log_root,
+        "manifest_root": batch_layout.manifest_root,
+        "review_root": batch_layout.review_root,
+        "report_root": batch_layout.report_root,
+        "analysis_root": batch_layout.analysis_root,
         "records": records,
         "commands": commands,
         "expanded_run_count": order,
@@ -270,6 +429,15 @@ def print_result(result: Mapping[str, Any], mode: str) -> None:
     context_counts = result["context_counts"]
     model_counts = result["model_counts"]
     print(f"MATRIX={matrix['matrix_name']}")
+    print(f"EXPERIMENT_DATE={result['experiment_date']}")
+    print(f"EXPERIMENT_GROUP={result['experiment_group']}")
+    print(f"BATCH_ID={result['batch_id']}")
+    print(f"EXPERIMENT_ROOT={result['experiment_root']}")
+    print(f"LAUNCHER_LOG_ROOT={result['launcher_log_root']}")
+    print(f"MANIFEST_ROOT={result['manifest_root']}")
+    print(f"REVIEW_ROOT={result['review_root']}")
+    print(f"REPORT_ROOT={result['report_root']}")
+    print(f"ANALYSIS_ROOT={result['analysis_root']}")
     print(f"ENABLED={str(bool(matrix['enabled'])).lower()}")
     print(f"EXPANDED_RUN_COUNT={result['expanded_run_count']}")
     print(f"GENERATED_COMMAND_COUNT={len(result['commands'])}")
@@ -303,6 +471,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional config-only output override, primarily for local regression tests.",
     )
+    parser.add_argument(
+        "--batch-id",
+        default=None,
+        help="Batch isolation identifier; prepare callers should pass a unique value.",
+    )
     return parser.parse_args()
 
 
@@ -313,6 +486,7 @@ def main() -> None:
         args.mode,
         args.experiment_date,
         resolved_root=args.resolved_root,
+        batch_id=args.batch_id,
     )
     print_result(result, args.mode)
 

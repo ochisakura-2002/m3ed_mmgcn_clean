@@ -65,13 +65,16 @@
 1. `LEGACY_MODEL_WRAPPERS=RETIRED`
 2. `LEGACY_SCRIPT_WRAPPERS=RETIRED`
 3. `CANONICAL_ONLY_LAYOUT=COMPLETED`
-4. `FORMAL_LONG_TRAINING_STARTED=NO`
+4. `FORMAL_LONG_TRAINING_STARTED=YES`；当前用户确认的 32-run 远程批次仍在旧输出架构上运行，本地不得停止、迁移或要求远程 `git pull`。
 5. `LONG32_TRACK_SPLIT_REPAIR=COMPLETED`
 6. 2026-07-25 远程批次 `outputs/launcher_logs/formal_long32_20260725_213652` 在首个 run `ltp_mmgcn_full_context_val_ses01_s42` 的 runtime config validation 阶段失败，未进入 epoch；根因是 full-context base 的 `clean_roberta_fivefold_fair_comparison` track 被矩阵仅覆盖 split 为 `session_holdout`，形成非法组合。
 7. 32-run 长训练现统一使用 `protocol_version=long_training_session_holdout_v1` 与 `clean_roberta_session_holdout_fair_comparison -> session_holdout`，固定 Ses05 Test、轮换 Ses01--Ses04 Validation；4 个模型、16 个 full-context、16 个 causal-context 与 16 个 pair key 不变，test 不参与选择。
 8. 旧模型 import 路径和旧脚本执行命令均不再受支持；后续代码、配置、测试、文档与命令必须使用 canonical 路径。
 9. Wrapper 退休没有修改模型数学、forward、loss、optimizer、训练逻辑、数据划分、checkpoint/state-dict schema 或配置语义；tracked YAML 数量仍为 183。
-10. Long32 修复回归在临时目录生成 32 个 resolved config 并按各自实际 entrypoint 完成 32/32 config-only runtime validation；定向回归 `15 passed`，完整 pytest `321 passed, 3 skipped`，正式训练启动次数仍为 0。
+10. Long32 修复回归在临时目录生成 32 个 resolved config 并按各自实际 entrypoint 完成 32/32 config-only runtime validation；定向回归 `15 passed`，完整 pytest `321 passed, 3 skipped`；该修复任务本身启动正式训练 0 次。
+11. 当前运行中的远程批次使用 commit `d8a7701` 或远程实际 `git rev-parse HEAD` 与旧输出路径；它不是第 6 条的历史失败批次。本地输出架构重构只影响未来批次，不修改远程工作区，不移动或删除现有输出。
+12. 未来新写入必须使用 `outputs/<YYYYMMDD>/<experiment_group>/{runs,logs,manifests,review,reports,analysis}`；launcher、manifest、review、reports 与 analysis 用 `batch_id` 隔离，fixed `run_id` 碰撞必须在 epoch 前失败。完整规则见 `docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`。
+13. `OUTPUT_LAYOUT_REFACTOR=COMPLETED`：193 个 tracked YAML 已审计，126 个 output-owning YAML 已通过显式字段或公共 runtime resolver 统一；旧路径新写入为 0，旧 run/analysis/launcher 路径仅只读兼容。最终输出路径定向回归 `50 passed`，完整 tracked pytest（忽略受保护本地 `tests/analyze`）`318 passed, 3 skipped`。
 
 ## 当前配置目录与阶段
 

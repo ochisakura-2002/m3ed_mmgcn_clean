@@ -5,7 +5,7 @@ project:
 system:
   seed: 7
   device: cpu
-  output_dir: tmp/smoke_outputs
+  output_dir: outputs
 
 dataset:
   name: MMGCN_SMOKE
@@ -65,4 +65,4 @@ modality:
 notes:
   purpose: >
     Smoke config for restoring the MMGCN experiment loop without reading real
-    M3ED data. Runtime artifacts are written under tmp/smoke_outputs.
+    M3ED data. Runtime artifacts use the canonical dated output layout.

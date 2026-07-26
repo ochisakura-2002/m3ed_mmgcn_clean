@@ -1,6 +1,6 @@
 # IEMOCAP Clean long-training release candidate
 
-Status: `READY_FOR_REMOTE_LONG32_RESTART`
+Status: `CURRENT_REMOTE_OLD_LAYOUT_BATCH_RUNNING; FUTURE_LAYOUT_READY`
 
 This package prepares configuration only. It does not start training, evaluate
 checkpoints, create feature placeholders, weaken SHA256 validation, commit, or
@@ -98,6 +98,24 @@ entrypoint, and requires 32/32 passes before accepting the matrix. It also
 requires 32 unique commands, 32 unique run IDs, 32 unique output roots, 16
 context pair keys, and zero unpaired members or test-selection leakage.
 
+## Output ownership
+
+Future primary preparations use experiment group
+`formal_long32_primary_seed42`; the disabled expansion uses
+`formal_long32_multiseed`. A preparation freezes one `experiment_date` and
+requires one unique `batch_id`. Run roots are
+`outputs/<date>/<group>/runs/<run_id>`, launcher logs are under
+`logs/launcher/<batch_id>`, and all resolved configs, commands, matrix
+snapshots, commit provenance, and preparation metadata are under
+`manifests/batches/<batch_id>`. Review, reports, and analysis have matching
+batch roots. The exact policy is documented in
+`docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`.
+
+The formal 32-run remote batch reported as currently running uses the old
+layout at commit `d8a7701` or the remote machine's actual HEAD. It is distinct
+from the historical failed launch above and is not migrated, restarted,
+stopped, or asked to pull this local change.
+
 ## Provenance and context boundaries
 
 - `paper_aligned` does not mean `author_official`.
@@ -132,7 +150,9 @@ dry-run remain `REMOTE_DRY_RUN_REQUIRED`.
 
 ## Release boundary
 
-The repaired primary package is ready to regenerate the remote manifest and
-restart the 32-run batch after normal Git handoff. The optional three-seed
-matrix remains disabled, and `LONG_TRAINING_COMMANDS.sh` only
-checks/materializes configs and prints commands; it never executes training.
+The current old-layout remote batch continues untouched. After it is complete,
+future batches may regenerate a new canonical manifest through normal Git
+handoff; this document does not authorize changing the running workspace. The
+optional three-seed matrix remains disabled, and
+`LONG_TRAINING_COMMANDS.sh` only checks/materializes configs and prints
+commands; it never executes training.

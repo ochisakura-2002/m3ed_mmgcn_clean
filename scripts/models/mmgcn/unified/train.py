@@ -58,10 +58,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.seed import set_seed  # noqa: E402
 from utils.run_metadata import write_run_metadata  # noqa: E402
 from utils.output_paths import (  # noqa: E402
+    allocate_configured_run,
     configured_output_root,
-    create_unique_run_dir,
     resolve_experiment_date,
-    resolve_output_category,
 )
 from utils.iemocap_features import validate_iemocap_feature_config  # noqa: E402
 from utils.evaluation import build_prediction_row, compute_calibration_metrics  # noqa: E402
@@ -92,6 +91,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Frozen experiment launch date in YYYYMMDD format.",
     )
+    parser.add_argument("--experiment-group", default=None)
 
     return parser.parse_args()
 
@@ -174,6 +174,7 @@ def prepare_run_environment(
     config: dict,
     config_path: Path,
     experiment_date: str | None = None,
+    experiment_group: str | None = None,
 ) -> Dict[str, Any]:
     """Create one collision-safe run below the frozen experiment date."""
 
@@ -187,38 +188,57 @@ def prepare_run_environment(
     experiment_name = sanitize_name(
         config.get("project", {}).get("experiment_name", "mmgcn_experiment")
     )
-    run_dir = create_unique_run_dir(
-        experiment_name,
-        frozen_date,
-        output_dir,
+    layout = allocate_configured_run(
+        config=config,
+        config_path=config_path,
+        experiment_name=experiment_name,
+        experiment_date=frozen_date,
+        output_base=output_dir,
+        experiment_group=experiment_group,
     )
+    assert layout.run_root is not None
+    run_dir = layout.run_root
     run_id = run_dir.name
     logs_dir = run_dir / "logs"
     checkpoints_dir = run_dir / "checkpoints"
-    figures_dir = run_dir / "figures"
-    manifest_dir = resolve_output_category(
-        "manifests", frozen_date, output_dir
-    ) / run_id
+    metrics_dir = run_dir / "metrics"
+    artifacts_dir = run_dir / "artifacts"
+    figures_dir = artifacts_dir / "figures"
+    manifest_dir = layout.manifest_root / "runs" / run_id
 
-    for path in (logs_dir, checkpoints_dir, figures_dir, manifest_dir):
+    for path in (
+        logs_dir,
+        checkpoints_dir,
+        metrics_dir,
+        figures_dir,
+        manifest_dir,
+    ):
         path.mkdir(parents=True, exist_ok=True)
 
     config.setdefault("output", {})
     config["output"].update(
         {
-            "root": str(configured_output_root(config)),
+            "root": str(run_dir),
+            "output_base": str(output_dir),
             "experiment_date": frozen_date,
+            "experiment_group": layout.experiment_group,
             "output_root": str(output_dir),
             "day_output_root": str(output_dir / frozen_date),
+            "experiment_root": str(layout.experiment_root),
+            "run_id": run_id,
+            "run_root": str(run_dir),
             "run_dir": str(run_dir),
             "log_dir": str(logs_dir),
-            "analysis_dir": str(
-                resolve_output_category("analysis", frozen_date, output_dir)
-            ),
+            "metrics_dir": str(metrics_dir),
+            "artifacts_dir": str(artifacts_dir),
+            "analysis_dir": str(layout.analysis_root),
             "manifest_dir": str(manifest_dir),
+            "review_dir": str(layout.review_root),
+            "report_dir": str(layout.report_root),
         }
     )
     save_yaml_config(config=config, output_path=logs_dir / "experiment_config.yaml")
+    save_yaml_config(config=config, output_path=run_dir / "resolved_config.yaml")
     write_run_metadata(
         config=config,
         output_path=run_dir / "run_metadata.json",
@@ -237,9 +257,13 @@ def prepare_run_environment(
         "output_dir": output_dir,
         "day_output_root": output_dir / frozen_date,
         "experiment_date": frozen_date,
+        "experiment_group": layout.experiment_group,
+        "experiment_root": layout.experiment_root,
         "run_dir": run_dir,
         "logs_dir": logs_dir,
         "checkpoints_dir": checkpoints_dir,
+        "metrics_dir": metrics_dir,
+        "artifacts_dir": artifacts_dir,
         "figures_dir": figures_dir,
         "manifest_dir": manifest_dir,
         "latest_run_path": latest_run_path,
@@ -893,6 +917,7 @@ def main() -> None:
         config=config,
         config_path=config_path,
         experiment_date=args.experiment_date,
+        experiment_group=args.experiment_group,
     )
     print(
         "CODEX_RUN_INFO_JSON="

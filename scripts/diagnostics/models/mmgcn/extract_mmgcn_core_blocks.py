@@ -200,6 +200,7 @@ def main() -> None:
             "mmgcn_core_blocks",
             frozen_date,
             OUTPUT_ROOT,
+            experiment_group="mmgcn_diagnostics",
         )
     )
     output_path = output_dir / "mmgcn_core_blocks.txt"

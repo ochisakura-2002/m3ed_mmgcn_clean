@@ -145,7 +145,9 @@
 
 `CANONICAL_ONLY_LAYOUT=COMPLETED`
 
-`FORMAL_LONG_TRAINING_STARTED=NO`
+`FORMAL_LONG_TRAINING_STARTED=YES`
+
+`OUTPUT_LAYOUT_REFACTOR=COMPLETED_FOR_FUTURE_RUNS`
 
 旧模型 import 路径和旧脚本执行命令不再受支持。后续代码、配置、测试、文档与命令必须使用 canonical 路径。本次退休不改变模型数学、训练行为、数据划分、checkpoint/state-dict schema 或配置语义，tracked YAML 数量保持 183。
 
@@ -185,7 +187,7 @@ conda run -n m3ed_mmgcn python scripts\models\mmgcn\unified\train.py --config co
 ```
 
 ```powershell
-conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint tmp\smoke_outputs\runs\<run_id>\checkpoints\best_model.pt --split test
+conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkpoint outputs\<YYYYMMDD>\<experiment_group>\runs\<run_id>\checkpoints\best_model.pt --split test
 ```
 
 迁移前的旧命令已不再受支持；自动化与文档必须使用 canonical 路径。
@@ -195,24 +197,32 @@ conda run -n m3ed_mmgcn python scripts\evaluation\unified_checkpoint.py --checkp
 训练脚本通常生成：
 
 ```text
-<output_dir>/
-  latest_run.txt
-  runs/
-    <timestamp>_<experiment_name>/
-      checkpoints/
-        best_model.pt
-        last_model.pt
-      logs/
-        experiment_config.yaml
-        epoch_metrics.csv
-        val_predictions_best.csv
-        confusion_matrix_best.csv
-        per_class_recall_best.csv
-        evaluations/
-      figures/
+outputs/
+  <YYYYMMDD>/
+    <experiment_group>/
+      runs/
+        <run_id>/
+          resolved_config.yaml
+          run_metadata.json
+          checkpoints/
+            best_model.pt
+            last_model.pt
+          logs/
+            experiment_config.yaml
+            epoch_metrics.csv
+            evaluations/
+          metrics/
+          artifacts/
+      logs/launcher/<batch_id>/
+      manifests/batches/<batch_id>/
+      review/batches/<batch_id>/
+      reports/batches/<batch_id>/
+      analysis/batches/<batch_id>/
 ```
 
-正式实验通常使用 `outputs/`。本地 smoke test 使用 `tmp/smoke_outputs/`，避免污染正式输出。
+正式、消融、smoke、quick 与 debug 配置均使用该 canonical 层级。完整规则见
+`docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`。当前正在运行的远程 32-run
+旧路径批次不迁移、不停止、不要求远程 `git pull`；新规则仅适用于未来写入。
 
 ## 不要随意修改的路径
 

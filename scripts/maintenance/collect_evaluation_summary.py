@@ -35,6 +35,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utils.output_paths import (  # noqa: E402
     discover_run_directories,
     infer_experiment_date_from_run,
+    infer_experiment_group_from_run,
     resolve_experiment_date,
     resolve_output_category,
 )
@@ -163,10 +164,25 @@ def main() -> None:
         cli_date=args.experiment_date,
         inferred_date=inferred_date,
     )
+    experiment_group = next(
+        (
+            value
+            for value in (
+                infer_experiment_group_from_run(path) for path in run_dirs
+            )
+            if value is not None
+        ),
+        "cross_group_evaluation_summary",
+    )
     output_dir = (
         Path(args.output_dir).resolve()
         if args.output_dir is not None
-        else resolve_output_category("analysis", frozen_date, OUTPUT_ROOT)
+        else resolve_output_category(
+            "analysis",
+            frozen_date,
+            OUTPUT_ROOT,
+            experiment_group=experiment_group,
+        )
         / "evaluation_summary"
     )
     output_path = output_dir / "evaluation_summary.csv"

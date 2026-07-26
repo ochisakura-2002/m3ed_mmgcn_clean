@@ -11,6 +11,7 @@ set -euo pipefail
 MATRIX_PATH="${1:-configs/benchmarks/long_training/iemocap_clean/primary_seed42.yaml}"
 MODE="${2:-check}"
 EXPERIMENT_DATE="${MERC_EXPERIMENT_DATE:-$(date +%Y%m%d)}"
+BATCH_ID="${MERC_LONG_TRAINING_BATCH_ID:-formal_long32_$(date +%Y%m%d_%H%M%S)}"
 RESOLVED_ROOT_ARGS=()
 
 if [[ "${MODE}" != "check" && "${MODE}" != "prepare" ]]; then
@@ -26,4 +27,5 @@ python -u scripts/workflows/benchmarks/prepare_long_training.py \
   "${MATRIX_PATH}" \
   "${MODE}" \
   "${EXPERIMENT_DATE}" \
+  --batch-id "${BATCH_ID}" \
   "${RESOLVED_ROOT_ARGS[@]}"

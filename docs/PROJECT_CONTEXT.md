@@ -54,6 +54,8 @@
 
 `OUTPUT_LAYOUT_REFACTOR=COMPLETED_FOR_FUTURE_RUNS`
 
+`LOCAL_ONLY_ANALYSIS_CLEANUP=COMPLETED`
+
 `OFFICIAL_MULTIDAG_REPRODUCTION=NOT_STARTED`
 
 `OFFICIAL_GSMCC_REPRODUCTION=NOT_STARTED`
@@ -354,28 +356,28 @@ checkpoint、cache 或大体积输出。
 - Config Batch 4 基于分支 `refactor/model-first-layout`、Git HEAD `0e1a62a84fb464632990552d8cb2cfd32ea5b055` 完成；10 个 DialogueGCN YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 10、tracked YAML 总数 183。
 - Batch 4 的 6 个 `unified` 与 4 个 `paper_aligned` YAML 均 byte-identical 且 semantic-identical；YAML 内容变化 0、未批准语义变化 0。
 - Batch 4 reference audit 记录 30 个已更新 active references，其中 5 个 pipeline references；历史旧引用与 active old references 均为 0。
-- Batch 4 audit/plan/benchmark focused tests：`64 passed`；DialogueGCN/config/pipeline/registry/checkpoint 相关回归：`181 passed, 3 skipped`；完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`403 passed, 3 skipped`。
+- Batch 4 audit/plan/benchmark focused tests：`64 passed`；DialogueGCN/config/pipeline/registry/checkpoint 相关回归：`181 passed, 3 skipped`；完整 tracked pytest：`403 passed, 3 skipped`。
 - Batch 4 config validation、Phase 4A strict plan audit、Batch 1/2/3/4 strict audit、10-config 无训练 dry-run、4 个 CLI help 与 `git diff --check` 均通过。
 - Config Batch 5 基于分支 `refactor/model-first-layout`、Git HEAD `2403a801b48307f214f2fdd6768d206e40c453e9` 完成；13 个 GS-MCC `project_variant` YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 13、tracked YAML 总数 183。
 - Batch 5 的 7 个 `causal_context` 与 6 个 `full_context` YAML 均 byte-identical 且 semantic-identical；YAML 内容变化 0、未批准语义变化 0。
 - Batch 5 reference audit 记录 46 个已更新 active references，其中 5 个 pipeline references；历史旧引用与 active old references 均为 0。
 - Batch 5 相关定向回归：`219 passed, 3 skipped`；13-config 无训练 dry-run 解析配置、registry、entrypoint、output/checkpoint 与 pipeline/manifest 引用均通过。
-- Batch 5 完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`420 passed, 3 skipped, 14 warnings`；config validator、Phase 4A strict plan audit、Batch 1/2/3/4/5 strict audit、CLI help 与 `git diff --check` 均通过。
+- Batch 5 完整 tracked pytest：`420 passed, 3 skipped, 14 warnings`；config validator、Phase 4A strict plan audit、Batch 1/2/3/4/5 strict audit、CLI help 与 `git diff --check` 均通过。
 - Config Batch 6 基于分支 `refactor/model-first-layout`、Git HEAD `4700a8b495682c9df90c7319847f9331ddfcbceb` 完成；37 个 YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 37、tracked YAML 总数 183。
 - Batch 6 的 2 个 cross-model benchmark 与 35 个 model-scoped ablation 均 byte-identical 且 semantic-identical；YAML 内容变化、未批准语义变化、模型成员/顺序/provenance 变化、ablation/controlled-variable 变化均为 0。
 - Batch 6 reference audit 记录 59 个已更新 active references，其中 27 个为未移动的 Batch 7 YAML 内部路径；109 个冻结历史引用保留，active old references 为 0。
-- Batch 6 audit tests：`79 passed`；Phase 4A plan audit tests：`10 passed`；完整 tracked pytest（显式排除受保护的 untracked 组会测试）：`430 passed, 3 skipped, 14 warnings`。
+- Batch 6 audit tests：`79 passed`；Phase 4A plan audit tests：`10 passed`；完整 tracked pytest：`430 passed, 3 skipped, 14 warnings`。
 - Batch 6 config validation、Phase 4A strict plan audit、Batch 1/2/3/4/5/6 strict audit、37-config 无训练 dry-run 与 `git diff --check` 均通过；正式训练启动次数为 0。
 - Config Batch 7 基于分支 `refactor/model-first-layout`、Git HEAD `10a31f79f9136d2109f8f3309364f1ebe65afe77` 执行；73 个 YAML 使用 `git mv` 迁移，old paths 剩余 0、new paths 存在 73、tracked YAML 总数 183。
 - Batch 7 collision 依据两份 missing-modality YAML 各自的普通 context 与 stable-context `source_config`/来源配置消解；两份配置均保留并使用唯一 canonical path。60 个 YAML 内容不变，13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。
 - Batch 7 reference audit 记录 101 个更新引用与 204 个冻结历史引用，active old references 为 0；manual review 与 collision status 均清零。
-- Batch 7 相关回归：`150 passed`；完整 tracked pytest（显式忽略受保护的本地 `tests/analyze` 目录）：`436 passed, 3 skipped, 14 warnings`。
+- Batch 7 相关回归：`150 passed`；完整 tracked pytest：`436 passed, 3 skipped, 14 warnings`。
 - Batch 7 config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、73-config 无训练 dry-run、6 个 canonical entrypoint CLI help 均通过；正式训练启动次数为 0。
 - Legacy wrapper retirement 基于分支 `refactor/model-first-layout`、Git HEAD `adebf052e640146c3f1c43db95df9247d511c1ec` 执行；扫描 236 个 tracked model/script Python，确认并删除 33 个 model wrapper、64 个 script wrapper 与 1 个仅服务 wrapper tree 的 package init，歧义文件为 0。
 - Retirement 更新或移除 245 个唯一 active reference line；最终 active legacy model imports、active legacy script references、active legacy entrypoints 与 active old config references 均为 0。Canonical model implementation、模型数学、训练行为、数据划分、checkpoint/state-dict schema 与 YAML 语义均未改变。
-- Retirement config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、6-case no-epoch/no-output dry-run 与 canonical-only retirement gate 均通过；完整 tracked pytest（显式忽略受保护的本地 `tests/analyze` 目录）：`309 passed, 3 skipped, 14 warnings`；正式训练启动次数为 0。
+- Retirement config validation、Phase 4A strict plan audit、Batch 1--7 strict audit、6-case no-epoch/no-output dry-run 与 canonical-only retirement gate 均通过；完整 tracked pytest：`309 passed, 3 skipped, 14 warnings`；正式训练启动次数为 0。
 - Long32 track/split 修复于 2026-07-25 完成：临时 prepare 生成 32 个 resolved config 与 32 条唯一命令，按实际 entrypoint 完成 32/32 config-only runtime validation；16 个 full-context、16 个 causal-context、16 个 pair key、0 个未配对 run、0 个输出碰撞、0 个 test-selection leakage。定向回归 `15 passed`，完整 `python -m pytest -q` 为 `321 passed, 3 skipped, 30 warnings`；未启动正式训练，未修改模型代码或数学。
-- Future output layout 重构审计 193 个 tracked YAML，其中 126 个直接拥有输出配置，全部通过显式 `experiment_group` 或公共 runtime resolver 进入 `outputs/<date>/<group>`；9 个活动 smoke output base 从 `tmp/smoke_outputs` 统一为 `outputs`，两份 long-training matrix 显式声明 group 与 canonical templates。旧路径新写入为 0，历史路径只读兼容。最终定向回归 `50 passed`，完整 tracked pytest（显式忽略受保护本地 `tests/analyze`）为 `318 passed, 3 skipped, 14 warnings`。该任务没有启动正式训练、修改远程、移动或删除已有输出。
+- Future output layout 重构审计 193 个 tracked YAML，其中 126 个直接拥有输出配置，全部通过显式 `experiment_group` 或公共 runtime resolver 进入 `outputs/<date>/<group>`；9 个活动 smoke output base 从 `tmp/smoke_outputs` 统一为 `outputs`，两份 long-training matrix 显式声明 group 与 canonical templates。旧路径新写入为 0，历史路径只读兼容。最终定向回归 `50 passed`，完整 tracked pytest 为 `318 passed, 3 skipped, 14 warnings`。该任务没有启动正式训练、修改远程、移动或删除已有输出。
 
 完整 pytest 在受限沙箱内会因既有 `tmp/pytest_*` 与系统 pytest 临时目录权限而无法收集；在具有正常本地文件权限的同一环境中通过。这不是模型断言失败，且本任务未删除或修改这些目录。
 
@@ -384,7 +386,8 @@ checkpoint、cache 或大体积输出。
 - Phase 3A production execution、Phase 3B1 analysis 与 Phase 3B2 support scripts 已迁移；全部 scripts layout refactor 已完成。
 - 旧 script/model wrapper 已在 Config Batch 1--7 完成后通过独立退休门禁删除。
 - `prepare_m3ed_metadata.py`、真实 batch/model 诊断与 summary rebuild 工具具有数据或资产写入风险；Phase 3B2 只做 import、CLI help、synthetic 或静态安全检查，没有执行这些真实动作。
-- `scripts/analyze/export_group_meeting_baseline_report.py` 和 `tests/analyze/test_group_meeting_baseline_report.py` 是本地 untracked 组会文件，必须保持 not staged，不修改、不上传。
+- 2026-07-27 本地清理阶段已删除 `scripts/analyze/export_group_meeting_baseline_report.py`、`tests/analyze/test_group_meeting_baseline_report.py`、本地 Long32 作图入口、对应测试与说明文档；这些本地源码未纳入仓库，后续任务无需再做特殊 Git 排除。
+- 已生成的 Long32 正式图表、表格、figure data、报告与 manifests 继续保留在 `outputs/20260726/formal_long32_primary_seed42/analysis/long32_primary_audit/`；`outputs/` 仍是 ignored 的本地实验产物目录。
 - 不扫描或修改 `outputs/`、`data/`、`third_party/`、`tmp/`；不启动本地正式训练。
 - Phase 4A 本身没有移动、重命名或修改 YAML；随后完成的 Config Batch 1--7 严格按迁移计划执行。历史 outputs 内冻结的配置快照不在迁移范围。
 - Batch 7 的唯一 candidate collision 已依据普通 context 与 stable-context 的不同 source pipeline/source config 消解；两份 missing-modality 配置没有合并。当前 manual review 与 candidate collision 均为 0。

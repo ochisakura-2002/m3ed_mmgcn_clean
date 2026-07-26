@@ -25,6 +25,7 @@ Thumbs.db
 
 # Data files
 data/
+_local_analysis_inputs/
 !/configs/data/
 !/configs/data/**
 !/docs/data/

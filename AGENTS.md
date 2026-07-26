@@ -54,7 +54,7 @@
 8. 迁移前的 debug、diagnose、features、prepare、inspect 及 deferred analyze/support wrapper 已退休；支持脚本必须使用 canonical 路径。
 9. 所有 tracked 生产 scripts 与 tests 已切换到 canonical model/script import；专用兼容性测试已由 canonical-only retirement gate 取代。
 10. `CONFIG_LAYOUT_REFACTOR=COMPLETED`；`CONFIG_BATCH_1=COMPLETED`、`CONFIG_BATCH_2=COMPLETED`、`CONFIG_BATCH_3=COMPLETED`、`CONFIG_BATCH_4=COMPLETED`、`CONFIG_BATCH_5=COMPLETED`、`CONFIG_BATCH_6=COMPLETED`、`CONFIG_BATCH_7=COMPLETED`。
-11. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 继续作为本地 untracked 组会文件保护，不读取其内容作为生产依据、不修改、不 staged。
+11. `scripts/analyze/export_group_meeting_baseline_report.py` 与 `tests/analyze/test_group_meeting_baseline_report.py` 已在 2026-07-27 本地清理阶段删除；后续任务不再需要保护、排除或单独检查这两个路径。
 12. 配置 provenance 必须依据 YAML 内容、registry 与真实 consumer，不得根据旧文件名中的 `original`、`official` 等字样猜测。
 13. YAML 迁移不保留双份真相，也不创建旧 YAML wrapper；发生候选路径碰撞时必须先人工消解。
 14. Phase 4A 配置迁移已经结束；不得在没有新计划与独立审计的情况下继续移动 canonical YAML。
@@ -74,7 +74,8 @@
 10. Long32 修复回归在临时目录生成 32 个 resolved config 并按各自实际 entrypoint 完成 32/32 config-only runtime validation；定向回归 `15 passed`，完整 pytest `321 passed, 3 skipped`；该修复任务本身启动正式训练 0 次。
 11. 当前运行中的远程批次使用 commit `d8a7701` 或远程实际 `git rev-parse HEAD` 与旧输出路径；它不是第 6 条的历史失败批次。本地输出架构重构只影响未来批次，不修改远程工作区，不移动或删除现有输出。
 12. 未来新写入必须使用 `outputs/<YYYYMMDD>/<experiment_group>/{runs,logs,manifests,review,reports,analysis}`；launcher、manifest、review、reports 与 analysis 用 `batch_id` 隔离，fixed `run_id` 碰撞必须在 epoch 前失败。完整规则见 `docs/experiments/OUTPUT_DIRECTORY_LAYOUT.md`。
-13. `OUTPUT_LAYOUT_REFACTOR=COMPLETED`：193 个 tracked YAML 已审计，126 个 output-owning YAML 已通过显式字段或公共 runtime resolver 统一；旧路径新写入为 0，旧 run/analysis/launcher 路径仅只读兼容。最终输出路径定向回归 `50 passed`，完整 tracked pytest（忽略受保护本地 `tests/analyze`）`318 passed, 3 skipped`。
+13. `OUTPUT_LAYOUT_REFACTOR=COMPLETED`：193 个 tracked YAML 已审计，126 个 output-owning YAML 已通过显式字段或公共 runtime resolver 统一；旧路径新写入为 0，旧 run/analysis/launcher 路径仅只读兼容。最终输出路径定向回归 `50 passed`，完整 tracked pytest `318 passed, 3 skipped`。
+14. 本地 Long32 作图入口、测试、说明文档与输入包未纳入仓库；已经生成的正式图表、表格与分析报告继续保留在 `outputs/20260726/formal_long32_primary_seed42/analysis/long32_primary_audit/`，由既有 `outputs/` 规则忽略。
 
 ## 当前配置目录与阶段
 
@@ -95,4 +96,4 @@
 15. Config Batch 7 已完成：73 个 YAML 使用 `git mv` 迁入 `configs/benchmarks/{causal_unified,original_merc,ablations}/` 下的 canonical analysis、pipeline 与 manifest tree；旧路径剩余 0，新路径存在 73，tracked YAML 总数保持 183。
 16. Batch 7 的 context/stable-context collision 已拆为两个唯一 missing-modality canonical path；60 个 YAML 内容不变，13 个仅更新必要的仓库内部配置路径，未批准语义变化为 0。共审计 101 个更新引用和 204 个冻结历史引用，active old references 为 0。
 17. Batch 7 old/new 映射、快照、语义差异、引用审计、碰撞审查与门禁结果以 `docs/refactors/CONFIG_BATCH7_*` 为准；Phase 4A strict plan audit 与 Batch 1--7 strict migration audit 均通过。
-18. 两份本地 untracked 组会文件继续保持不读取为生产依据、不修改、不移动、不 staged。
+18. 后续任务无需再对已删除的两份本地组会文件做特殊 Git 排除；`_local_analysis_inputs/` 作为本地分析输入目录由 `.gitignore` 明确忽略。

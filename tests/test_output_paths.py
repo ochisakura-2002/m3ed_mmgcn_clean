@@ -327,8 +327,9 @@ def test_all_output_owning_yaml_resolves_to_canonical_outputs_layout() -> None:
             Path("outputs") / "20260726" / group / "runs" / "layout_audit"
         )
 
-    assert len(config_paths) == 194
-    assert len(output_owning) == 126
+    # Formal Full16 adds one matrix YAML whose expansion owns canonical outputs.
+    assert len(config_paths) == 195
+    assert len(output_owning) == 127
 
 
 def test_original_pipeline_passes_one_frozen_date_to_every_job(

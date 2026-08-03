@@ -1,0 +1,86 @@
+schema_version: '1.0'
+matrix_name: formal_full16_repaired_seed42
+enabled: true
+expected_run_count: 16
+output_base: outputs
+experiment_group: formal_full16_repaired_seed42
+
+feature:
+  registry_path: configs/_shared/data/iemocap/feature_sets.yaml
+  registry_key: clean_roberta_v1
+  feature_set_name: iemocap_clean_roberta_base_utterance_mean_v1
+  path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
+  sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
+  text_dim: 768
+  audio_dim: 1582
+  visual_dim: 342
+  local_status: REMOTE_ASSET_REQUIRED
+
+protocol:
+  protocol_version: long_training_session_holdout_v1
+  dataset: IEMOCAP
+  feature_track: CLEAN
+  experiment_track: clean_roberta_session_holdout_fair_comparison
+  val_split_strategy: session_holdout
+  protocol_comparability: fair_comparison_not_paper_reproduction
+  context_mode: full_context
+  validation_sessions: [Ses01, Ses02, Ses03, Ses04]
+  test_session: Ses05
+  seed_values: [42]
+  checkpoint_selection_metric: val_weighted_f1
+  checkpoint_selection_split: validation
+  test_split_used_for_selection: false
+  test_selection_leakage_found: 0
+  future_context_allowed: true
+
+expansion:
+  run_id_template: ff16r_{model_family}_full_context_val_{session_slug}_s{seed}
+  output_root_template: '{output_base}/{experiment_date}/{experiment_group}/runs/{run_id}'
+  resolved_config_template: '{output_base}/{experiment_date}/{experiment_group}/manifests/batches/{batch_id}/resolved_configs/{run_id}.yaml'
+  require_unique_run_id: true
+  require_unique_output_root: true
+
+base_configs:
+  - model_family: mmgcn
+    display_name: MMGCN
+    implementation_identity: unified_project_implementation
+    context_mode: full_context
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/mmgcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/mmgcn/paper_aligned/iemocap/full_context/clean_roberta_features/mmgcn_clean.yaml
+    overrides: {}
+
+  - model_family: multidag_cl
+    display_name: MultiDAG-CL Project Variant
+    implementation_identity: project_variant_not_author_official
+    context_mode: full_context
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/multidag_cl_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/multidag_cl/paper_aligned/iemocap/full_context/clean_roberta_features/multidag_cl_clean.yaml
+    overrides: {}
+
+  - model_family: dialoguegcn
+    display_name: DialogueGCN repaired
+    implementation_identity: paper_aligned_repaired_not_author_official
+    context_mode: full_context
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/dialoguegcn_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/dialoguegcn/paper_aligned/iemocap/full_context/clean_roberta_features/dialoguegcn_clean.yaml
+    overrides:
+      optimizer.learning_rate: 0.0003
+      training.epochs: 60
+      training.early_stopping_min_epochs: 30
+      training.early_stopping_patience: 20
+
+  - model_family: gsmcc_project_variant
+    display_name: GS-MCC Project Variant repaired
+    implementation_identity: project_variant_not_author_official
+    context_mode: full_context
+    base_config: configs/benchmarks/long_training/iemocap_clean/base/gsmcc_project_variant_full_context.yaml
+    entrypoint: scripts/workflows/paper_aligned/train.py
+    parameter_source: configs/gsmcc/project_variant/iemocap/full_context/clean_roberta_features/gsmcc_clean.yaml
+    overrides:
+      optimizer.learning_rate: 0.00001
+      training.epochs: 250
+      training.early_stopping_min_epochs: 90
+      training.early_stopping_patience: 40

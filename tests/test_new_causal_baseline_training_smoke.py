@@ -25,9 +25,11 @@ from scripts.workflows.causal_graph.train import (
     ],
 )
 def test_synthetic_training_writes_complete_reloadable_run(
-    config_path: Path, tmp_path: Path
+    config_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    result = run_training(config_path, output_root_override=tmp_path / "runs")
+    # Avoid pytest's long test-name directory exceeding legacy Windows MAX_PATH.
+    output_root = tmp_path_factory.mktemp("cg") / "runs"
+    result = run_training(config_path, output_root_override=output_root)
     run_dir = Path(result["run_dir"])
     assert (run_dir / "checkpoints" / "best_model.pt").is_file()
     assert (run_dir / "checkpoints" / "last_model.pt").is_file()

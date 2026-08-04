@@ -1,0 +1,77 @@
+schema_version: '1.0'
+run_name: mdcl_pr_syn_smoke
+registry_key: multidag_cl_paper_reimplementation
+experiment: {context_label: full_context}
+model_core:
+  identity: {canonical_name: multidag_cl_paper_reimplementation, display_name: MultiDAG-CL Paper Reimplementation, implementation_identity: paper_reimplementation, conformance_profile: paper_formula_behavior}
+  data: {track: project_fair, text_feature_dim: 8, audio_feature_dim: 6, visual_feature_dim: 5, num_classes: 3}
+  encoder:
+    profile: paper_modality_specific
+    modality_order: [audio, visual, text]
+    modality_output_dims: {audio: 100, visual: 100, text: 100}
+    text_sequence_axis: dialogue_utterance
+    text_bidirectional: true
+    causal_text_ablation: false
+    single_projection: false
+  graph: {predecessor_profile: official_same_speaker_count_window, window_past_same_speaker: 1, window_future: 0, allow_self_edge: false, allow_future_edge: false, global_nodal_attention: false}
+  attention: {score: concat_linear, relation_on_values: true, dropout: 0.0}
+  dag: {hidden_dim: 300, layers: 1, dual_gru: swapped_input_hidden_sum, layer_parameter_sharing: false, representation: encoder_plus_all_dag_layers, raw_feature_skip: false}
+  classifier: {hidden_dim: 300, hidden_layers: 2, activation: relu, dropout: 0.4}
+  curriculum: {enabled: true, bucket_count: 5, partition: balanced_stable_contiguous, schedule: official_one_bucket_per_epoch}
+  training:
+    epochs: 30
+    batch_size: 16
+    seed: 100
+    optimizer: {name: adamw_transformers_3_5_1_compatible, learning_rate: 0.0005, betas: [0.9, 0.999], eps: 0.000001, weight_decay: 0.0, bias_correction: true, parameter_grouping: all_parameters_single_group}
+    gradient_clip_norm: 5.0
+    scheduler: none
+    amp: false
+    early_stopping: false
+  loss: {name: cross_entropy, class_weight: null, label_smoothing: 0.0, ignore_index: -100}
+  checkpoint: {test_split_used_for_selection: false}
+dataset:
+  name: SYNTHETIC
+  feature_registry: synthetic_v1
+  feature_path: synthetic://multidag-cl-stage-b3-v1
+  feature_sha256: 621271096b4ca47b3e61efd51ad28bc728fbcdc3264badc367cec90546709406
+  feature_dimensions: {text: 8, audio: 6, visual: 5}
+  split_protocol: synthetic_stage_b3_controlled
+  protocol_comparability: smoke_only_not_reproduction
+  val_split_strategy: synthetic_fixed
+  validation_session: synthetic_val
+  test_session: synthetic_fake_test
+  label_names: [class_0, class_1, class_2]
+  speaker_mapping: equality_preserving_synthetic_ids
+synthetic:
+  split_sizes: {train: 5, val: 3, test: 2}
+  sequence_length: 3
+runtime:
+  mode: synthetic-smoke
+  formal_experiment: false
+  smoke_only: true
+  epochs: 1
+  batch_size: 2
+  seed: 100
+  num_workers: 0
+  device: cpu
+  smoke_output_root: tmp/assistant_work/paper_reproduction_stage_b3_runtime_correction/smoke_outputs
+  optimizer: {name: AdamW, learning_rate: 0.0005, betas: [0.9, 0.999], eps: 0.000001, weight_decay: 0.0, amsgrad: false, maximize: false, foreach: false, capturable: false, differentiable: false, fused: null, parameter_grouping: all_parameters_single_group, bias_correction: native AdamW standard bias correction}
+  scheduler: none
+  gradient_clipping: {mode: global_norm, max_norm: 5.0, norm_type: 2.0, error_if_nonfinite: true}
+  class_weight: null
+  label_smoothing: 0.0
+  early_stopping: false
+  limits: {epochs: 1, optimizer_steps: 1, train_batches: 1, validation_batches: 2, test_batches: 1, real_test_batches: 0}
+checkpoint: {primary_metric: val_weighted_f1, secondary_tiebreak: val_loss_lower, tertiary_tiebreak: earlier_epoch, test_split_used_for_selection: false, test_evaluation_count: 1}
+output:
+  root: outputs
+  experiment_date: null
+  experiment_group: mdcl_pr_syn_smoke
+provenance:
+  paper_sha256: 290ecd8b29c7038e2abec1b873bcd150929d3819bb02ba1416bb9686e327593b
+  official_repo_url: https://github.com/vanntc711/MultiDAG-CL
+  official_commit: 59a75877065a91bf9388fbb564607fe79717fd4f
+  model_math_deviation_list: [paper_dialogue_axis_text_bilstm_explicit_reproduction_choice]
+  protocol_repair_list: [PROJECT_PROTOCOL_REPAIR_VALIDATION_CLEAN, source_backed_gradient_clip_norm_5]
+  engineering_adapter_list: [project_named_batch_thin_validator, synthetic_feature_registry_adapter]
+  protocol_deviation_list: [synthetic_features, one_graph_layer, one_epoch, one_optimizer_step, fake_test_split]

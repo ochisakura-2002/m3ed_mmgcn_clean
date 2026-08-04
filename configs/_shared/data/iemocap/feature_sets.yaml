@@ -3,6 +3,8 @@ legacy_mmgcn_textcnn:
   path: third_party/MMGCN_official/IEMOCAP_features/IEMOCAP_features.pkl
   sha256: ceb5cc9a45d1792998438e27f86a12642320aa6315546e4425316140ea503fb3
   text_dim: 100
+  audio_dim: 1582
+  visual_dim: 342
   status: legacy_compatibility_only
 
 clean_roberta_v1:
@@ -10,4 +12,6 @@ clean_roberta_v1:
   path: data/processed/iemocap/IEMOCAP_features_clean_roberta_base_c8b8a37_utterance_mean_v1.pkl
   sha256: c604c557bc3fbb129ca02b2acd57166b669a89ef76ff0cea1e14f9cb206324bf
   text_dim: 768
+  audio_dim: 1582
+  visual_dim: 342
   status: frozen_for_main_experiments

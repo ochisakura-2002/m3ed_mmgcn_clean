@@ -327,9 +327,9 @@ def test_all_output_owning_yaml_resolves_to_canonical_outputs_layout() -> None:
             Path("outputs") / "20260726" / group / "runs" / "layout_audit"
         )
 
-    # Formal Full16 adds one matrix YAML whose expansion owns canonical outputs.
-    assert len(config_paths) == 195
-    assert len(output_owning) == 127
+    # Stage B3 adds three canonical MultiDAG-CL paper-reimplementation configs.
+    assert len(config_paths) == 198
+    assert len(output_owning) == 130
 
 
 def test_original_pipeline_passes_one_frozen_date_to_every_job(

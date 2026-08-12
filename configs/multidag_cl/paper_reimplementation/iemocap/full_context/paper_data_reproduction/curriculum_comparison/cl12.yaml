@@ -1,0 +1,133 @@
+schema_version: '1.0'
+run_name: multidag_cl_paper_reimplementation_paper_data_cl12_seed100
+registry_key: multidag_cl_paper_reimplementation
+experiment:
+  context_label: full_context
+model_core:
+  identity:
+    canonical_name: multidag_cl_paper_reimplementation
+    display_name: MultiDAG-CL Paper Reimplementation
+    implementation_identity: paper_reimplementation
+    conformance_profile: paper_formula_behavior
+  data:
+    track: paper_data
+    text_feature_dim: 1024
+    audio_feature_dim: 1582
+    visual_feature_dim: 342
+    num_classes: 6
+  encoder:
+    profile: paper_modality_specific
+    modality_order: [audio, visual, text]
+    modality_output_dims: {audio: 100, visual: 100, text: 100}
+    text_sequence_axis: dialogue_utterance
+    text_bidirectional: true
+    causal_text_ablation: false
+    single_projection: false
+  graph:
+    predecessor_profile: official_same_speaker_count_window
+    window_past_same_speaker: 1
+    window_future: 0
+    allow_self_edge: false
+    allow_future_edge: false
+    global_nodal_attention: false
+  attention: {score: concat_linear, relation_on_values: true, dropout: 0.0}
+  dag:
+    hidden_dim: 300
+    layers: 4
+    dual_gru: swapped_input_hidden_sum
+    layer_parameter_sharing: false
+    representation: encoder_plus_all_dag_layers
+    raw_feature_skip: false
+  classifier: {hidden_dim: 300, hidden_layers: 2, activation: relu, dropout: 0.4}
+  curriculum:
+    enabled: true
+    bucket_count: 12
+    partition: balanced_stable_contiguous
+    schedule: official_one_bucket_per_epoch
+  training:
+    epochs: 30
+    batch_size: 16
+    seed: 100
+    optimizer:
+      name: adamw_transformers_3_5_1_compatible
+      learning_rate: 0.0005
+      betas: [0.9, 0.999]
+      eps: 0.000001
+      weight_decay: 0.0
+      bias_correction: true
+      parameter_grouping: all_parameters_single_group
+    gradient_clip_norm: 5.0
+    scheduler: none
+    amp: false
+    early_stopping: false
+  loss: {name: cross_entropy, class_weight: null, label_smoothing: 0.0, ignore_index: -100}
+  checkpoint: {test_split_used_for_selection: false}
+dataset:
+  name: IEMOCAP
+  feature_registry: multidag_cl_official_2948_v1
+  feature_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/IEMOCAP_features_multidag_cl_official.pkl
+  feature_sha256: FROM_OFFICIAL_ASSET_MANIFEST
+  feature_dimensions: {text: 1024, audio: 1582, visual: 342}
+  official_asset_manifest_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/official_asset_manifest.json
+  official_split_manifest_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/official_split_manifest.json
+  split_protocol: multidag_cl_official_exact_train_dev_test
+  protocol_comparability: paper_data_reproduction
+  val_split_strategy: official_split_manifest
+  validation_session: null
+  test_session: null
+  label_names: FROM_OFFICIAL_ASSET_MANIFEST
+  speaker_mapping: equality_preserving_official_vocab_values
+official_assets:
+  verification: official_asset_manifest
+  extractor_provenance: UNKNOWN
+  feature_value_transform: NONE
+  normalization: NONE
+  re_extraction: false
+runtime:
+  mode: train
+  formal_experiment: true
+  smoke_only: false
+  epochs: 30
+  batch_size: 16
+  seed: 100
+  num_workers: 0
+  device: cuda
+  optimizer:
+    name: AdamW
+    learning_rate: 0.0005
+    betas: [0.9, 0.999]
+    eps: 0.000001
+    weight_decay: 0.0
+    amsgrad: false
+    maximize: false
+    foreach: false
+    capturable: false
+    differentiable: false
+    fused: null
+    parameter_grouping: all_parameters_single_group
+    bias_correction: native AdamW standard bias correction
+  scheduler: none
+  gradient_clipping: {mode: global_norm, max_norm: 5.0, norm_type: 2.0, error_if_nonfinite: true}
+  class_weight: null
+  label_smoothing: 0.0
+  early_stopping: false
+  limits: {epochs: null, optimizer_steps: null, train_batches: null, validation_batches: null, test_batches: null, real_test_batches: null}
+checkpoint:
+  primary_metric: val_weighted_f1
+  secondary_tiebreak: val_loss_lower
+  tertiary_tiebreak: earlier_epoch
+  test_split_used_for_selection: false
+  test_evaluation_count: 1
+output:
+  root: outputs
+  experiment_date: null
+  experiment_group: multidag_cl_paper_data_curriculum
+provenance:
+  paper_sha256: 290ecd8b29c7038e2abec1b873bcd150929d3819bb02ba1416bb9686e327593b
+  official_repo_url: https://github.com/vanntc711/MultiDAG-CL
+  official_commit: 59a75877065a91bf9388fbb564607fe79717fd4f
+  official_asset_status: RUNTIME_MANIFEST_REQUIRED
+  model_math_deviation_list: [paper_dialogue_axis_text_bilstm_explicit_reproduction_choice]
+  protocol_repair_list: [PROJECT_PROTOCOL_REPAIR_VALIDATION_CLEAN, source_backed_gradient_clip_norm_5]
+  engineering_adapter_list: [project_named_batch_thin_validator, official_split_manifest_adapter]
+  protocol_deviation_list: []

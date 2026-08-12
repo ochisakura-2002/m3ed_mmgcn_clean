@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import yaml
 
 from models.registry.paper_reimplementation import (
     MODEL_METADATA,
@@ -25,9 +26,20 @@ from scripts.runtime.multidag_cl_paper_reimplementation.manifest import (
 from scripts.runtime.multidag_cl_paper_reimplementation.validation import (
     SMOKE_OUTPUT_ROOT,
 )
+from utils.iemocap_features import DEFAULT_REGISTRY_PATH, load_iemocap_feature_registry
+from utils.run_metadata import compute_file_sha256
 import scripts.models.multidag_cl.paper_reimplementation.train as cli
+import scripts.runtime.multidag_cl_paper_reimplementation.trainer as trainer_module
 
 from ._helpers import FORMAL_CONFIG, ROOT, SYNTHETIC_CONFIG, load_config, mutated_config
+
+
+PAPER_DATA_CONFIG = (
+    ROOT
+    / "configs/multidag_cl/paper_reimplementation/iemocap/full_context/"
+    "paper_data_reproduction/paper_data_reproduction.yaml"
+)
+PAPER_DATA_ROOT = Path("data/processed/iemocap/multidag_cl_paper_data_reproduction")
 
 
 def validate(config: dict, mode: str = "check"):
@@ -69,6 +81,71 @@ def test_formal_config_check_validates_registry_split_and_model_without_asset() 
     assert core.graph_layers == 4
     assert feature.registry_key == "clean_roberta_v1"
     assert feature.feature_dimensions == {"text": 768, "audio": 1582, "visual": 342}
+
+
+def test_paper_data_paths_and_check_mode_use_reproduction_asset_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(PAPER_DATA_CONFIG)
+    dataset = config["dataset"]
+    expected_feature = PAPER_DATA_ROOT / "IEMOCAP_features_multidag_cl_official.pkl"
+    expected_asset_manifest = PAPER_DATA_ROOT / "official_asset_manifest.json"
+    expected_split_manifest = PAPER_DATA_ROOT / "official_split_manifest.json"
+    assert Path(dataset["feature_path"]) == expected_feature
+    assert Path(dataset["official_asset_manifest_path"]) == expected_asset_manifest
+    assert Path(dataset["official_split_manifest_path"]) == expected_split_manifest
+
+    registry = load_iemocap_feature_registry(ROOT)
+    registry_entry = registry[dataset["feature_registry"]]
+    assert Path(registry_entry["path"]) == expected_feature
+    assert Path(registry_entry["sha256_source"]) == expected_asset_manifest
+
+    fixture_root = tmp_path / "project"
+    registry_path = fixture_root / DEFAULT_REGISTRY_PATH
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        yaml.safe_dump({dataset["feature_registry"]: registry_entry}),
+        encoding="utf-8",
+    )
+    asset_root = fixture_root / PAPER_DATA_ROOT
+    asset_root.mkdir(parents=True)
+    feature_file = fixture_root / expected_feature
+    feature_file.write_bytes(b"paper-data-check-mode-fixture")
+    feature_sha256 = compute_file_sha256(feature_file)
+    split_manifest_file = fixture_root / expected_split_manifest
+    split_manifest_file.write_text(
+        json.dumps({"project_pkl_sha256": feature_sha256}, sort_keys=True),
+        encoding="utf-8",
+    )
+    asset_manifest_file = fixture_root / expected_asset_manifest
+    asset_manifest_file.write_text(
+        json.dumps(
+            {
+                "status": "PASS",
+                "dimensions": {"text": 1024, "audio": 1582, "visual": 342},
+                "all_vectors_finite": True,
+                "label_vocab": {"itos": ["hap", "sad", "neu", "ang", "exc", "fru"]},
+                "layer2": {
+                    "project_pkl_sha256": feature_sha256,
+                    "split_manifest_sha256": compute_file_sha256(split_manifest_file),
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(trainer_module, "_project_root", lambda: fixture_root)
+    monkeypatch.setattr(
+        trainer_module,
+        "_make_dataset",
+        lambda *args, **kwargs: pytest.fail("check mode must not access dataset batches"),
+    )
+    result = run_runtime(PAPER_DATA_CONFIG, mode="check", device_override="cpu")
+    assert result["status"] == "PASS"
+    assert result["mode"] == "check"
+    assert result["optimizer_steps"] == 0
 
 
 def _mutate(path, value, *, source=FORMAL_CONFIG):

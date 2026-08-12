@@ -65,11 +65,11 @@ model_core:
 dataset:
   name: IEMOCAP
   feature_registry: multidag_cl_official_2948_v1
-  feature_path: data/processed/iemocap/multidag_cl_official/IEMOCAP_features_multidag_cl_official.pkl
+  feature_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/IEMOCAP_features_multidag_cl_official.pkl
   feature_sha256: FROM_OFFICIAL_ASSET_MANIFEST
   feature_dimensions: {text: 1024, audio: 1582, visual: 342}
-  official_asset_manifest_path: data/processed/iemocap/multidag_cl_official/official_asset_manifest.json
-  official_split_manifest_path: data/processed/iemocap/multidag_cl_official/official_split_manifest.json
+  official_asset_manifest_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/official_asset_manifest.json
+  official_split_manifest_path: data/processed/iemocap/multidag_cl_paper_data_reproduction/official_split_manifest.json
   split_protocol: multidag_cl_official_exact_train_dev_test
   protocol_comparability: paper_data_reproduction
   val_split_strategy: official_split_manifest

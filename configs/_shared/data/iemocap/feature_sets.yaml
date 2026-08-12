@@ -18,8 +18,8 @@ clean_roberta_v1:
 
 multidag_cl_official_2948_v1:
   feature_set_name: multidag_cl_official_2948_v1
-  path: data/processed/iemocap/multidag_cl_official/IEMOCAP_features_multidag_cl_official.pkl
-  sha256_source: data/processed/iemocap/multidag_cl_official/official_asset_manifest.json
+  path: data/processed/iemocap/multidag_cl_paper_data_reproduction/IEMOCAP_features_multidag_cl_official.pkl
+  sha256_source: data/processed/iemocap/multidag_cl_paper_data_reproduction/official_asset_manifest.json
   text_dim: 1024
   audio_dim: 1582
   visual_dim: 342

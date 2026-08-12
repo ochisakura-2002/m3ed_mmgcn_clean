@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -30,6 +31,9 @@ SMOKE_OUTPUT_ROOT = Path(
 SYNTHETIC_FEATURE_SHA256 = (
     "621271096b4ca47b3e61efd51ad28bc728fbcdc3264badc367cec90546709406"
 )
+OFFICIAL_FEATURE_REGISTRY_KEY = "multidag_cl_official_2948_v1"
+OFFICIAL_FEATURE_SHA256_SENTINEL = "FROM_OFFICIAL_ASSET_MANIFEST"
+OFFICIAL_SPLIT_PROTOCOL = "multidag_cl_official_exact_train_dev_test"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -39,6 +43,10 @@ class RuntimeValidationError(ValueError):
 
 class LocalAssetUnavailable(FileNotFoundError):
     """The real project-fair smoke is valid but its local feature asset is absent."""
+
+
+class OfficialAssetsUnavailable(LocalAssetUnavailable):
+    """The Stage-C2 paper-data config is valid but official assets are absent."""
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -64,6 +72,12 @@ def _runtime_section(config: Mapping[str, Any]) -> Mapping[str, Any]:
     return _mapping(config.get("runtime"), "runtime")
 
 
+def _configured_num_classes(config: Mapping[str, Any]) -> int:
+    model_core = _mapping(config.get("model_core"), "model_core")
+    data = _mapping(model_core.get("data"), "model_core.data")
+    return int(data.get("num_classes", -1))
+
+
 def _validate_identity(config: Mapping[str, Any], core: MultiDAGCLConfig) -> None:
     key = canonical_model_key(config.get("registry_key"))
     if key != REGISTRY_KEY:
@@ -73,23 +87,45 @@ def _validate_identity(config: Mapping[str, Any], core: MultiDAGCLConfig) -> Non
         "canonical_name": core.canonical_name,
         "implementation_identity": core.implementation_identity,
         "conformance_profile": core.conformance_profile.value,
-        "data_track": core.data_track.value,
     }
     expected = {name: metadata[name] for name in configured}
     if configured != expected:
         raise RuntimeValidationError(
             f"registry identity mismatch: configured={configured}, expected={expected}"
         )
+    if core.data_track.value not in metadata.get("supported_data_tracks", []):
+        raise RuntimeValidationError(
+            f"unsupported data track for paper reimplementation: {core.data_track.value!r}"
+        )
     if "author_official" in str(config).lower():
         raise RuntimeValidationError("author_official identity claims are forbidden")
 
 
-def _validate_split(config: Mapping[str, Any], formal: bool) -> None:
+def _validate_split(
+    config: Mapping[str, Any], formal: bool, core: MultiDAGCLConfig
+) -> None:
     dataset = _mapping(config.get("dataset"), "dataset")
     if str(dataset.get("name", "")).upper() == "SYNTHETIC":
         return
     if str(dataset.get("name", "")).upper() != "IEMOCAP":
         raise RuntimeValidationError("dataset.name must be IEMOCAP or SYNTHETIC")
+    if core.data_track is DataTrack.PAPER_DATA:
+        if dataset.get("val_split_strategy") != "official_split_manifest":
+            raise RuntimeValidationError(
+                "paper_data must use exact official_split_manifest membership"
+            )
+        if dataset.get("split_protocol") != OFFICIAL_SPLIT_PROTOCOL:
+            raise RuntimeValidationError("unexpected paper-data split protocol")
+        split_manifest = str(dataset.get("official_split_manifest_path", "")).strip()
+        if not split_manifest:
+            raise RuntimeValidationError(
+                "paper_data requires dataset.official_split_manifest_path"
+            )
+        if dataset.get("validation_session") is not None:
+            raise RuntimeValidationError(
+                "paper_data must not select validation by Session"
+            )
+        return
     if dataset.get("val_split_strategy") != "session_holdout":
         raise RuntimeValidationError("project-fair uses the existing session_holdout split")
     validation_session = dataset.get("validation_session")
@@ -194,8 +230,13 @@ def _validate_runtime_controls(
             raise RuntimeValidationError("source profile cannot be the default formal profile")
         if core.data_track is DataTrack.PAPER_DATA:
             assets = config.get("official_assets", {})
-            if not isinstance(assets, Mapping) or assets.get("verified") is not True:
-                raise RuntimeValidationError("paper_data is blocked without verified official assets")
+            if (
+                not isinstance(assets, Mapping)
+                or assets.get("verification") != "official_asset_manifest"
+            ):
+                raise RuntimeValidationError(
+                    "paper_data requires runtime verification from official_asset_manifest"
+                )
         experiment = _mapping(config.get("experiment"), "experiment")
         if experiment.get("context_label") != "full_context":
             raise RuntimeValidationError("primary formal profile must use full_context")
@@ -255,15 +296,111 @@ def resolve_feature_metadata(
     dataset = _mapping(config.get("dataset"), "dataset")
     registry_key = str(dataset.get("feature_registry", "")).strip()
     feature_path = str(dataset.get("feature_path", "")).strip()
-    expected_sha = str(dataset.get("feature_sha256", "")).strip().lower()
-    if not SHA256_PATTERN.fullmatch(expected_sha):
-        raise RuntimeValidationError("feature SHA256 is missing or invalid")
+    configured_sha = str(dataset.get("feature_sha256", "")).strip()
     dimensions = _mapping(dataset.get("feature_dimensions"), "dataset.feature_dimensions")
     configured_dims = {
         "text": int(dimensions.get("text", -1)),
         "audio": int(dimensions.get("audio", -1)),
         "visual": int(dimensions.get("visual", -1)),
     }
+
+    if registry_key == OFFICIAL_FEATURE_REGISTRY_KEY:
+        registry = load_iemocap_feature_registry(project_root, DEFAULT_REGISTRY_PATH)
+        if registry_key not in registry:
+            raise RuntimeValidationError(
+                f"unknown feature registry key: {registry_key!r}"
+            )
+        entry = _mapping(registry[registry_key], f"feature_registry.{registry_key}")
+        expected_dims = {
+            "text": int(entry.get("text_dim", -1)),
+            "audio": int(entry.get("audio_dim", -1)),
+            "visual": int(entry.get("visual_dim", -1)),
+        }
+        if Path(feature_path).as_posix() != Path(str(entry.get("path", ""))).as_posix():
+            raise RuntimeValidationError("official feature path does not match registry")
+        if configured_dims != expected_dims or configured_dims != {
+            "text": 1024,
+            "audio": 1582,
+            "visual": 342,
+        }:
+            raise RuntimeValidationError("official feature dimensions must be 1024/1582/342")
+        if configured_sha != OFFICIAL_FEATURE_SHA256_SENTINEL:
+            raise RuntimeValidationError(
+                "official feature SHA must be resolved from official_asset_manifest"
+            )
+
+        asset_manifest_text = str(
+            dataset.get("official_asset_manifest_path", "")
+        ).strip()
+        split_manifest_text = str(
+            dataset.get("official_split_manifest_path", "")
+        ).strip()
+        registry_manifest = Path(str(entry.get("sha256_source", ""))).as_posix()
+        if Path(asset_manifest_text).as_posix() != registry_manifest:
+            raise RuntimeValidationError(
+                "official asset manifest path does not match feature registry"
+            )
+        feature_file = _resolve(feature_path, project_root)
+        asset_manifest_file = _resolve(asset_manifest_text, project_root)
+        split_manifest_file = _resolve(split_manifest_text, project_root)
+        missing = [
+            path
+            for path in (feature_file, asset_manifest_file, split_manifest_file)
+            if not path.is_file()
+        ]
+        if missing:
+            raise OfficialAssetsUnavailable(
+                "Official MultiDAG-CL paper-data artifacts are unavailable: "
+                + ", ".join(str(path) for path in missing)
+            )
+        with asset_manifest_file.open("r", encoding="utf-8") as file:
+            asset_manifest = json.load(file)
+        with split_manifest_file.open("r", encoding="utf-8") as file:
+            split_manifest = json.load(file)
+        if not isinstance(asset_manifest, Mapping) or asset_manifest.get("status") != "PASS":
+            raise RuntimeValidationError("official asset manifest is not a PASS manifest")
+        if asset_manifest.get("dimensions") != configured_dims:
+            raise RuntimeValidationError("official asset manifest dimensions mismatch")
+        if asset_manifest.get("all_vectors_finite") is not True:
+            raise RuntimeValidationError("official asset manifest does not confirm finite vectors")
+        layer2 = _mapping(asset_manifest.get("layer2"), "official_asset_manifest.layer2")
+        expected_sha = str(layer2.get("project_pkl_sha256", "")).strip().lower()
+        if not SHA256_PATTERN.fullmatch(expected_sha):
+            raise RuntimeValidationError("official asset manifest PKL SHA256 is invalid")
+        if str(split_manifest.get("project_pkl_sha256", "")).lower() != expected_sha:
+            raise RuntimeValidationError("official split manifest PKL SHA256 mismatch")
+        expected_split_sha = str(layer2.get("split_manifest_sha256", "")).lower()
+        if not SHA256_PATTERN.fullmatch(expected_split_sha):
+            raise RuntimeValidationError("official split manifest SHA256 is invalid")
+        if compute_file_sha256(split_manifest_file).lower() != expected_split_sha:
+            raise RuntimeValidationError("official split manifest checksum mismatch")
+        if verify_checksum and compute_file_sha256(feature_file).lower() != expected_sha:
+            raise RuntimeValidationError("official project PKL checksum mismatch")
+        label_vocab = _mapping(asset_manifest.get("label_vocab"), "label_vocab")
+        label_names = label_vocab.get("itos")
+        if not isinstance(label_names, list) or len(label_names) != _configured_num_classes(config):
+            raise RuntimeValidationError("official label vocab size does not match num_classes")
+        if isinstance(dataset, dict):
+            configured_label_names = dataset.get("label_names")
+            resolved_label_names = [str(value) for value in label_names]
+            if configured_label_names == "FROM_OFFICIAL_ASSET_MANIFEST":
+                dataset["label_names"] = resolved_label_names
+            elif configured_label_names != resolved_label_names:
+                raise RuntimeValidationError(
+                    "paper_data label names must be resolved from official_asset_manifest"
+                )
+        return FeatureRegistryMetadata(
+            registry_key=registry_key,
+            feature_path=feature_path,
+            feature_sha256=expected_sha,
+            text_dim=configured_dims["text"],
+            audio_dim=configured_dims["audio"],
+            visual_dim=configured_dims["visual"],
+        )
+
+    expected_sha = configured_sha.lower()
+    if not SHA256_PATTERN.fullmatch(expected_sha):
+        raise RuntimeValidationError("feature SHA256 is missing or invalid")
 
     if registry_key == "synthetic_v1":
         expected_dims = {"text": 8, "audio": 6, "visual": 5}
@@ -337,7 +474,7 @@ def validate_runtime_config(
     core = MultiDAGCLConfig.from_mapping(core_mapping)
     _validate_identity(config, core)
     formal = _runtime_section(config).get("formal_experiment") is True
-    _validate_split(config, formal)
+    _validate_split(config, formal, core)
     _validate_checkpoint(config, formal)
     _validate_runtime_controls(
         config,
@@ -368,6 +505,10 @@ def validate_runtime_config(
 __all__ = [
     "ALLOWED_MODES",
     "LocalAssetUnavailable",
+    "OfficialAssetsUnavailable",
+    "OFFICIAL_FEATURE_REGISTRY_KEY",
+    "OFFICIAL_FEATURE_SHA256_SENTINEL",
+    "OFFICIAL_SPLIT_PROTOCOL",
     "RuntimeValidationError",
     "SMOKE_OUTPUT_ROOT",
     "SYNTHETIC_FEATURE_SHA256",

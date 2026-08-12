@@ -166,13 +166,19 @@ def _make_iemocap_dataset(
     feature_path = Path(dataset_config["feature_path"])
     if not feature_path.is_absolute():
         feature_path = project_root / feature_path
+    split_manifest_path = dataset_config.get("official_split_manifest_path")
+    if split_manifest_path is not None:
+        split_manifest_path = Path(split_manifest_path)
+        if not split_manifest_path.is_absolute():
+            split_manifest_path = project_root / split_manifest_path
     return IEMOCAPOfficialFeatureDataset(
         feature_pkl_path=feature_path,
         split=split,
         val_split_strategy=dataset_config["val_split_strategy"],
-        val_session_id=dataset_config["validation_session"],
-        outer_test_session=dataset_config["test_session"],
+        val_session_id=dataset_config.get("validation_session"),
+        outer_test_session=dataset_config.get("test_session"),
         seed=int(config["runtime"]["seed"]),
+        split_manifest_path=split_manifest_path,
     )
 
 

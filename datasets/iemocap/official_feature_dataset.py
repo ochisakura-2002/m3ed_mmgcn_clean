@@ -35,7 +35,8 @@ Project batch format:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+import json
 import pickle
 import random
 
@@ -84,6 +85,9 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         official_train_stratified:
             Preserve the original trainVid/testVid boundary and create a
             deterministic dialogue-level validation subset only from trainVid.
+        official_split_manifest:
+            Use exact train/dev/test membership from the Stage-C2 sidecar and
+            verify that the nine-item PKL contains train+dev/test in that order.
 
     By default, the split follows the official loader's valid sampler logic:
         val   = trainVid[:int(valid_ratio * len(trainVid))]
@@ -114,6 +118,7 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         outer_test_session: Optional[str] = None,
         inner_val_ratio: Optional[float] = None,
         seed: int = 42,
+        split_manifest_path: Optional[Union[str, Path]] = None,
     ) -> None:
         super().__init__()
 
@@ -131,6 +136,9 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
             self.valid_ratio if inner_val_ratio is None else float(inner_val_ratio)
         )
         self.seed = int(seed)
+        self.split_manifest_path = (
+            None if split_manifest_path is None else Path(split_manifest_path)
+        )
 
         if not self.feature_pkl_path.exists():
             raise FileNotFoundError(
@@ -198,6 +206,9 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
         test_vid = list(self.testVid)
 
         strategy = self.val_split_strategy.lower()
+
+        if strategy == "official_split_manifest":
+            return self._build_manifest_split(train_vid=train_vid, test_vid=test_vid)
 
         if strategy == "outer_session_stratified":
             if self.outer_test_session is None:
@@ -307,10 +318,62 @@ class IEMOCAPOfficialFeatureDataset(Dataset):
                 "Unsupported val_split_strategy: "
                 f"{self.val_split_strategy}. Use official_prefix, random, or "
                 "session_holdout, outer_session_stratified, or "
-                "official_train_stratified."
+                "official_train_stratified, or official_split_manifest."
             )
 
         return train_ids, val_ids, test_vid
+
+    def _build_manifest_split(
+        self,
+        *,
+        train_vid: List[str],
+        test_vid: List[str],
+    ) -> Tuple[List[str], List[str], List[str]]:
+        if self.split_manifest_path is None:
+            raise ValueError(
+                "split_manifest_path is required for official_split_manifest."
+            )
+        if not self.split_manifest_path.is_file():
+            raise FileNotFoundError(
+                f"Official split manifest not found: {self.split_manifest_path}"
+            )
+        with self.split_manifest_path.open("r", encoding="utf-8") as file:
+            manifest = json.load(file)
+        if not isinstance(manifest, Mapping):
+            raise TypeError("Official split manifest must be a JSON object.")
+
+        names = {
+            "train": "train_dialogue_ids",
+            "val": "dev_dialogue_ids",
+            "test": "test_dialogue_ids",
+        }
+        resolved: dict[str, List[str]] = {}
+        for split, field in names.items():
+            value = manifest.get(field)
+            if not isinstance(value, list) or not value:
+                raise ValueError(f"Official split manifest {field} must be non-empty.")
+            ids = [str(item) for item in value]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"Official split manifest {field} contains duplicates.")
+            resolved[split] = ids
+
+        memberships = [set(resolved[name]) for name in ("train", "val", "test")]
+        if memberships[0] & memberships[1] or memberships[0] & memberships[2] or memberships[1] & memberships[2]:
+            raise ValueError("Official train/dev/test split memberships overlap.")
+        if train_vid != resolved["train"] + resolved["val"]:
+            raise ValueError(
+                "Nine-item trainVid does not equal exact official train+dev order."
+            )
+        if test_vid != resolved["test"]:
+            raise ValueError("Nine-item testVid does not equal exact official test order.")
+
+        available = set(self.videoLabels)
+        missing = set().union(*memberships) - available
+        if missing:
+            raise ValueError(
+                f"Official split manifest references missing dialogue IDs: {sorted(missing)}"
+            )
+        return resolved["train"], resolved["val"], resolved["test"]
 
     def _infer_feature_dims(self) -> Tuple[int, int, int]:
         first_id = self.keys[0]
@@ -528,6 +591,7 @@ def build_iemocap_dataloader(
     outer_test_session: Optional[str] = None,
     inner_val_ratio: Optional[float] = None,
     seed: int = 42,
+    split_manifest_path: Optional[Union[str, Path]] = None,
     shuffle: Optional[bool] = None,
     num_workers: int = 0,
     pin_memory: bool = False,
@@ -541,6 +605,7 @@ def build_iemocap_dataloader(
         outer_test_session=outer_test_session,
         inner_val_ratio=inner_val_ratio,
         seed=seed,
+        split_manifest_path=split_manifest_path,
     )
 
     normalized_split = IEMOCAPOfficialFeatureDataset._normalize_split(split)

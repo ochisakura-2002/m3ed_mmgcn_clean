@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.runtime.multidag_cl_paper_reimplementation import (  # noqa: E402
     LocalAssetUnavailable,
+    OfficialAssetsUnavailable,
     run_runtime,
 )
 
@@ -54,6 +55,18 @@ def main(argv: list[str] | None = None) -> dict:
             device_override=args.device,
             resume_checkpoint=None if checkpoint is None else Path(checkpoint),
         )
+    except OfficialAssetsUnavailable as error:
+        if args.mode != "check":
+            raise
+        result = {
+            "status": "BLOCKED_OFFICIAL_ASSETS",
+            "mode": args.mode,
+            "optimizer_steps": 0,
+            "optimizer_step_count": 0,
+            "gradient_clip_count": 0,
+            "real_test_batches_accessed": 0,
+            "error": str(error),
+        }
     except LocalAssetUnavailable as error:
         if args.mode != "real-batch-smoke":
             raise

@@ -10,12 +10,18 @@ from .checkpoint import (
 from .curriculum import CurriculumRuntime
 from .optimizer import build_optimizer
 from .trainer import SyntheticDialogueDataset, ValidationCleanCoordinator, run_runtime
-from .validation import LocalAssetUnavailable, RuntimeValidationError, validate_runtime_config
+from .validation import (
+    LocalAssetUnavailable,
+    OfficialAssetsUnavailable,
+    RuntimeValidationError,
+    validate_runtime_config,
+)
 
 __all__ = [
     "CurriculumRuntime",
     "FeatureRegistryMetadata",
     "LocalAssetUnavailable",
+    "OfficialAssetsUnavailable",
     "ProjectBatchAdapter",
     "RuntimeValidationError",
     "SyntheticDialogueDataset",

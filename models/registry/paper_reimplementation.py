@@ -22,6 +22,7 @@ MODEL_METADATA: dict[str, dict[str, Any]] = {
         "implementation_identity": "paper_reimplementation",
         "conformance_profile": "paper_formula_behavior",
         "data_track": "project_fair",
+        "supported_data_tracks": ["project_fair", "paper_data"],
         "paper_title": (
             "Curriculum Learning Meets Directed Acyclic Graph for "
             "Multimodal Emotion Recognition"
@@ -33,7 +34,7 @@ MODEL_METADATA: dict[str, dict[str, Any]] = {
         ),
         "official_repo_url": "https://github.com/vanntc711/MultiDAG-CL",
         "official_commit": "59a75877065a91bf9388fbb564607fe79717fd4f",
-        "paper_data_track_status": "BLOCKED_BY_OFFICIAL_ASSET",
+        "paper_data_track_status": "ASSET_GATED_STAGE_C2_INGESTION_READY",
         "dag_topology_causal": True,
         "end_to_end_causal": False,
         "context_label": "full_context",
@@ -72,13 +73,17 @@ def build_paper_reimplementation_model(config: Mapping[str, Any]):
         "canonical_name": model_config.canonical_name,
         "implementation_identity": model_config.implementation_identity,
         "conformance_profile": model_config.conformance_profile.value,
-        "data_track": model_config.data_track.value,
     }
     expected = {name: metadata[name] for name in identity}
     if identity != expected:
         raise ValueError(
             f"model_core identity does not match registry metadata: "
             f"configured={identity}, expected={expected}"
+        )
+    if model_config.data_track.value not in metadata["supported_data_tracks"]:
+        raise ValueError(
+            f"unsupported paper-reimplementation data track: "
+            f"{model_config.data_track.value!r}"
         )
     return MODEL_REGISTRY[key](model_config)
 

@@ -100,6 +100,7 @@ def test_author_official_identity_and_unknown_test_selection_field_are_rejected(
 def test_valid_batch_contract_accepts_train_and_label_free_inference() -> None:
     contract = MultiDAGBatchContract(make_config())
     batch = make_batch()
+    batch["labels"][0, 1] = -1
     assert contract.validate(batch, require_labels=True, split="train") is None
     inference = dict(batch)
     del inference["labels"]

@@ -6,9 +6,15 @@ from pathlib import Path
 import pytest
 import torch
 
+from models.multidag_cl.paper_reimplementation.model import (
+    MultiDAGCLPaperReimplementation,
+)
 from scripts.runtime.multidag_cl_paper_reimplementation import (
     CurriculumRuntime,
     ProjectBatchAdapter,
+)
+from scripts.runtime.multidag_cl_paper_reimplementation.evaluation import (
+    evaluate_model,
 )
 
 from ._helpers import (
@@ -45,6 +51,45 @@ def test_adapter_preserves_labels_speakers_mask_and_metadata() -> None:
     assert metadata["feature_registry"] == "synthetic_v1"
     assert len(metadata["feature_sha256"]) == 64
     assert metadata["feature_dimensions"] == {"text": 8, "audio": 6, "visual": 5}
+
+
+def test_evaluation_filters_missing_minus_one_from_metrics_and_predictions() -> None:
+    batch = synthetic_batch()
+    batch["labels"][0, 0] = -1
+    config = core_config()
+    result = evaluate_model(
+        MultiDAGCLPaperReimplementation(config).eval(),
+        [batch],
+        adapter=ProjectBatchAdapter(config, feature_metadata()),
+        device=torch.device("cpu"),
+        split="validation",
+        labels=list(range(config.num_classes)),
+    )
+
+    expected_count = int(batch["attention_mask"].sum().item()) - 1
+    assert result["metrics"]["prediction_count"] == expected_count
+    assert len(result["predictions"]) == expected_count
+    assert all(row["true_label"] != -1 for row in result["predictions"])
+
+
+def test_evaluation_skips_all_missing_batch_before_model_forward() -> None:
+    batch = synthetic_batch()
+    batch["labels"][batch["attention_mask"].bool()] = -1
+    labeled = synthetic_batch()
+    config = core_config()
+    result = evaluate_model(
+        MultiDAGCLPaperReimplementation(config).eval(),
+        [batch, labeled],
+        adapter=ProjectBatchAdapter(config, feature_metadata()),
+        device=torch.device("cpu"),
+        split="validation",
+        labels=list(range(config.num_classes)),
+    )
+
+    assert result["batch_count"] == 1
+    assert result["metrics"]["prediction_count"] == int(
+        labeled["attention_mask"].sum().item()
+    )
 
 
 def test_adapter_rejects_non_right_padding() -> None:

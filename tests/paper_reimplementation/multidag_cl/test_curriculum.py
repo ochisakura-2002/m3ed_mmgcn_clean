@@ -32,12 +32,16 @@ def test_all_frozen_dmf_hand_fixtures(speakers, labels, expected: float) -> None
 def test_dmf_rejects_empty_padding_predictions_and_split_inputs() -> None:
     with pytest.raises(ValueError, match="at least one"):
         DialogueDifficultyScorer.score([], [])
-    with pytest.raises(ValueError, match="padding"):
+    with pytest.raises(ValueError, match="missing sentinel"):
         DialogueDifficultyScorer.score([0, -100], [0, 0])
     with pytest.raises(TypeError):
         DialogueDifficultyScorer.score(predictions=[0], speakers=[0])
     with pytest.raises(TypeError):
         DialogueDifficultyScorer.score([0], [0], split="validation")
+
+
+def test_dmf_ignores_official_missing_label_as_emotion_class() -> None:
+    assert DialogueDifficultyScorer.score([0, -1, 0], [0, 0, 0]) == 1.0 / 4.0
 
 
 def _records(count: int) -> list[DialogueRecord]:

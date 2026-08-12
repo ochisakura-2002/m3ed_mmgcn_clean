@@ -9,6 +9,8 @@ from typing import Any, Iterable, Mapping, Optional
 
 import torch
 
+from models.multidag_cl.paper_reimplementation.contracts import MISSING_LABEL_INDEX
+
 from utils.metrics import (
     compute_classification_metrics,
     compute_confusion_matrix,
@@ -63,11 +65,15 @@ def evaluate_model(
                 break
             batch = move_batch(raw_batch, device)
             adapter.adapt(batch, split=split, require_labels=True)
-            output = model_forward(model, batch)
-            mask = batch["attention_mask"].bool() & (batch["labels"] != -100)
+            mask = (
+                batch["attention_mask"].bool()
+                & (batch["labels"] != adapter.config.loss_ignore_index)
+                & (batch["labels"] != MISSING_LABEL_INDEX)
+            )
             count = int(mask.sum().item())
             if count == 0:
                 continue
+            output = model_forward(model, batch)
             predictions = output.logits.argmax(dim=-1)
             true_values = batch["labels"][mask].detach().cpu().tolist()
             pred_values = predictions[mask].detach().cpu().tolist()
@@ -85,13 +91,19 @@ def evaluate_model(
                 dialogue_id = str(batch["dialogue_ids"][dialogue_index])
                 utterance_ids = batch["utterance_ids"][dialogue_index]
                 for utterance_index in range(int(length)):
+                    true_label = int(labels_cpu[dialogue_index, utterance_index])
+                    if true_label in {
+                        MISSING_LABEL_INDEX,
+                        adapter.config.loss_ignore_index,
+                    }:
+                        continue
                     prediction_rows.append(
                         {
                             "split": split,
                             "dialogue_id": dialogue_id,
                             "utterance_id": utterance_ids[utterance_index],
                             "utterance_index": utterance_index,
-                            "true_label": int(labels_cpu[dialogue_index, utterance_index]),
+                            "true_label": true_label,
                             "predicted_label": int(
                                 prediction_cpu[dialogue_index, utterance_index]
                             ),

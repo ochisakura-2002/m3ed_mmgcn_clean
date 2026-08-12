@@ -51,7 +51,8 @@ def validate_official_directory(
         for dialogue in raw_data:
             for utterance in dialogue:
                 observed_speakers.add(str(utterance["speaker"]))
-                observed_labels.add(str(utterance["label"]))
+                if "label" in utterance:
+                    observed_labels.add(str(utterance["label"]))
                 if "utterance_id" in utterance:
                     utterance_id = str(utterance["utterance_id"])
                     if utterance_id in observed_utterance_ids:
@@ -65,11 +66,17 @@ def validate_official_directory(
             "speaker_vocab values do not exactly match feature files: "
             f"vocab={sorted(speaker_vocab['stoi'])}, data={sorted(observed_speakers)}."
         )
-    if set(label_vocab["stoi"]) != observed_labels:
+    unknown_labels = observed_labels - set(label_vocab["stoi"])
+    if unknown_labels:
         raise ValueError(
-            "label_vocab values do not exactly match feature files: "
-            f"vocab={sorted(label_vocab['stoi'])}, data={sorted(observed_labels)}."
+            "Feature files contain labels absent from label_vocab: "
+            f"unknown={sorted(unknown_labels)}, vocab={sorted(label_vocab['stoi'])}."
         )
+
+    missing_label_counts = {
+        split: int(summaries[split]["missing_label_utterance_count"])
+        for split in SPLIT_ORDER
+    }
 
     return {
         "status": "PASS",
@@ -78,6 +85,8 @@ def validate_official_directory(
         "splits": summaries,
         "speaker_vocab_size": len(speaker_vocab["itos"]),
         "label_vocab_size": len(label_vocab["itos"]),
+        "missing_label_utterance_count": sum(missing_label_counts.values()),
+        "missing_label_utterance_count_by_split": missing_label_counts,
         "mmgcn_session_boundary_enforced": bool(enforce_mmgcn_session_boundary),
     }
 

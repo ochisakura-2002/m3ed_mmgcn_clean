@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from .config import ConformanceProfile, MultiDAGCLConfig
 from .contracts import (
     ContextVisibilityIdentity,
+    MISSING_LABEL_INDEX,
     ModelDiagnostics,
     ModelOutput,
 )
@@ -166,10 +167,12 @@ class MultiDAGCLPaperReimplementation(nn.Module):
                 raise ValueError("padded labels must be -100")
             valid_labels = labels[mask]
             legal = (valid_labels == self.config.loss_ignore_index) | (
+                valid_labels == MISSING_LABEL_INDEX
+            ) | (
                 (valid_labels >= 0) & (valid_labels < self.config.num_classes)
             )
             if not torch.all(legal):
-                raise ValueError("labels must be -100 or in [0,num_classes)")
+                raise ValueError("labels must be -1, -100, or in [0,num_classes)")
         return mask
 
     def forward(
@@ -245,14 +248,15 @@ class MultiDAGCLPaperReimplementation(nn.Module):
 
         loss = None
         if labels is not None:
-            valid = mask & (labels != self.config.loss_ignore_index)
-            if not bool(valid.any().item()):
+            loss_positions = mask & (labels != self.config.loss_ignore_index)
+            labeled = loss_positions & (labels != MISSING_LABEL_INDEX)
+            if not bool(labeled.any().item()):
                 raise ValueError("a labeled batch must contain at least one valid label")
             loss = F.cross_entropy(
-                logits[valid],
-                labels[valid],
+                logits[loss_positions],
+                labels[loss_positions],
                 weight=None,
-                ignore_index=self.config.loss_ignore_index,
+                ignore_index=MISSING_LABEL_INDEX,
                 reduction="mean",
                 label_smoothing=self.config.label_smoothing,
             )

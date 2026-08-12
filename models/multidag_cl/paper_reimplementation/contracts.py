@@ -10,6 +10,9 @@ import torch
 from .config import MultiDAGCLConfig
 
 
+MISSING_LABEL_INDEX = -1
+
+
 @dataclass(frozen=True)
 class ContextVisibilityIdentity:
     dag_topology_causal: bool
@@ -215,8 +218,11 @@ class MultiDAGBatchContract:
 
         if labels is not None:
             valid_labels = labels[mask]
-            if torch.any(valid_labels < 0) or torch.any(valid_labels >= self.config.num_classes):
-                raise ValueError("valid labels must be in [0,num_classes)")
+            legal = (valid_labels == MISSING_LABEL_INDEX) | (
+                (valid_labels >= 0) & (valid_labels < self.config.num_classes)
+            )
+            if not torch.all(legal):
+                raise ValueError("valid labels must be -1 or in [0,num_classes)")
             if not torch.all(labels[padded] == self.config.loss_ignore_index):
                 raise ValueError("padded labels must equal the configured -100 ignore index")
 

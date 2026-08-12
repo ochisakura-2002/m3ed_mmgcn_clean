@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.data.build.multidag_cl.schema import (
     LABEL_VOCAB_FILENAME,
+    MISSING_LABEL_INDEX,
     OFFICIAL_FILENAMES,
     SPLIT_ORDER,
     atomic_write_json,
@@ -81,7 +82,12 @@ def convert_official_directory_to_project_pkl(
             video_ids[dialogue_id] = list(identity["utterance_ids"])
             video_speakers[dialogue_id] = [str(item["speaker"]) for item in dialogue]
             video_labels[dialogue_id] = [
-                int(label_vocab["stoi"][str(item["label"])]) for item in dialogue
+                (
+                    int(label_vocab["stoi"][str(item["label"])])
+                    if "label" in item
+                    else MISSING_LABEL_INDEX
+                )
+                for item in dialogue
             ]
             # No dtype is forced here.  JSON numeric values are only regrouped.
             video_text[dialogue_id] = np.asarray([item["cls"][0] for item in dialogue])
@@ -129,6 +135,9 @@ def convert_official_directory_to_project_pkl(
         "split_manifest": str(split_manifest_output),
         "dialogue_count": len(video_ids),
         "utterance_count": sum(len(value) for value in video_ids.values()),
+        "missing_label_utterance_count": validation[
+            "missing_label_utterance_count"
+        ],
         "trainVid_count": len(train_vid),
         "testVid_count": len(test_vid),
         "project_pkl_sha256": project_pkl_sha256,

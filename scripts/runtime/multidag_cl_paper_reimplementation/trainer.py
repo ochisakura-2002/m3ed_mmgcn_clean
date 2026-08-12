@@ -27,6 +27,7 @@ from models.registry.paper_reimplementation import (
 )
 
 from models.multidag_cl.paper_reimplementation.config import MultiDAGCLConfig
+from models.multidag_cl.paper_reimplementation.contracts import MISSING_LABEL_INDEX
 from .adapter import FeatureRegistryMetadata, ProjectBatchAdapter
 from .checkpoint import (
     TestEvaluationGate,
@@ -390,6 +391,15 @@ def _train_epoch(
             break
         batch = move_batch(raw_batch, device)
         adapter.adapt(batch, split="train", require_labels=True)
+        count = int(
+            (
+                batch["attention_mask"].bool()
+                & (batch["labels"] != adapter.config.loss_ignore_index)
+                & (batch["labels"] != MISSING_LABEL_INDEX)
+            ).sum().item()
+        )
+        if count == 0:
+            continue
         optimizer.zero_grad(set_to_none=True)
         started = time.perf_counter()
         output = model_forward(model, batch)
@@ -419,7 +429,6 @@ def _train_epoch(
             optimizer_seconds += time.perf_counter() - started
             optimizer_steps += 1
             global_step += 1
-        count = int((batch["attention_mask"].bool() & (batch["labels"] != -100)).sum().item())
         loss_numerator += float(output.loss.detach().cpu().item()) * count
         utterance_count += count
         batch_count += 1

@@ -23,6 +23,7 @@ from typing import Any
 TEXT_DIM = 1024
 AUDIO_DIM = 1582
 VISUAL_DIM = 342
+MISSING_LABEL_INDEX = -1
 MODALITY_ORDER = ("text", "audio", "visual")
 MODALITY_DIMS = (TEXT_DIM, AUDIO_DIM, VISUAL_DIM)
 SPLIT_ORDER = ("train", "dev", "test")
@@ -277,6 +278,7 @@ def validate_official_dialogues(
     speakers: set[str] = set()
     labels: set[str] = set()
     utterance_count = 0
+    missing_label_utterance_count = 0
     for dialogue_index, dialogue in enumerate(raw_data):
         if not isinstance(dialogue, list) or not dialogue:
             raise ValueError(f"{split} dialogue {dialogue_index} must be non-empty.")
@@ -285,7 +287,7 @@ def validate_official_dialogues(
             location = f"{split}[{dialogue_index}][{utterance_index}]"
             if not isinstance(utterance, Mapping):
                 raise TypeError(f"{location} must be an utterance object.")
-            required = {"text", "speaker", "label", "cls"}
+            required = {"text", "speaker", "cls"}
             if require_identifiers:
                 required |= {"dialogue_id", "utterance_id"}
             missing = required - set(utterance)
@@ -303,7 +305,10 @@ def validate_official_dialogues(
                     location=f"{location}.cls[{modality_index}] {name}",
                 )
             speakers.add(str(utterance["speaker"]))
-            labels.add(str(utterance["label"]))
+            if "label" in utterance:
+                labels.add(str(utterance["label"]))
+            else:
+                missing_label_utterance_count += 1
             if "dialogue_id" in utterance:
                 dialogue_id = str(utterance["dialogue_id"])
                 if observed_dialogue_id is None:
@@ -334,6 +339,7 @@ def validate_official_dialogues(
         "split": split,
         "dialogue_count": len(raw_data),
         "utterance_count": utterance_count,
+        "missing_label_utterance_count": missing_label_utterance_count,
         "speaker_values": sorted(speakers),
         "label_values": sorted(labels),
         "dimensions": dict(zip(MODALITY_ORDER, map(int, expected_dims))),

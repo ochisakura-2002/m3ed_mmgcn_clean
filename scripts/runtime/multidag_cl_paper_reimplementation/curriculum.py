@@ -14,7 +14,10 @@ from models.multidag_cl.paper_reimplementation.config import (
     CurriculumPartitionProfile,
     CurriculumScheduleProfile,
 )
-from models.multidag_cl.paper_reimplementation.contracts import BucketManifest, DialogueRecord
+from models.multidag_cl.paper_reimplementation.contracts import (
+    BucketManifest,
+    DialogueRecord,
+)
 from models.multidag_cl.paper_reimplementation.curriculum import (
     CurriculumBucketPartitioner,
     CurriculumSchedule,
@@ -208,7 +211,7 @@ def _valid_sequence(value: Any, item: Mapping[str, Any], name: str) -> list[int]
             break
     if length_value is not None:
         values = values[:length_value]
-    return [int(element) for element in values if int(element) >= 0]
+    return [int(element) for element in values]
 
 
 __all__ = ["CurriculumMembershipRow", "CurriculumRuntime"]

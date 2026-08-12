@@ -135,6 +135,9 @@ def inspect_official_assets(
         split_manifests[split] = {
             "dialogue_count": validation["splits"][split]["dialogue_count"],
             "utterance_count": validation["splits"][split]["utterance_count"],
+            "missing_label_utterance_count": validation["splits"][split][
+                "missing_label_utterance_count"
+            ],
             "dialogue_ids": dialogue_ids,
             "dialogue_order": dialogues,
             "session_distribution": _session_distribution(dialogues),
@@ -153,6 +156,12 @@ def inspect_official_assets(
         "dimensions": dict(zip(MODALITY_ORDER, MODALITY_DIMS)),
         "total_dimension": sum(MODALITY_DIMS),
         "all_vectors_finite": True,
+        "missing_label_utterance_count": validation[
+            "missing_label_utterance_count"
+        ],
+        "missing_label_utterance_count_by_split": validation[
+            "missing_label_utterance_count_by_split"
+        ],
         "splits": split_manifests,
         "speaker_vocab": speaker_vocab,
         "label_vocab": label_vocab,

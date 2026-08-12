@@ -144,17 +144,18 @@ def test_model_forward_backward_is_finite_without_optimizer_steps() -> None:
     assert all(torch.isfinite(value).all() for value in gradients.values())
 
 
-def test_masked_cross_entropy_excludes_minus_100_and_rejects_no_valid_label() -> None:
+def test_masked_cross_entropy_excludes_missing_minus_one_and_padding_minus_100() -> None:
     torch.manual_seed(47)
     model = MultiDAGCLPaperReimplementation(make_config()).eval()
     batch = make_batch()
+    batch["labels"][0, 0] = -1
     batch["labels"][0, 1] = -100
     output = model(**_forward_batch(batch))
-    valid = batch["attention_mask"].bool() & (batch["labels"] != -100)
+    valid = batch["attention_mask"].bool() & (batch["labels"] >= 0)
     expected = F.cross_entropy(output.logits[valid], batch["labels"][valid])
     torch.testing.assert_close(output.loss, expected)
 
-    batch["labels"][batch["attention_mask"].bool()] = -100
+    batch["labels"][batch["attention_mask"].bool()] = -1
     with pytest.raises(ValueError, match="at least one valid label"):
         model(**_forward_batch(batch))
 

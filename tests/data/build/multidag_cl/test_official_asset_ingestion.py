@@ -5,6 +5,7 @@ from pathlib import Path
 import pickle
 
 import numpy as np
+import pytest
 
 from datasets.iemocap.official_feature_dataset import IEMOCAPOfficialFeatureDataset
 from scripts.data.build.multidag_cl.build_official_feature_json import (
@@ -24,6 +25,9 @@ from scripts.data.build.multidag_cl.schema import (
     TEXT_DIM,
     VISUAL_DIM,
     atomic_write_jsonl,
+)
+from scripts.data.build.multidag_cl.validate_official_features import (
+    validate_official_directory,
 )
 from scripts.models.multidag_cl.paper_reimplementation import train as runtime_cli
 
@@ -163,6 +167,87 @@ def test_import_preserves_exact_split_order_and_feature_values_without_ids(
     )
     assert asset_manifest["splits"]["dev"]["session_distribution"]["available"] is False
     assert asset_manifest["layer2"]["project_pkl_sha256"] == result["project_pkl_sha256"]
+
+
+def test_missing_official_label_validates_and_converts_to_minus_one_without_loss(
+    tmp_path: Path,
+) -> None:
+    official_root = _official_assets(tmp_path)
+    train_path = official_root / OFFICIAL_FILENAMES["train"]
+    train_data = json.loads(train_path.read_text(encoding="utf-8"))
+    missing_label_utterance = train_data[0][1]
+    missing_label_utterance.pop("label")
+    train_path.write_text(json.dumps(train_data), encoding="utf-8")
+
+    validation = validate_official_directory(official_root)
+    assert validation["status"] == "PASS"
+    assert validation["missing_label_utterance_count"] == 1
+    assert validation["missing_label_utterance_count_by_split"] == {
+        "train": 1,
+        "dev": 0,
+        "test": 0,
+    }
+
+    inspection = inspect_official_assets(official_root=official_root)
+    assert inspection["status"] == "PASS"
+    assert inspection["missing_label_utterance_count"] == 1
+    assert inspection["splits"]["train"]["missing_label_utterance_count"] == 1
+
+    output_dir = tmp_path / "imported_missing_label"
+    result = import_official_assets(official_root=official_root, output_dir=output_dir)
+    assert result["status"] == "PASS"
+
+    pkl_path = output_dir / "IEMOCAP_features_multidag_cl_official.pkl"
+    with pkl_path.open("rb") as file:
+        value = pickle.load(file)
+    dialogue_id = "Ses01F_impro01"
+    assert value[0][dialogue_id] == [
+        "Ses01F_impro01_F000",
+        "Ses01F_impro01_M001",
+    ]
+    assert value[1][dialogue_id] == ["F", "M"]
+    assert value[2][dialogue_id] == [0, -1]
+    assert value[6][dialogue_id] == ["a", "b"]
+    np.testing.assert_array_equal(
+        value[3][dialogue_id],
+        [item["cls"][0] for item in train_data[0]],
+    )
+    np.testing.assert_array_equal(
+        value[4][dialogue_id],
+        [item["cls"][1] for item in train_data[0]],
+    )
+    np.testing.assert_array_equal(
+        value[5][dialogue_id],
+        [item["cls"][2] for item in train_data[0]],
+    )
+
+    dataset = IEMOCAPOfficialFeatureDataset(
+        pkl_path,
+        split="train",
+        val_split_strategy="official_split_manifest",
+        split_manifest_path=output_dir / "official_split_manifest.json",
+    )
+    item = dataset[0]
+    assert item["utterance_ids"] == value[0][dialogue_id]
+    assert item["labels"].tolist() == [0, -1]
+    assert item["speaker_ids_int"].shape[0] == 2
+    assert item["text_features"].shape[0] == 2
+    assert item["audio_features"].shape[0] == 2
+    assert item["visual_features"].shape[0] == 2
+
+    # Inspection/conversion must not edit the author-released JSON.
+    assert json.loads(train_path.read_text(encoding="utf-8")) == train_data
+
+
+def test_present_official_label_must_exist_in_vocab(tmp_path: Path) -> None:
+    official_root = _official_assets(tmp_path)
+    train_path = official_root / OFFICIAL_FILENAMES["train"]
+    train_data = json.loads(train_path.read_text(encoding="utf-8"))
+    train_data[0][0]["label"] = "not_in_official_vocab"
+    train_path.write_text(json.dumps(train_data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="absent from label_vocab"):
+        validate_official_directory(official_root)
 
 
 def test_missing_assets_and_paper_data_check_are_explicitly_blocked(tmp_path: Path) -> None:

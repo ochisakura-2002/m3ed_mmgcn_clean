@@ -1,7 +1,5 @@
-# Historical exploratory config: not part of the current IEMOCAP paper Table 4 matrix.
-# Intentionally fails strict validation; do not launch as a paper-aligned comparison.
 schema_version: '1.0'
-run_name: multidag_cl_paper_reimplementation_paper_data_cl3_seed100
+run_name: multidag_cl_paper_reimplementation_paper_data_cl15_seed100
 registry_key: multidag_cl_paper_reimplementation
 experiment:
   context_label: full_context
@@ -11,6 +9,7 @@ model_core:
     display_name: MultiDAG-CL Paper Reimplementation
     implementation_identity: paper_reimplementation
     conformance_profile: paper_formula_behavior
+    ablation_profile: paper_curriculum_ablation
   data:
     track: paper_data
     text_feature_dim: 1024
@@ -43,7 +42,7 @@ model_core:
   classifier: {hidden_dim: 300, hidden_layers: 2, activation: relu, dropout: 0.4}
   curriculum:
     enabled: true
-    bucket_count: 3
+    bucket_count: 15
     partition: balanced_stable_contiguous
     schedule: official_one_bucket_per_epoch
   training:

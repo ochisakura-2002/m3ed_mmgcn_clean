@@ -222,8 +222,8 @@ def _validate_runtime_controls(
                 raise RuntimeValidationError(
                     f"formal runtime.{name} must be {value!r}"
                 )
-        if core.graph_layers != 4 or core.bucket_count != 5:
-            raise RuntimeValidationError("formal primary profile requires 4 DAG layers and 5 buckets")
+        if core.graph_layers != 4:
+            raise RuntimeValidationError("formal paper-family profile requires 4 DAG layers")
         if core.classifier_dropout != 0.4 or core.learning_rate != 5.0e-4:
             raise RuntimeValidationError("formal dropout/LR do not match the paper protocol")
         if core.conformance_profile is not ConformanceProfile.PAPER_FORMULA_BEHAVIOR:

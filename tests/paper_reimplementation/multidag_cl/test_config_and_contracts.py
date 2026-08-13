@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from models.multidag_cl.paper_reimplementation.config import (
+    AblationProfile,
     ConformanceProfile,
     MultiDAGCLConfig,
 )
@@ -33,12 +34,55 @@ def test_primary_and_source_profile_contracts_are_explicitly_distinct() -> None:
     primary = make_config()
     source = make_config(profile="official_source_behavior")
     assert primary.conformance_profile is ConformanceProfile.PAPER_FORMULA_BEHAVIOR
+    assert primary.ablation_profile is AblationProfile.NONE
     assert primary.modality_order == ("audio", "visual", "text")
     assert not primary.raw_feature_skip
     assert primary.bucket_count == 5
     assert source.modality_order == ("text", "audio", "visual")
     assert source.single_projection and source.raw_feature_skip
     assert source.bucket_count == 12
+
+
+@pytest.mark.parametrize("bucket_count", [4, 7, 10, 15])
+def test_paper_curriculum_ablation_identity_only_unlocks_table4_buckets(
+    bucket_count: int,
+) -> None:
+    mapping = config_mapping()
+    mapping["identity"]["ablation_profile"] = "paper_curriculum_ablation"
+    mapping["data"]["track"] = "paper_data"
+    mapping["curriculum"]["bucket_count"] = bucket_count
+    config = MultiDAGCLConfig.from_mapping(mapping)
+    assert config.conformance_profile is ConformanceProfile.PAPER_FORMULA_BEHAVIOR
+    assert config.ablation_profile is AblationProfile.PAPER_CURRICULUM_ABLATION
+    assert config.bucket_count == bucket_count
+
+
+@pytest.mark.parametrize("bucket_count", [3, 5, 8, 12])
+def test_paper_curriculum_ablation_rejects_non_pending_table4_identity_buckets(
+    bucket_count: int,
+) -> None:
+    mapping = config_mapping()
+    mapping["identity"]["ablation_profile"] = "paper_curriculum_ablation"
+    mapping["data"]["track"] = "paper_data"
+    mapping["curriculum"]["bucket_count"] = bucket_count
+    with pytest.raises(ValueError, match="paper_curriculum_ablation"):
+        MultiDAGCLConfig.from_mapping(mapping)
+
+
+@pytest.mark.parametrize(
+    ("data_track", "curriculum_enabled"),
+    [("project_fair", True), ("paper_data", False)],
+)
+def test_paper_curriculum_ablation_requires_enabled_paper_data(
+    data_track: str,
+    curriculum_enabled: bool,
+) -> None:
+    mapping = config_mapping(curriculum_enabled=curriculum_enabled)
+    mapping["identity"]["ablation_profile"] = "paper_curriculum_ablation"
+    mapping["data"]["track"] = data_track
+    mapping["curriculum"]["bucket_count"] = 4
+    with pytest.raises(ValueError, match="paper_curriculum_ablation"):
+        MultiDAGCLConfig.from_mapping(mapping)
 
 
 @pytest.mark.parametrize(

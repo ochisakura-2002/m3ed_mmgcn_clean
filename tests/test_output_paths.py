@@ -327,9 +327,10 @@ def test_all_output_owning_yaml_resolves_to_canonical_outputs_layout() -> None:
             Path("outputs") / "20260726" / group / "runs" / "layout_audit"
         )
 
-    # Stage B3 adds three canonical MultiDAG-CL paper-reimplementation configs.
-    assert len(config_paths) == 198
-    assert len(output_owning) == 130
+    # Current repository inventory, including the four Paper Curriculum
+    # Ablation configs added by this task.
+    assert len(config_paths) == 210
+    assert len(output_owning) == 142
 
 
 def test_original_pipeline_passes_one_frozen_date_to_every_job(

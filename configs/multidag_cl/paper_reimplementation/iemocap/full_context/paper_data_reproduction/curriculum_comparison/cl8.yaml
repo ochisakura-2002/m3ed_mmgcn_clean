@@ -1,3 +1,5 @@
+# Historical exploratory config: not part of the current IEMOCAP paper Table 4 matrix.
+# Intentionally fails strict validation; do not launch as a paper-aligned comparison.
 schema_version: '1.0'
 run_name: multidag_cl_paper_reimplementation_paper_data_cl8_seed100
 registry_key: multidag_cl_paper_reimplementation

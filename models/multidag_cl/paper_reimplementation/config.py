@@ -17,6 +17,11 @@ class ConformanceProfile(str, Enum):
     OFFICIAL_SOURCE_BEHAVIOR = "official_source_behavior"
 
 
+class AblationProfile(str, Enum):
+    NONE = "none"
+    PAPER_CURRICULUM_ABLATION = "paper_curriculum_ablation"
+
+
 class EncoderProfile(str, Enum):
     PAPER_MODALITY_SPECIFIC = "paper_modality_specific"
     OFFICIAL_SOURCE_SINGLE_PROJECTION = "official_source_single_projection"
@@ -98,6 +103,7 @@ class MultiDAGCLConfig:
     display_name: str
     implementation_identity: str
     conformance_profile: ConformanceProfile
+    ablation_profile: AblationProfile
     data_track: DataTrack
 
     text_feature_dim: int
@@ -167,6 +173,7 @@ class MultiDAGCLConfig:
     def __post_init__(self) -> None:
         enum_fields = (
             ("conformance_profile", ConformanceProfile),
+            ("ablation_profile", AblationProfile),
             ("data_track", DataTrack),
             ("encoder_profile", EncoderProfile),
             ("predecessor_profile", PredecessorProfile),
@@ -377,12 +384,24 @@ class MultiDAGCLConfig:
             raise ValueError("paper profile raw feature skip is forbidden")
         if self.representation != "encoder_plus_all_dag_layers":
             raise ValueError("paper profile representation must exclude raw features")
-        if self.bucket_count != 5:
-            raise ValueError("paper profile bucket_count must be 5")
+        if self.ablation_profile is AblationProfile.NONE:
+            if self.bucket_count != 5:
+                raise ValueError("paper profile bucket_count must be 5")
+        elif (
+            self.data_track is not DataTrack.PAPER_DATA
+            or not self.curriculum_enabled
+            or self.bucket_count not in {4, 7, 10, 15}
+        ):
+            raise ValueError(
+                "paper_curriculum_ablation requires enabled paper_data curriculum "
+                "with bucket_count 4, 7, 10, or 15"
+            )
         if self.curriculum_partition is not CurriculumPartitionProfile.BALANCED_STABLE_CONTIGUOUS:
             raise ValueError("paper profile requires balanced stable contiguous buckets")
 
     def _validate_source_profile(self) -> None:
+        if self.ablation_profile is not AblationProfile.NONE:
+            raise ValueError("source behavior does not support ablation_profile")
         if self.encoder_profile is not EncoderProfile.OFFICIAL_SOURCE_SINGLE_PROJECTION:
             raise ValueError("source behavior requires its isolated single-projection encoder")
         if self.modality_order != ("text", "audio", "visual"):
@@ -440,7 +459,7 @@ class MultiDAGCLConfig:
         optimizer = _section(training, "optimizer")
         output_dims = _require_mapping(encoder.get("modality_output_dims"), "encoder.modality_output_dims")
 
-        _only_keys(identity, {"canonical_name", "display_name", "implementation_identity", "conformance_profile"}, "identity")
+        _only_keys(identity, {"canonical_name", "display_name", "implementation_identity", "conformance_profile", "ablation_profile"}, "identity")
         _only_keys(data, {"track", "text_feature_dim", "audio_feature_dim", "visual_feature_dim", "num_classes"}, "data")
         _only_keys(encoder, {"profile", "modality_order", "modality_output_dims", "text_sequence_axis", "text_bidirectional", "causal_text_ablation", "single_projection"}, "encoder")
         _only_keys(output_dims, {"audio", "visual", "text"}, "encoder.modality_output_dims")
@@ -466,6 +485,7 @@ class MultiDAGCLConfig:
             display_name=identity.get("display_name"),
             implementation_identity=identity.get("implementation_identity"),
             conformance_profile=identity.get("conformance_profile"),
+            ablation_profile=identity.get("ablation_profile", "none"),
             data_track=data.get("track"),
             text_feature_dim=_require_int(data.get("text_feature_dim"), "data.text_feature_dim"),
             audio_feature_dim=_require_int(data.get("audio_feature_dim"), "data.audio_feature_dim"),
@@ -530,6 +550,7 @@ class MultiDAGCLConfig:
         raw = asdict(self)
         for name in (
             "conformance_profile",
+            "ablation_profile",
             "data_track",
             "encoder_profile",
             "predecessor_profile",
@@ -537,13 +558,16 @@ class MultiDAGCLConfig:
             "curriculum_schedule",
         ):
             raw[name] = getattr(self, name).value
+        identity = {
+            "canonical_name": raw["canonical_name"],
+            "display_name": raw["display_name"],
+            "implementation_identity": raw["implementation_identity"],
+            "conformance_profile": raw["conformance_profile"],
+        }
+        if self.ablation_profile is not AblationProfile.NONE:
+            identity["ablation_profile"] = raw["ablation_profile"]
         return {
-            "identity": {
-                "canonical_name": raw["canonical_name"],
-                "display_name": raw["display_name"],
-                "implementation_identity": raw["implementation_identity"],
-                "conformance_profile": raw["conformance_profile"],
-            },
+            "identity": identity,
             "data": {
                 "track": raw["data_track"],
                 "text_feature_dim": raw["text_feature_dim"],
@@ -628,6 +652,7 @@ class MultiDAGCLConfig:
 
 
 __all__ = [
+    "AblationProfile",
     "ConformanceProfile",
     "CurriculumPartitionProfile",
     "CurriculumScheduleProfile",

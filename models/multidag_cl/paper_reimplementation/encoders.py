@@ -130,6 +130,14 @@ class PaperFormulaModalityEncoder(nn.Module):
         audio = audio * mask_values.to(audio.dtype)
         visual = visual * mask_values.to(visual.dtype)
         text = text * mask_values.to(text.dtype)
+        if self.config.modality_ablation_enabled:
+            active = set(self.config.active_modalities)
+            if "audio" not in active:
+                audio = torch.zeros_like(audio)
+            if "visual" not in active:
+                visual = torch.zeros_like(visual)
+            if "text" not in active:
+                text = torch.zeros_like(text)
         fused = torch.cat((audio, visual, text), dim=-1)
         fused = fused * mask_values.to(fused.dtype)
 
@@ -151,6 +159,8 @@ class PaperFormulaModalityEncoder(nn.Module):
                 context_leakage_risk=("paper_dialogue_axis_text_bilstm",),
             )
             deviations = ()
+        if self.config.modality_ablation_enabled and len(self.config.active_modalities) < 3:
+            deviations += ("fixed_subset_encoded_modality_mask",)
         return EncodedModalities(
             audio=audio,
             visual=visual,

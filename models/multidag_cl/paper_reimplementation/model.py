@@ -85,7 +85,7 @@ class MultiDAGCLPaperReimplementation(nn.Module):
         )
 
     def _model_signature(self) -> dict[str, Any]:
-        return {
+        signature = {
             "canonical_name": self.config.canonical_name,
             "implementation_identity": self.config.implementation_identity,
             "conformance_profile": self.config.conformance_profile.value,
@@ -102,6 +102,9 @@ class MultiDAGCLPaperReimplementation(nn.Module):
             "representation": self.config.representation,
             "classifier_input_dim": self.classifier_input_dim,
         }
+        if self.config.modality_ablation_enabled:
+            signature["modality_ablation"] = list(self.config.active_modalities)
+        return signature
 
     def get_extra_state(self) -> dict[str, Any]:
         return {"model_signature": self._model_signature()}

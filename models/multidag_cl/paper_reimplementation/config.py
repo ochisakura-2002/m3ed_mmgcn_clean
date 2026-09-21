@@ -169,6 +169,8 @@ class MultiDAGCLConfig:
     label_smoothing: float
     loss_ignore_index: int
     test_split_used_for_selection: bool
+    modality_ablation_enabled: bool = False
+    active_modalities: tuple[str, ...] = ("text", "audio", "visual")
 
     def __post_init__(self) -> None:
         enum_fields = (
@@ -188,6 +190,7 @@ class MultiDAGCLConfig:
             )
         object.__setattr__(self, "modality_order", tuple(self.modality_order))
         object.__setattr__(self, "optimizer_betas", tuple(self.optimizer_betas))
+        object.__setattr__(self, "active_modalities", tuple(self.active_modalities))
         self._validate_types()
         self._validate_semantics()
 
@@ -244,6 +247,7 @@ class MultiDAGCLConfig:
             "amp",
             "early_stopping",
             "test_split_used_for_selection",
+            "modality_ablation_enabled",
         ):
             _require_bool(getattr(self, name), name)
         for name in (
@@ -262,6 +266,8 @@ class MultiDAGCLConfig:
             raise TypeError("modality_order must contain exactly three names")
         if len(self.optimizer_betas) != 2:
             raise TypeError("optimizer_betas must contain exactly two values")
+        if not all(isinstance(item, str) for item in self.active_modalities):
+            raise TypeError("active_modalities must contain modality names")
         for value in self.optimizer_betas:
             _require_float(value, "optimizer_betas item")
 
@@ -327,6 +333,22 @@ class MultiDAGCLConfig:
             raise ValueError("loss smoothing must be 0 and ignore_index must be -100")
         if self.test_split_used_for_selection:
             raise ValueError("test selection fields are forbidden")
+        if not self.active_modalities or len(set(self.active_modalities)) != len(
+            self.active_modalities
+        ):
+            raise ValueError("active_modalities must be nonempty and unique")
+        if set(self.active_modalities) - {"text", "audio", "visual"}:
+            raise ValueError("active_modalities contains an unknown modality")
+        if not self.modality_ablation_enabled and set(self.active_modalities) != {
+            "text", "audio", "visual"
+        }:
+            raise ValueError("disabled modality_ablation requires all modalities")
+        if self.modality_ablation_enabled and (
+            self.conformance_profile is not ConformanceProfile.PAPER_FORMULA_BEHAVIOR
+            or self.data_track is not DataTrack.PAPER_DATA
+            or not self.causal_text_ablation
+        ):
+            raise ValueError("modality_ablation requires paper-data causal UniLSTM")
         if self.curriculum_schedule is not CurriculumScheduleProfile.OFFICIAL_ONE_BUCKET_PER_EPOCH:
             raise ValueError("only official_one_bucket_per_epoch is supported")
         self._validate_training_metadata()
@@ -442,6 +464,7 @@ class MultiDAGCLConfig:
                 "training",
                 "loss",
                 "checkpoint",
+                "modality_ablation",
             },
             "top-level config",
         )
@@ -456,6 +479,20 @@ class MultiDAGCLConfig:
         training = _section(root, "training")
         loss = _section(root, "loss")
         checkpoint = _section(root, "checkpoint")
+        modality_ablation = _require_mapping(
+            root.get("modality_ablation", {}), "modality_ablation"
+        )
+        _only_keys(modality_ablation, {"enabled", "active_modalities"}, "modality_ablation")
+        ablation_enabled = _require_bool(
+            modality_ablation.get("enabled", False), "modality_ablation.enabled"
+        )
+        if ablation_enabled and "active_modalities" not in modality_ablation:
+            raise ValueError("enabled modality_ablation requires active_modalities")
+        active_modalities = modality_ablation.get(
+            "active_modalities", ["text", "audio", "visual"]
+        )
+        if not isinstance(active_modalities, (list, tuple)):
+            raise TypeError("modality_ablation.active_modalities must be a sequence")
         optimizer = _section(training, "optimizer")
         output_dims = _require_mapping(encoder.get("modality_output_dims"), "encoder.modality_output_dims")
 
@@ -542,6 +579,8 @@ class MultiDAGCLConfig:
             label_smoothing=_require_float(loss.get("label_smoothing"), "loss.label_smoothing"),
             loss_ignore_index=_require_int(loss.get("ignore_index"), "loss.ignore_index"),
             test_split_used_for_selection=_require_bool(checkpoint.get("test_split_used_for_selection"), "checkpoint.test_split_used_for_selection"),
+            modality_ablation_enabled=ablation_enabled,
+            active_modalities=tuple(active_modalities),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -566,7 +605,7 @@ class MultiDAGCLConfig:
         }
         if self.ablation_profile is not AblationProfile.NONE:
             identity["ablation_profile"] = raw["ablation_profile"]
-        return {
+        result = {
             "identity": identity,
             "data": {
                 "track": raw["data_track"],
@@ -649,6 +688,12 @@ class MultiDAGCLConfig:
                 "test_split_used_for_selection": raw["test_split_used_for_selection"],
             },
         }
+        if self.modality_ablation_enabled:
+            result["modality_ablation"] = {
+                "enabled": True,
+                "active_modalities": list(self.active_modalities),
+            }
+        return result
 
 
 __all__ = [

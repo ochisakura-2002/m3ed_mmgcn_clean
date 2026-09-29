@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import math
 from copy import deepcopy
 from pathlib import Path
@@ -24,6 +25,7 @@ from scripts.runtime.multidag_cl_paper_reimplementation.checkpoint import (
 )
 from scripts.runtime.multidag_cl_paper_reimplementation.diagnostics import (
     CHECKPOINT_TYPES,
+    OFFICIAL_LABEL_NAMES_SENTINEL,
     PREDICTION_FIELDS,
     DiagnosticCheckpointTracker,
     annotate_checkpoint_payload,
@@ -37,6 +39,7 @@ from scripts.runtime.multidag_cl_paper_reimplementation.diagnostics import (
     prediction_flip_details,
     prediction_flip_summary,
     reliability_bins,
+    resolve_class_index_mapping,
 )
 from scripts.runtime.multidag_cl_paper_reimplementation.evaluation import evaluate_model
 import scripts.runtime.multidag_cl_paper_reimplementation.trainer as trainer_module
@@ -59,6 +62,19 @@ SUBSETS = {
     "v": ("visual",),
 }
 LABELS = ["happy", "sad", "neutral", "angry", "excited", "frustrated"]
+OFFICIAL_LABEL_TOKENS = ["exc", "neu", "fru", "sad", "hap", "ang"]
+OFFICIAL_LABEL_VOCAB = {
+    "stoi": {token: index for index, token in enumerate(OFFICIAL_LABEL_TOKENS)},
+    "itos": OFFICIAL_LABEL_TOKENS,
+}
+OFFICIAL_INDEX_LABELS = [
+    "excited",
+    "neutral",
+    "frustrated",
+    "sad",
+    "happy",
+    "angry",
+]
 
 
 def _load(path: Path) -> dict:
@@ -77,7 +93,7 @@ def test_seven_overfitting_configs_are_controlled_derivations_and_unique(
     settings = parse_diagnostic_settings(derived)
     assert settings.enabled
     assert settings.ece_bins == 15
-    assert settings.export_dag_attention is False
+    assert settings.export_dag_attention is (key in {"tav", "ta"})
     assert all(
         getattr(settings, name)
         for name in (
@@ -113,6 +129,14 @@ def test_formal_entry_check_constructs_all_seven_without_data_or_training(
     def metadata(config, *, project_root, require_file, verify_checksum):
         del project_root, verify_checksum
         assert require_file is False
+        assert config["dataset"]["label_names"] == OFFICIAL_LABEL_NAMES_SENTINEL
+        config["dataset"]["label_names"] = (
+            validation_module.resolve_official_label_vocab(
+                OFFICIAL_LABEL_VOCAB,
+                expected_num_classes=6,
+                diagnostics_enabled=True,
+            )
+        )
         return FeatureRegistryMetadata(
             registry_key=config["dataset"]["feature_registry"],
             feature_path=config["dataset"]["feature_path"],
@@ -148,6 +172,17 @@ def test_formal_entry_check_constructs_all_seven_without_data_or_training(
         assert result["optimizer_steps"] == 0
         assert result["model_parameter_count"] == 5_975_110
         assert result["parameter_count_breakdown"]["total_parameters"] == 5_975_110
+        assert result["class_index_mapping"] == {
+            "source_label_tokens": OFFICIAL_LABEL_TOKENS,
+            "index_to_label": {
+                str(index): label
+                for index, label in enumerate(OFFICIAL_INDEX_LABELS)
+            },
+            "label_to_index": {
+                label: index
+                for index, label in enumerate(OFFICIAL_INDEX_LABELS)
+            },
+        }
         assert "run_dir" not in result
         assert observed[-1] == active
 
@@ -169,6 +204,72 @@ def test_diagnostics_disabled_is_the_backward_compatible_default() -> None:
         "save_parameter_count": False,
         "export_dag_attention": False,
     }
+
+
+def test_official_label_sentinel_is_accepted_until_manifest_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _load(CONFIG_DIR / "cl7_unilstm_tav_overfitdiag.yaml")
+    observed = []
+
+    def metadata(config, *, project_root, require_file, verify_checksum):
+        del project_root, require_file, verify_checksum
+        observed.append(config["dataset"]["label_names"])
+        config["dataset"]["label_names"] = (
+            validation_module.resolve_official_label_vocab(
+                OFFICIAL_LABEL_VOCAB,
+                expected_num_classes=6,
+                diagnostics_enabled=True,
+            )
+        )
+        return FeatureRegistryMetadata(
+            registry_key=config["dataset"]["feature_registry"],
+            feature_path=config["dataset"]["feature_path"],
+            feature_sha256="0" * 64,
+            text_dim=1024,
+            audio_dim=1582,
+            visual_dim=342,
+        )
+
+    monkeypatch.setattr(validation_module, "resolve_feature_metadata", metadata)
+    validation_module.validate_runtime_config(
+        config,
+        mode="check",
+        project_root=ROOT,
+        verify_checksum=False,
+    )
+    assert observed == [OFFICIAL_LABEL_NAMES_SENTINEL]
+    assert config["dataset"]["label_names"] == OFFICIAL_LABEL_TOKENS
+
+
+def test_official_class_index_mapping_preserves_manifest_order() -> None:
+    resolved_tokens = validation_module.resolve_official_label_vocab(
+        OFFICIAL_LABEL_VOCAB,
+        expected_num_classes=6,
+        diagnostics_enabled=True,
+    )
+    mapping = resolve_class_index_mapping(resolved_tokens)
+    assert list(mapping.source_label_tokens) == OFFICIAL_LABEL_TOKENS
+    assert list(mapping.index_to_label) == OFFICIAL_INDEX_LABELS
+    assert mapping.label_to_index == {
+        label: index for index, label in enumerate(OFFICIAL_INDEX_LABELS)
+    }
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        OFFICIAL_LABEL_TOKENS[:-1],
+        [*OFFICIAL_LABEL_TOKENS[:-1], "exc"],
+        [*OFFICIAL_LABEL_TOKENS[:-1], "unknown"],
+        [*OFFICIAL_LABEL_TOKENS, "happy"],
+    ],
+)
+def test_official_class_index_mapping_rejects_invalid_label_sets(
+    tokens: list[str],
+) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        resolve_class_index_mapping(tokens)
 
 
 def test_probability_and_per_class_metrics_match_synthetic_reference() -> None:
@@ -319,6 +420,48 @@ def test_prediction_schema_flips_and_reliability_are_complete() -> None:
     assert sum(row["count"] for row in bins) == len(early)
 
 
+def test_official_mapping_drives_probability_labels_per_class_and_flips() -> None:
+    probability_values = [0.05, 0.10, 0.15, 0.20, 0.22, 0.28]
+    result = _prediction_result(
+        [list(probability_values) for _ in range(6)],
+        list(range(6)),
+    )
+    rows = named_prediction_rows(result, OFFICIAL_LABEL_TOKENS)
+    expected_probability_columns = {
+        "prob_happy": probability_values[4],
+        "prob_sad": probability_values[3],
+        "prob_neutral": probability_values[1],
+        "prob_angry": probability_values[5],
+        "prob_excited": probability_values[0],
+        "prob_frustrated": probability_values[2],
+    }
+    for true_id, row in enumerate(rows):
+        assert {
+            name: row[name] for name in expected_probability_columns
+        } == pytest.approx(expected_probability_columns)
+        assert row["true_label"] == OFFICIAL_INDEX_LABELS[true_id]
+        assert row["pred_label"] == "angry"
+        assert row["true_label_probability"] == pytest.approx(
+            probability_values[true_id]
+        )
+
+    per_class = compute_per_class_metrics(
+        list(range(6)),
+        [0, 0, 2, 3, 4, 5],
+        OFFICIAL_INDEX_LABELS,
+    )
+    assert [row["class"] for row in per_class] == OFFICIAL_INDEX_LABELS
+    assert per_class[0]["class"] == "excited"
+    assert per_class[4]["class"] == "happy"
+
+    late = named_prediction_rows(result, OFFICIAL_LABEL_TOKENS)
+    details = prediction_flip_details("TAV", "official->official", rows, late)
+    assert [row["true_label"] for row in details] == OFFICIAL_INDEX_LABELS
+    summary = prediction_flip_summary(details)
+    for label in OFFICIAL_INDEX_LABELS:
+        assert any(row["true_label"] == label for row in summary)
+
+
 def test_parameter_count_is_identical_for_all_seven_conditions() -> None:
     counts = []
     for key in SUBSETS:
@@ -338,8 +481,9 @@ def test_parameter_count_is_identical_for_all_seven_conditions() -> None:
     assert counts == [5_975_110] * 7
 
 
-def test_attention_instrumentation_does_not_change_tav_logits() -> None:
-    config = _load(CONFIG_DIR / "cl7_unilstm_tav_overfitdiag.yaml")
+@pytest.mark.parametrize("key", ["tav", "ta"])
+def test_attention_instrumentation_does_not_change_logits(key: str) -> None:
+    config = _load(CONFIG_DIR / f"cl7_unilstm_{key}_overfitdiag.yaml")
     torch.manual_seed(20260929)
     plain = build_paper_reimplementation_model(config).eval()
     instrumented = build_paper_reimplementation_model(
@@ -400,7 +544,7 @@ def test_extended_evaluation_emits_probabilities_metrics_classes_and_attention()
         labels=list(range(6)),
         diagnostics_enabled=True,
         ece_bins=15,
-        label_names=LABELS,
+        label_names=OFFICIAL_INDEX_LABELS,
         collect_attention=True,
     )
     assert result["metrics"]["prediction_count"] == 3
@@ -415,7 +559,7 @@ def test_extended_evaluation_emits_probabilities_metrics_classes_and_attention()
         "mean_confidence_correct",
         "mean_confidence_wrong",
     }
-    assert [row["class"] for row in result["per_class_metrics"]] == LABELS
+    assert [row["class"] for row in result["per_class_metrics"]] == OFFICIAL_INDEX_LABELS
     assert sum(row["support"] for row in result["per_class_metrics"]) == 3
     assert all(
         sum(row["probabilities"]) == pytest.approx(1.0)
@@ -503,6 +647,15 @@ def test_artifact_writer_emits_required_diagnostic_files(
             "diagnostic_probabilities": probabilities,
             "diagnostic_labels": true_labels,
             "confusion_matrix": torch.eye(6, dtype=torch.int64),
+            "attention_rows": [
+                {
+                    "dialogue_id": "d1",
+                    "target_utterance_id": "u1",
+                    "source_utterance_id": "u0",
+                    "layer_index": 1,
+                    "attention_weight": 1.0,
+                }
+            ],
         }
 
     monkeypatch.setattr(artifact_module, "strict_reload_checkpoint", fake_reload)
@@ -513,7 +666,7 @@ def test_artifact_writer_emits_required_diagnostic_files(
         adapter=None,
         device=torch.device("cpu"),
         label_ids=list(range(6)),
-        label_names=LABELS,
+        class_index_mapping=resolve_class_index_mapping(OFFICIAL_LABEL_TOKENS),
         paths=paths,
         expected_checkpoint_identity={
             "registry_key": config["registry_key"],
@@ -525,6 +678,7 @@ def test_artifact_writer_emits_required_diagnostic_files(
         settings=parse_diagnostic_settings(config),
     )
     expected = [
+        run_dir / "reports/class_index_mapping.csv",
         run_dir / "reports/checkpoint_summary.csv",
         run_dir / "reports/per_class_epoch_metrics.csv",
         run_dir / "reports/calibration_summary.csv",
@@ -537,6 +691,8 @@ def test_artifact_writer_emits_required_diagnostic_files(
         run_dir / "predictions/diagnostic/val_predictions_best_val_wf1.csv",
         run_dir / "predictions/diagnostic/val_predictions_best_val_uar.csv",
         run_dir / "predictions/diagnostic/val_predictions_final.csv",
+        run_dir / "attention/dag_attention_best_val_wf1.csv",
+        run_dir / "attention/dag_attention_final.csv",
     ]
     assert all(path.is_file() for path in expected if "per_class_epoch" not in path.name)
     assert all(path.as_posix() in artifacts for path in expected if "per_class_epoch" not in path.name)
@@ -546,6 +702,24 @@ def test_artifact_writer_emits_required_diagnostic_files(
         ("best_val_uar_model.pt", False),
         ("final_model.pt", False),
     ]
+    with (run_dir / "reports/class_index_mapping.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as file:
+        mapping_rows = list(csv.DictReader(file))
+    assert mapping_rows == [
+        {
+            "class_index": str(index),
+            "source_label_token": OFFICIAL_LABEL_TOKENS[index],
+            "canonical_label_name": OFFICIAL_INDEX_LABELS[index],
+        }
+        for index in range(6)
+    ]
+    with (run_dir / "reports/confusion_diagnostic/val_final_raw.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as file:
+        confusion_rows = list(csv.DictReader(file))
+    assert list(confusion_rows[0]) == ["true_label", *OFFICIAL_INDEX_LABELS]
+    assert [row["true_label"] for row in confusion_rows] == OFFICIAL_INDEX_LABELS
 
 
 @pytest.mark.parametrize(

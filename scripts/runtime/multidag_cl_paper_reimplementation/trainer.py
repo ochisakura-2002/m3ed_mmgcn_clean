@@ -42,12 +42,12 @@ from .diagnostics import (
     CHECKPOINT_FILENAMES,
     DiagnosticCheckpointTracker,
     annotate_checkpoint_payload,
-    canonical_label_names,
     checkpoint_allows_test_evaluation,
     compute_probability_metrics,
     condition_name,
     parameter_count_row,
     parse_diagnostic_settings,
+    resolve_class_index_mapping,
     write_csv,
 )
 from .evaluation import (
@@ -524,7 +524,9 @@ def _check_mode(
         "conformance_profile": core.conformance_profile.value,
     }
     if diagnostics.enabled:
+        class_mapping = resolve_class_index_mapping(config["dataset"]["label_names"])
         result["diagnostics"] = diagnostics.to_mapping()
+        result["class_index_mapping"] = class_mapping.to_mapping()
         result["parameter_count_breakdown"] = parameter_count_row(
             model, condition_name(core.active_modalities)
         )
@@ -683,9 +685,12 @@ def run_runtime(
 
     runtime = resolved_config["runtime"]
     limits = runtime["limits"]
-    label_names = list(resolved_config["dataset"]["label_names"])
+    source_label_tokens = list(resolved_config["dataset"]["label_names"])
+    class_index_mapping = None
+    label_names = source_label_tokens
     if diagnostic_settings.enabled:
-        label_names = canonical_label_names(label_names)
+        class_index_mapping = resolve_class_index_mapping(source_label_tokens)
+        label_names = list(class_index_mapping.index_to_label)
     label_ids = list(range(core.num_classes))
     diagnostic_condition = condition_name(core.active_modalities)
     diagnostic_tracker = (
@@ -1053,6 +1058,8 @@ def run_runtime(
     if diagnostic_settings.enabled:
         if diagnostic_tracker is None:
             raise RuntimeError("diagnostic tracker was not constructed")
+        if class_index_mapping is None:
+            raise RuntimeError("diagnostic class-index mapping was not constructed")
         if diagnostic_tracker.records["best_val_wf1"].epoch != best.epoch:
             raise RuntimeError(
                 "diagnostic best_val_wf1 disagrees with the main validation selector"
@@ -1063,7 +1070,7 @@ def run_runtime(
             adapter=adapter,
             device=device,
             label_ids=label_ids,
-            label_names=label_names,
+            class_index_mapping=class_index_mapping,
             paths=paths,
             expected_checkpoint_identity=_expected_checkpoint_identity(
                 resolved_config, core, feature

@@ -14,6 +14,7 @@ from .diagnostics import (
     CHECKPOINT_FILENAMES,
     CHECKPOINT_TYPES,
     PREDICTION_FIELDS,
+    ClassIndexMapping,
     DiagnosticCheckpointTracker,
     DiagnosticSettings,
     checkpoint_summary_rows,
@@ -37,7 +38,7 @@ def export_diagnostic_artifacts(
     adapter: ProjectBatchAdapter,
     device: torch.device,
     label_ids: list[int],
-    label_names: list[str],
+    class_index_mapping: ClassIndexMapping,
     paths: RunPaths,
     expected_checkpoint_identity: Mapping[str, Any],
     tracker: DiagnosticCheckpointTracker,
@@ -45,6 +46,14 @@ def export_diagnostic_artifacts(
     settings: DiagnosticSettings,
 ) -> list[str]:
     artifacts: list[str] = []
+    label_names = list(class_index_mapping.index_to_label)
+    mapping_output = paths.reports / "class_index_mapping.csv"
+    write_csv(
+        mapping_output,
+        class_index_mapping.rows(),
+        ["class_index", "source_label_token", "canonical_label_name"],
+    )
+    artifacts.append(mapping_output.as_posix())
     evaluations: dict[str, dict[str, Any]] = {}
     prediction_rows: dict[str, list[dict[str, Any]]] = {}
     for checkpoint_type in CHECKPOINT_TYPES:

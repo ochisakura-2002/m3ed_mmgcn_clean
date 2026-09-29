@@ -21,7 +21,11 @@ from models.multidag_cl.paper_reimplementation.config import (
     MultiDAGCLConfig,
 )
 from .adapter import FeatureRegistryMetadata
-from .diagnostics import canonical_label_names, parse_diagnostic_settings
+from .diagnostics import (
+    OFFICIAL_LABEL_NAMES_SENTINEL,
+    parse_diagnostic_settings,
+    resolve_class_index_mapping,
+)
 from .optimizer import validate_optimizer_config
 
 
@@ -77,6 +81,70 @@ def _configured_num_classes(config: Mapping[str, Any]) -> int:
     model_core = _mapping(config.get("model_core"), "model_core")
     data = _mapping(model_core.get("data"), "model_core.data")
     return int(data.get("num_classes", -1))
+
+
+def _validate_diagnostic_label_source(
+    config: Mapping[str, Any], core: MultiDAGCLConfig
+) -> None:
+    dataset = _mapping(config.get("dataset"), "dataset")
+    configured = dataset.get("label_names")
+    if configured == OFFICIAL_LABEL_NAMES_SENTINEL:
+        if (
+            core.data_track is not DataTrack.PAPER_DATA
+            or dataset.get("feature_registry") != OFFICIAL_FEATURE_REGISTRY_KEY
+        ):
+            raise RuntimeValidationError(
+                "official label sentinel is restricted to paper-data official assets"
+            )
+        return
+    if not isinstance(configured, (list, tuple)):
+        raise RuntimeValidationError(
+            "diagnostic dataset.label_names must be an ordered label sequence or the "
+            "official asset manifest sentinel"
+        )
+    try:
+        resolve_class_index_mapping(configured)
+    except (TypeError, ValueError) as error:
+        raise RuntimeValidationError(str(error)) from error
+
+
+def resolve_official_label_vocab(
+    label_vocab: Mapping[str, Any],
+    *,
+    expected_num_classes: int,
+    diagnostics_enabled: bool,
+) -> list[str]:
+    """Validate manifest stoi/itos and return tokens in true class-index order."""
+
+    vocab = _mapping(label_vocab, "label_vocab")
+    label_names = vocab.get("itos")
+    if not isinstance(label_names, list) or len(label_names) != expected_num_classes:
+        raise RuntimeValidationError("official label vocab size does not match num_classes")
+    resolved_label_names = [str(value) for value in label_names]
+    label_stoi = vocab.get("stoi")
+    if not isinstance(label_stoi, Mapping):
+        raise RuntimeValidationError("official label vocab stoi must be a mapping")
+    try:
+        normalized_stoi = {
+            str(token): int(index) for token, index in label_stoi.items()
+        }
+    except (TypeError, ValueError) as error:
+        raise RuntimeValidationError(
+            "official label vocab stoi indices must be integers"
+        ) from error
+    expected_stoi = {
+        token: index for index, token in enumerate(resolved_label_names)
+    }
+    if normalized_stoi != expected_stoi:
+        raise RuntimeValidationError("official label vocab stoi/itos are not exact inverses")
+    if diagnostics_enabled:
+        try:
+            resolve_class_index_mapping(resolved_label_names)
+        except (TypeError, ValueError) as error:
+            raise RuntimeValidationError(
+                f"official diagnostic label vocab is invalid: {error}"
+            ) from error
+    return resolved_label_names
 
 
 def _validate_identity(config: Mapping[str, Any], core: MultiDAGCLConfig) -> None:
@@ -377,14 +445,14 @@ def resolve_feature_metadata(
             raise RuntimeValidationError("official split manifest checksum mismatch")
         if verify_checksum and compute_file_sha256(feature_file).lower() != expected_sha:
             raise RuntimeValidationError("official project PKL checksum mismatch")
-        label_vocab = _mapping(asset_manifest.get("label_vocab"), "label_vocab")
-        label_names = label_vocab.get("itos")
-        if not isinstance(label_names, list) or len(label_names) != _configured_num_classes(config):
-            raise RuntimeValidationError("official label vocab size does not match num_classes")
+        resolved_label_names = resolve_official_label_vocab(
+            _mapping(asset_manifest.get("label_vocab"), "label_vocab"),
+            expected_num_classes=_configured_num_classes(config),
+            diagnostics_enabled=parse_diagnostic_settings(config).enabled,
+        )
         if isinstance(dataset, dict):
             configured_label_names = dataset.get("label_names")
-            resolved_label_names = [str(value) for value in label_names]
-            if configured_label_names == "FROM_OFFICIAL_ASSET_MANIFEST":
+            if configured_label_names == OFFICIAL_LABEL_NAMES_SENTINEL:
                 dataset["label_names"] = resolved_label_names
             elif configured_label_names != resolved_label_names:
                 raise RuntimeValidationError(
@@ -491,6 +559,7 @@ def validate_runtime_config(
                 "overfitting diagnostics require the six-class paper-data "
                 "causal-UniLSTM fixed-subset track"
             )
+        _validate_diagnostic_label_source(config, core)
     _validate_split(config, formal, core)
     _validate_checkpoint(config, formal)
     _validate_runtime_controls(
@@ -516,8 +585,16 @@ def validate_runtime_config(
         raise RuntimeValidationError(
             f"feature dimension mismatch: model={configured_dims}, registry={registered_dims}"
         )
-    if diagnostic_settings.enabled and isinstance(config["dataset"].get("label_names"), list):
-        canonical_label_names(config["dataset"]["label_names"])
+    if diagnostic_settings.enabled:
+        resolved_label_names = config["dataset"].get("label_names")
+        if resolved_label_names == OFFICIAL_LABEL_NAMES_SENTINEL:
+            raise RuntimeValidationError(
+                "official diagnostic label sentinel was not resolved from the asset manifest"
+            )
+        try:
+            resolve_class_index_mapping(resolved_label_names)
+        except (TypeError, ValueError) as error:
+            raise RuntimeValidationError(str(error)) from error
     return core, feature
 
 
@@ -532,5 +609,6 @@ __all__ = [
     "SMOKE_OUTPUT_ROOT",
     "SYNTHETIC_FEATURE_SHA256",
     "resolve_feature_metadata",
+    "resolve_official_label_vocab",
     "validate_runtime_config",
 ]

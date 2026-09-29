@@ -42,6 +42,7 @@ _LABEL_ALIASES = {
     "fru": "frustrated",
     "frustrated": "frustrated",
 }
+OFFICIAL_LABEL_NAMES_SENTINEL = "FROM_OFFICIAL_ASSET_MANIFEST"
 CHECKPOINT_TYPES = ("min_val_loss", "best_val_wf1", "best_val_uar", "final")
 CHECKPOINT_FILENAMES = {
     "min_val_loss": "min_val_loss_model.pt",
@@ -119,15 +120,65 @@ def parse_diagnostic_settings(config: Mapping[str, Any]) -> DiagnosticSettings:
     return DiagnosticSettings(enabled=enabled, ece_bins=ece_bins, **values)
 
 
-def canonical_label_names(label_names: Sequence[str]) -> list[str]:
-    resolved = [_LABEL_ALIASES.get(str(value).strip().lower()) for value in label_names]
-    if any(value is None for value in resolved):
-        raise ValueError(f"unsupported IEMOCAP diagnostic label names: {list(label_names)!r}")
-    if tuple(resolved) != IEMOCAP_LABEL_NAMES:
+@dataclass(frozen=True)
+class ClassIndexMapping:
+    """IEMOCAP label semantics in the model's actual class-index order."""
+
+    source_label_tokens: tuple[str, ...]
+    index_to_label: tuple[str, ...]
+
+    @property
+    def label_to_index(self) -> dict[str, int]:
+        return {label: index for index, label in enumerate(self.index_to_label)}
+
+    def rows(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "class_index": index,
+                "source_label_token": self.source_label_tokens[index],
+                "canonical_label_name": label,
+            }
+            for index, label in enumerate(self.index_to_label)
+        ]
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "source_label_tokens": list(self.source_label_tokens),
+            "index_to_label": {
+                str(index): label for index, label in enumerate(self.index_to_label)
+            },
+            "label_to_index": self.label_to_index,
+        }
+
+
+def resolve_class_index_mapping(label_names: Sequence[str]) -> ClassIndexMapping:
+    """Canonicalize aliases without changing their real class-index order."""
+
+    if isinstance(label_names, (str, bytes)):
+        raise TypeError("IEMOCAP diagnostic label names must be a sequence, not a sentinel")
+    source_tokens = tuple(str(value).strip() for value in label_names)
+    if len(source_tokens) != len(IEMOCAP_LABEL_NAMES):
         raise ValueError(
-            "IEMOCAP diagnostic label order must be happy,sad,neutral,angry,excited,frustrated"
+            f"IEMOCAP diagnostics require exactly {len(IEMOCAP_LABEL_NAMES)} labels"
         )
-    return [str(value) for value in resolved]
+    resolved = tuple(_LABEL_ALIASES.get(value.lower()) for value in source_tokens)
+    if any(value is None for value in resolved):
+        raise ValueError(
+            f"unsupported IEMOCAP diagnostic label names: {list(source_tokens)!r}"
+        )
+    canonical = tuple(str(value) for value in resolved)
+    if len(set(canonical)) != len(canonical):
+        raise ValueError("IEMOCAP diagnostic label names contain duplicate classes")
+    if set(canonical) != set(IEMOCAP_LABEL_NAMES):
+        raise ValueError(
+            "IEMOCAP diagnostic labels must contain exactly happy, sad, neutral, "
+            "angry, excited, and frustrated"
+        )
+    return ClassIndexMapping(source_tokens, canonical)
+
+
+def canonical_label_names(label_names: Sequence[str]) -> list[str]:
+    return list(resolve_class_index_mapping(label_names).index_to_label)
 
 
 def condition_name(active_modalities: Sequence[str]) -> str:
@@ -410,10 +461,13 @@ def checkpoint_summary_rows(
 def named_prediction_rows(
     result: Mapping[str, Any], label_names: Sequence[str]
 ) -> list[dict[str, Any]]:
-    names = canonical_label_names(label_names)
+    mapping = resolve_class_index_mapping(label_names)
+    names = list(mapping.index_to_label)
     rows: list[dict[str, Any]] = []
     for source in result["predictions"]:
         probabilities = list(source["probabilities"])
+        if len(probabilities) != len(names):
+            raise ValueError("diagnostic probability width does not match class mapping")
         true_id = int(source["true_label"])
         predicted_id = int(source["predicted_label"])
         row = {
@@ -559,9 +613,11 @@ def normalized_confusion(matrix: Any) -> np.ndarray:
 __all__ = [
     "CHECKPOINT_FILENAMES",
     "CHECKPOINT_TYPES",
+    "ClassIndexMapping",
     "DiagnosticCheckpointTracker",
     "DiagnosticSettings",
     "IEMOCAP_LABEL_NAMES",
+    "OFFICIAL_LABEL_NAMES_SENTINEL",
     "PREDICTION_FIELDS",
     "annotate_checkpoint_payload",
     "canonical_label_names",
@@ -577,6 +633,7 @@ __all__ = [
     "prediction_flip_details",
     "prediction_flip_summary",
     "reliability_bins",
+    "resolve_class_index_mapping",
     "write_csv",
     "ww_high_confidence_rows",
 ]

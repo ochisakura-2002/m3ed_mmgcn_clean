@@ -18,6 +18,7 @@ from utils.metrics import (
 )
 
 from .adapter import ProjectBatchAdapter
+from .diagnostics import compute_per_class_metrics, compute_probability_metrics
 
 
 def move_batch(batch: Mapping[str, Any], device: torch.device) -> dict[str, Any]:
@@ -48,6 +49,10 @@ def evaluate_model(
     split: str,
     labels: list[int],
     max_batches: Optional[int] = None,
+    diagnostics_enabled: bool = False,
+    ece_bins: int = 15,
+    label_names: Optional[list[str]] = None,
+    collect_attention: bool = False,
 ) -> dict[str, Any]:
     """Aggregate predictions over all valid utterances, never per dialogue."""
 
@@ -59,6 +64,9 @@ def evaluate_model(
     loss_numerator = 0.0
     valid_count = 0
     batch_count = 0
+    diagnostic_logits: list[torch.Tensor] = []
+    diagnostic_labels: list[torch.Tensor] = []
+    attention_rows: list[dict[str, Any]] = []
     with torch.no_grad():
         for batch_index, raw_batch in enumerate(loader):
             if max_batches is not None and batch_index >= int(max_batches):
@@ -75,6 +83,9 @@ def evaluate_model(
                 continue
             output = model_forward(model, batch)
             predictions = output.logits.argmax(dim=-1)
+            probabilities = (
+                torch.softmax(output.logits, dim=-1) if diagnostics_enabled else None
+            )
             true_values = batch["labels"][mask].detach().cpu().tolist()
             pred_values = predictions[mask].detach().cpu().tolist()
             y_true.extend(int(value) for value in true_values)
@@ -86,7 +97,14 @@ def evaluate_model(
             batch_count += 1
             lengths = batch["lengths"].detach().cpu().tolist()
             prediction_cpu = predictions.detach().cpu()
+            probability_cpu = (
+                probabilities.detach().cpu() if probabilities is not None else None
+            )
             labels_cpu = batch["labels"].detach().cpu()
+            speakers_cpu = batch["speaker_ids_int"].detach().cpu()
+            if diagnostics_enabled:
+                diagnostic_logits.append(output.logits[mask].detach().cpu())
+                diagnostic_labels.append(batch["labels"][mask].detach().cpu())
             for dialogue_index, length in enumerate(lengths):
                 dialogue_id = str(batch["dialogue_ids"][dialogue_index])
                 utterance_ids = batch["utterance_ids"][dialogue_index]
@@ -97,8 +115,7 @@ def evaluate_model(
                         adapter.config.loss_ignore_index,
                     }:
                         continue
-                    prediction_rows.append(
-                        {
+                    row = {
                             "split": split,
                             "dialogue_id": dialogue_id,
                             "utterance_id": utterance_ids[utterance_index],
@@ -108,7 +125,60 @@ def evaluate_model(
                                 prediction_cpu[dialogue_index, utterance_index]
                             ),
                         }
+                    if diagnostics_enabled:
+                        if probability_cpu is None:
+                            raise RuntimeError("diagnostic probabilities were not computed")
+                        probability_values = probability_cpu[
+                            dialogue_index, utterance_index
+                        ].tolist()
+                        predicted_label = int(row["predicted_label"])
+                        row.update(
+                            {
+                                "speaker_id": int(
+                                    speakers_cpu[dialogue_index, utterance_index]
+                                ),
+                                "probabilities": probability_values,
+                                "pred_confidence": float(
+                                    probability_values[predicted_label]
+                                ),
+                                "true_label_probability": float(
+                                    probability_values[true_label]
+                                ),
+                                "correct": predicted_label == true_label,
+                            }
+                        )
+                    prediction_rows.append(row)
+            if collect_attention:
+                if output.diagnostics is None:
+                    raise RuntimeError(
+                        "attention export requested but model diagnostics are unavailable"
                     )
+                adjacency = output.diagnostics.adjacency.detach().cpu()
+                for layer_index, layer in enumerate(
+                    output.diagnostics.layer_diagnostics, start=1
+                ):
+                    if layer.attention_weights is None:
+                        raise RuntimeError("DAG attention weights were not collected")
+                    weights = layer.attention_weights.detach().cpu()
+                    for dialogue_index, length in enumerate(lengths):
+                        dialogue_id = str(batch["dialogue_ids"][dialogue_index])
+                        utterance_ids = batch["utterance_ids"][dialogue_index]
+                        for target in range(int(length)):
+                            for source in torch.nonzero(
+                                adjacency[dialogue_index, target, : int(length)],
+                                as_tuple=False,
+                            ).flatten().tolist():
+                                attention_rows.append(
+                                    {
+                                        "dialogue_id": dialogue_id,
+                                        "target_utterance_id": utterance_ids[target],
+                                        "source_utterance_id": utterance_ids[source],
+                                        "layer_index": layer_index,
+                                        "attention_weight": float(
+                                            weights[dialogue_index, target, source]
+                                        ),
+                                    }
+                                )
     if was_training:
         model.train()
     if valid_count == 0:
@@ -126,7 +196,7 @@ def evaluate_model(
         )
         / valid_count,
     }
-    return {
+    result = {
         "split": split,
         "metrics": metrics,
         "per_class_recall": compute_per_class_recall(y_true, y_pred, labels),
@@ -134,6 +204,27 @@ def evaluate_model(
         "predictions": prediction_rows,
         "batch_count": batch_count,
     }
+    if diagnostics_enabled:
+        if label_names is None or len(label_names) != len(labels):
+            raise ValueError("diagnostic evaluation requires ordered label_names")
+        logits = torch.cat(diagnostic_logits, dim=0)
+        true_labels = torch.cat(diagnostic_labels, dim=0)
+        result["diagnostic_metrics"] = compute_probability_metrics(
+            logits,
+            true_labels,
+            num_classes=len(labels),
+            ece_bins=ece_bins,
+        )
+        result["per_class_metrics"] = compute_per_class_metrics(
+            true_labels.tolist(),
+            logits.argmax(dim=1).tolist(),
+            label_names,
+        )
+        result["diagnostic_probabilities"] = torch.softmax(logits, dim=1)
+        result["diagnostic_labels"] = true_labels
+    if collect_attention:
+        result["attention_rows"] = attention_rows
+    return result
 
 
 def export_evaluation(
@@ -202,6 +293,7 @@ def _write_rows(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> No
             fieldnames=fields,
             delimiter="\t",
             lineterminator="\n",
+            extrasaction="ignore",
         )
         writer.writeheader()
         writer.writerows(rows)

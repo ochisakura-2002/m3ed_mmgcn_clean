@@ -37,6 +37,19 @@ from .checkpoint import (
     strict_reload_checkpoint,
 )
 from .curriculum import CurriculumRuntime
+from .diagnostic_artifacts import export_diagnostic_artifacts
+from .diagnostics import (
+    CHECKPOINT_FILENAMES,
+    DiagnosticCheckpointTracker,
+    annotate_checkpoint_payload,
+    canonical_label_names,
+    checkpoint_allows_test_evaluation,
+    compute_probability_metrics,
+    condition_name,
+    parameter_count_row,
+    parse_diagnostic_settings,
+    write_csv,
+)
 from .evaluation import (
     evaluate_model,
     export_evaluation,
@@ -44,7 +57,6 @@ from .evaluation import (
     move_batch,
 )
 from .manifest import (
-    RunPaths,
     append_final_evaluation,
     append_resume_history,
     build_run_manifest,
@@ -372,6 +384,9 @@ def _train_epoch(
     maximum_optimizer_steps: Optional[int],
     global_step: int,
     gradient_clipping: Mapping[str, Any],
+    diagnostics_enabled: bool = False,
+    ece_bins: int = 15,
+    num_classes: int = 0,
 ) -> tuple[dict[str, Any], int]:
     model.train()
     loss_numerator = 0.0
@@ -386,6 +401,8 @@ def _train_epoch(
     maximum_post_clip_grad_norm = 0.0
     nonfinite_gradient_count = 0
     predecessor_counts: list[int] = []
+    diagnostic_logits: list[torch.Tensor] = []
+    diagnostic_labels: list[torch.Tensor] = []
     for batch_index, raw_batch in enumerate(loader):
         if max_batches is not None and batch_index >= int(max_batches):
             break
@@ -406,6 +423,14 @@ def _train_epoch(
         forward_seconds += time.perf_counter() - started
         if output.loss is None:
             raise RuntimeError("training forward did not return loss")
+        if diagnostics_enabled:
+            diagnostic_mask = (
+                batch["attention_mask"].bool()
+                & (batch["labels"] != adapter.config.loss_ignore_index)
+                & (batch["labels"] != MISSING_LABEL_INDEX)
+            )
+            diagnostic_logits.append(output.logits[diagnostic_mask].detach().cpu())
+            diagnostic_labels.append(batch["labels"][diagnostic_mask].detach().cpu())
         started = time.perf_counter()
         output.loss.backward()
         backward_seconds += time.perf_counter() - started
@@ -439,8 +464,7 @@ def _train_epoch(
         predecessor_counts.extend(int(value) for value in valid_counts.detach().cpu().tolist())
     if batch_count == 0:
         raise RuntimeError("training loader produced no controlled batch")
-    return (
-        {
+    result = {
             "loss": loss_numerator / utterance_count,
             "batch_count": batch_count,
             "utterance_count": utterance_count,
@@ -458,9 +482,15 @@ def _train_epoch(
                 else 0.0
             ),
             "maximum_predecessor_count": max(predecessor_counts, default=0),
-        },
-        global_step,
-    )
+        }
+    if diagnostics_enabled:
+        result["diagnostic_metrics"] = compute_probability_metrics(
+            torch.cat(diagnostic_logits, dim=0),
+            torch.cat(diagnostic_labels, dim=0),
+            num_classes=num_classes,
+            ece_bins=ece_bins,
+        )
+    return result, global_step
 
 
 def _check_mode(
@@ -470,9 +500,15 @@ def _check_mode(
     feature: FeatureRegistryMetadata,
     device: torch.device,
 ) -> dict[str, Any]:
-    model = build_paper_reimplementation_model(config).to(device)
+    diagnostics = parse_diagnostic_settings(config)
+    if diagnostics.export_dag_attention:
+        model = build_paper_reimplementation_model(
+            config, collect_attention_diagnostics=True
+        ).to(device)
+    else:
+        model = build_paper_reimplementation_model(config).to(device)
     optimizer = build_optimizer(model, config["runtime"]["optimizer"])
-    return {
+    result = {
         "status": "PASS",
         "mode": "check",
         "registry_key": REGISTRY_KEY,
@@ -487,6 +523,12 @@ def _check_mode(
         "split_protocol": config["dataset"]["split_protocol"],
         "conformance_profile": core.conformance_profile.value,
     }
+    if diagnostics.enabled:
+        result["diagnostics"] = diagnostics.to_mapping()
+        result["parameter_count_breakdown"] = parameter_count_row(
+            model, condition_name(core.active_modalities)
+        )
+    return result
 
 
 def _lock_best_checkpoint(
@@ -558,6 +600,7 @@ def run_runtime(
         mode=mode,
         project_root=project_root,
     )
+    diagnostic_settings = parse_diagnostic_settings(config)
     effective_output_root_override = output_root_override
     if config["runtime"]["smoke_only"] and effective_output_root_override is None:
         effective_output_root_override = Path(config["runtime"]["smoke_output_root"])
@@ -614,7 +657,12 @@ def run_runtime(
         ),
     )
     curriculum.export_manifest(paths.manifests / "curriculum_bucket_manifest.tsv")
-    model = build_paper_reimplementation_model(resolved_config).to(device)
+    if diagnostic_settings.export_dag_attention:
+        model = build_paper_reimplementation_model(
+            resolved_config, collect_attention_diagnostics=True
+        ).to(device)
+    else:
+        model = build_paper_reimplementation_model(resolved_config).to(device)
     adapter = ProjectBatchAdapter(core, feature)
     optimizer = build_optimizer(model, resolved_config["runtime"]["optimizer"])
     optimizer_audit = audit_optimizer_parameters(model, optimizer)
@@ -636,7 +684,14 @@ def run_runtime(
     runtime = resolved_config["runtime"]
     limits = runtime["limits"]
     label_names = list(resolved_config["dataset"]["label_names"])
+    if diagnostic_settings.enabled:
+        label_names = canonical_label_names(label_names)
     label_ids = list(range(core.num_classes))
+    diagnostic_condition = condition_name(core.active_modalities)
+    diagnostic_tracker = (
+        DiagnosticCheckpointTracker() if diagnostic_settings.enabled else None
+    )
+    per_class_epoch_rows: list[dict[str, Any]] = []
     coordinator = ValidationCleanCoordinator(
         test_evaluation_count=int(resolved_config["checkpoint"]["test_evaluation_count"])
     )
@@ -739,6 +794,9 @@ def run_runtime(
             maximum_optimizer_steps=maximum_steps,
             global_step=global_step,
             gradient_clipping=runtime["gradient_clipping"],
+            diagnostics_enabled=diagnostic_settings.enabled,
+            ece_bins=diagnostic_settings.ece_bins,
+            num_classes=core.num_classes,
         )
         total_optimizer_steps += int(train_result["optimizer_steps"])
         total_train_batches += int(train_result["batch_count"])
@@ -763,6 +821,9 @@ def run_runtime(
             split="validation",
             labels=label_ids,
             max_batches=max_val_batches,
+            diagnostics_enabled=diagnostic_settings.enabled,
+            ece_bins=diagnostic_settings.ece_bins,
+            label_names=label_names if diagnostic_settings.enabled else None,
         )
         improved = coordinator.complete_validation(
             epoch=epoch,
@@ -775,8 +836,7 @@ def run_runtime(
             int(train_dataset[index].get("length", train_dataset[index].get("num_utterances")))
             for index in visible_indices
         )
-        epoch_rows.append(
-            {
+        epoch_row = {
                 "epoch": epoch,
                 "visible_bucket_count": curriculum.visible_bucket_count(epoch),
                 "visible_dialogue_count": len(visible_indices),
@@ -792,7 +852,43 @@ def run_runtime(
                 "val_weighted_f1": f"{val_result['metrics']['weighted_f1']:.9f}",
                 "val_loss": f"{val_result['metrics']['loss']:.9f}",
             }
-        )
+        diagnostic_improved: tuple[str, ...] = ()
+        if diagnostic_settings.enabled:
+            train_metrics = train_result["diagnostic_metrics"]
+            val_metrics = val_result["diagnostic_metrics"]
+            diagnostic_epoch_metrics = {
+                "val_loss": float(val_result["metrics"]["loss"]),
+                **{f"val_{name}": float(value) for name, value in val_metrics.items()},
+            }
+            if diagnostic_settings.save_extended_epoch_metrics:
+                epoch_row.update(
+                    {
+                        **{
+                            f"train_{name}": f"{float(value):.9f}"
+                            for name, value in train_metrics.items()
+                        },
+                        **{
+                            f"val_{name}": f"{float(value):.9f}"
+                            for name, value in val_metrics.items()
+                        },
+                    }
+                )
+            if diagnostic_settings.save_per_class_epoch_metrics:
+                per_class_epoch_rows.extend(
+                    {
+                        "epoch": epoch,
+                        "split": "validation",
+                        **row,
+                    }
+                    for row in val_result["per_class_metrics"]
+                )
+            if diagnostic_tracker is None:
+                raise RuntimeError("diagnostic tracker was not constructed")
+            diagnostic_improved = diagnostic_tracker.update(
+                epoch=epoch,
+                metrics=diagnostic_epoch_metrics,
+            )
+        epoch_rows.append(epoch_row)
         if improved:
             save_checkpoint_atomic(
                 paths.checkpoints / "best_model.pt",
@@ -810,11 +906,38 @@ def run_runtime(
                     checkpoint_locked=False,
                 ),
             )
+        if diagnostic_settings.enabled:
+            for checkpoint_type in diagnostic_improved:
+                if checkpoint_type == "final":
+                    continue
+                payload = _checkpoint_payload(
+                    model=model,
+                    optimizer=optimizer,
+                    config=resolved_config,
+                    core=core,
+                    feature=feature,
+                    curriculum=curriculum,
+                    coordinator=coordinator,
+                    epoch=epoch,
+                    global_step=global_step,
+                    resolved_config_sha256=resolved_config_sha256,
+                    checkpoint_locked=False,
+                )
+                save_checkpoint_atomic(
+                    paths.checkpoints / CHECKPOINT_FILENAMES[checkpoint_type],
+                    annotate_checkpoint_payload(payload, checkpoint_type),
+                )
         last_train_result = train_result
         last_epoch = epoch
     if not epoch_rows:
         raise RuntimeError("training protocol produced no epoch/controlled probe")
     _write_epoch_rows(paths.logs / "epoch_metrics.tsv", epoch_rows)
+    if diagnostic_settings.save_per_class_epoch_metrics:
+        write_csv(
+            paths.reports / "per_class_epoch_metrics.csv",
+            per_class_epoch_rows,
+            ["epoch", "split", "class", "precision", "recall", "f1", "support"],
+        )
     save_checkpoint_atomic(
         paths.checkpoints / "last_model.pt",
         _checkpoint_payload(
@@ -831,6 +954,24 @@ def run_runtime(
             checkpoint_locked=False,
         ),
     )
+    if diagnostic_settings.enabled:
+        final_payload = _checkpoint_payload(
+            model=model,
+            optimizer=optimizer,
+            config=resolved_config,
+            core=core,
+            feature=feature,
+            curriculum=curriculum,
+            coordinator=coordinator,
+            epoch=last_epoch,
+            global_step=global_step,
+            resolved_config_sha256=resolved_config_sha256,
+            checkpoint_locked=False,
+        )
+        save_checkpoint_atomic(
+            paths.checkpoints / CHECKPOINT_FILENAMES["final"],
+            annotate_checkpoint_payload(final_payload, "final"),
+        )
 
     best = coordinator.finish_and_lock()
     best_path = paths.checkpoints / "best_model.pt"
@@ -845,6 +986,12 @@ def run_runtime(
         coordinator=coordinator,
         resolved_config_sha256=resolved_config_sha256,
     )
+    if diagnostic_settings.enabled:
+        locked_best = load_checkpoint(best_path, torch.device("cpu"))
+        save_checkpoint_atomic(
+            paths.checkpoints / CHECKPOINT_FILENAMES["best_val_wf1"],
+            annotate_checkpoint_payload(locked_best, "best_val_wf1"),
+        )
     strict_reload_checkpoint(
         best_path,
         model=model,
@@ -902,6 +1049,30 @@ def run_runtime(
             label_names=label_names,
         )
 
+    diagnostic_artifacts: list[str] = []
+    if diagnostic_settings.enabled:
+        if diagnostic_tracker is None:
+            raise RuntimeError("diagnostic tracker was not constructed")
+        if diagnostic_tracker.records["best_val_wf1"].epoch != best.epoch:
+            raise RuntimeError(
+                "diagnostic best_val_wf1 disagrees with the main validation selector"
+            )
+        diagnostic_artifacts = export_diagnostic_artifacts(
+            model=model,
+            val_loader=val_loader,
+            adapter=adapter,
+            device=device,
+            label_ids=label_ids,
+            label_names=label_names,
+            paths=paths,
+            expected_checkpoint_identity=_expected_checkpoint_identity(
+                resolved_config, core, feature
+            ),
+            tracker=diagnostic_tracker,
+            condition=diagnostic_condition,
+            settings=diagnostic_settings,
+        )
+
     current_memory, peak_memory = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     counts = _training_summary_counts(
@@ -954,6 +1125,17 @@ def run_runtime(
         "checkpoint_reloaded": True,
         "formal_training_started": 1 if runtime["formal_experiment"] else 0,
     }
+    if diagnostic_settings.enabled:
+        summary["overfitting_diagnostics"] = {
+            **diagnostic_settings.to_mapping(),
+            "train_metric_population": (
+                "actual_curriculum_visible_samples_seen_in_training_mode_this_epoch"
+            ),
+            "val_loss_nll_relation": (
+                "equal_cross_entropy_definition_reported_as_separate_fields"
+            ),
+            "artifacts": diagnostic_artifacts,
+        }
     (paths.logs / "run_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -990,6 +1172,8 @@ def evaluate_locked_checkpoint(
         expected_identity=_expected_checkpoint_identity(config, core, feature),
         require_locked=True,
     )
+    if not checkpoint_allows_test_evaluation(checkpoint):
+        raise ValueError("Test evaluation is restricted to best_val_wf1")
     if checkpoint.get("training_finished") is not True:
         raise ValueError("evaluation requires training_finished=true")
     test_dataset = _make_dataset(config, split="test", project_root=project_root)

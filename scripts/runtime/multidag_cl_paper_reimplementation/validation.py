@@ -21,6 +21,7 @@ from models.multidag_cl.paper_reimplementation.config import (
     MultiDAGCLConfig,
 )
 from .adapter import FeatureRegistryMetadata
+from .diagnostics import canonical_label_names, parse_diagnostic_settings
 from .optimizer import validate_optimizer_config
 
 
@@ -474,6 +475,22 @@ def validate_runtime_config(
     core = MultiDAGCLConfig.from_mapping(core_mapping)
     _validate_identity(config, core)
     formal = _runtime_section(config).get("formal_experiment") is True
+    diagnostic_settings = parse_diagnostic_settings(config)
+    if diagnostic_settings.enabled:
+        if not formal:
+            raise RuntimeValidationError(
+                "overfitting diagnostics are restricted to the formal UniLSTM track"
+            )
+        if (
+            core.data_track is not DataTrack.PAPER_DATA
+            or not core.causal_text_ablation
+            or not core.modality_ablation_enabled
+            or core.num_classes != 6
+        ):
+            raise RuntimeValidationError(
+                "overfitting diagnostics require the six-class paper-data "
+                "causal-UniLSTM fixed-subset track"
+            )
     _validate_split(config, formal, core)
     _validate_checkpoint(config, formal)
     _validate_runtime_controls(
@@ -499,6 +516,8 @@ def validate_runtime_config(
         raise RuntimeValidationError(
             f"feature dimension mismatch: model={configured_dims}, registry={registered_dims}"
         )
+    if diagnostic_settings.enabled and isinstance(config["dataset"].get("label_names"), list):
+        canonical_label_names(config["dataset"]["label_names"])
     return core, feature
 
 

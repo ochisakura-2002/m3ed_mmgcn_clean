@@ -58,11 +58,15 @@ def get_model_metadata(value: Any = REGISTRY_KEY) -> dict[str, Any]:
     return dict(MODEL_METADATA[canonical_model_key(value)])
 
 
-def build_paper_reimplementation_model(config: Mapping[str, Any]):
+def build_paper_reimplementation_model(
+    config: Mapping[str, Any], *, collect_attention_diagnostics: bool = False
+):
     """Build the registered model from a fully resolved ``model_core`` map."""
 
     if not isinstance(config, Mapping):
         raise TypeError("config must be a mapping")
+    if not isinstance(collect_attention_diagnostics, bool):
+        raise TypeError("collect_attention_diagnostics must be bool")
     key = canonical_model_key(config.get("registry_key", REGISTRY_KEY))
     core_mapping = config.get("model_core")
     if not isinstance(core_mapping, Mapping):
@@ -84,6 +88,11 @@ def build_paper_reimplementation_model(config: Mapping[str, Any]):
         raise ValueError(
             f"unsupported paper-reimplementation data track: "
             f"{model_config.data_track.value!r}"
+        )
+    if collect_attention_diagnostics:
+        return MODEL_REGISTRY[key](
+            model_config,
+            collect_attention_diagnostics=True,
         )
     return MODEL_REGISTRY[key](model_config)
 

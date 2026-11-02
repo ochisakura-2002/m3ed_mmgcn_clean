@@ -1,0 +1,10 @@
+# Remote environment only; choose compatible CUDA torch/torchvision builds first.
+# Reference upstream versions: torch 1.13.1, torchvision 0.14.1 (Python 3.9/3.10).
+timm==0.6.13
+einops==0.6.1
+decord==0.6.0
+numpy>=1.24,<2
+Pillow>=9.1
+PyYAML>=6
+scikit-learn>=1.2
+# Detector backend dependencies remain pending remote selection.

@@ -1,0 +1,48 @@
+# S2D-V0 remote template. No synthetic fixture, data, detector or weights implied.
+project:
+  experiment_name: s2d_iemocap_v0_seed100
+model_family: S2D
+model_variant: iemocap_v0
+system:
+  device: cuda
+  output_dir: outputs
+output:
+  experiment_date: null
+  experiment_group: s2d_iemocap_v0
+dataset:
+  data_root: null                # Set on remote; relative to project or absolute.
+  manifest_path: null            # Relative to data_root, or native absolute path.
+  target: benchmark_label
+  label_vocab_path: configs/_shared/data/iemocap/benchmark_label_vocab_v1.yaml
+  columns: {}                    # Logical -> actual CSV headers; never inferred.
+face:
+  backend: null                  # Remote 'module:factory'; mock forbidden in training.
+  kwargs: {}
+  input_size: 224
+model:
+  name: s2d_iemocap_v0
+  enabled: true                  # Independent branch; no existing TA baseline change.
+  num_frames: 16
+  input_size: 224
+  adapter_scale: 0.25
+  head_dropout_ratio: 0.5
+  sdl: false
+  pretrained_checkpoint: null    # External official S2D weight file; no auto-download.
+  pretrained_strict: false
+  replace_fer_classifier: true
+  landmark_checkpoint: null      # External mobilefacenet_model_best.pth.tar.
+  landmark_strict: true
+train:
+  loss: CrossEntropy
+  seed: 100
+  batch_size: 4
+  num_workers: 4
+  learning_rate: 0.00001
+  weight_decay: 0.05
+  epochs: 100
+logging:
+  monitor_metric: val_weighted_f1
+test:
+  final_evaluation_only: true
+export:
+  representations: false         # Optional final-test h_v/logits_v/prob_v .pt export.

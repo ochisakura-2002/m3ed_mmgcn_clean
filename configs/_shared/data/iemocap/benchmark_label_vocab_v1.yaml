@@ -1,0 +1,13 @@
+target: benchmark_label
+label_to_index:
+  hap: 0
+  sad: 1
+  neu: 2
+  ang: 3
+  exc: 4
+  fru: 5
+index_to_label: [hap, sad, neu, ang, exc, fru]
+source: docs/reproduction/S2D_IEMOCAP_V0.md#label-space
+ta_mapping_verified: true
+# Candidate A/C TA contract, also enforced by datasets/asymmetric_iemocap.py.
+# This is NOT the separate MultiDAG Candidate B label_vocab.pkl encoding.

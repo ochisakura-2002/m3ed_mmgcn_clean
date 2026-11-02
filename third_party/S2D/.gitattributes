@@ -1,0 +1,2 @@
+# Preserve upstream blob bytes and provenance hashes across Windows/Linux.
+* -text

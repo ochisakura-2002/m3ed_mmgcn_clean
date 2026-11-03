@@ -14,10 +14,18 @@ dataset:
   manifest_path: null            # Relative to data_root, or native absolute path.
   target: benchmark_label
   label_vocab_path: configs/_shared/data/iemocap/benchmark_label_vocab_v1.yaml
-  columns: {}                    # Logical -> actual CSV headers; never inferred.
+  columns:                       # Confirmed remote manifest video header.
+    video_path: video_relative_path
 face:
-  backend: null                  # Remote 'module:factory'; mock forbidden in training.
-  kwargs: {}
+  backend: cached_bbox           # mtcnn_cpu only in explicit remote preprocessing mode.
+  device: cpu                    # Detector only; S2D still uses system.device=cuda.
+  min_size: 20
+  prob_threshold: 0.90
+  margin: 1.40
+  alignment: false
+  full_frame_fallback: false
+  cache_path: null               # JSON bbox cache, relative to project root or absolute.
+  require_cache_for_training: true
   input_size: 224
 model:
   name: s2d_iemocap_v0

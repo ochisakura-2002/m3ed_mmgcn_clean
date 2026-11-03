@@ -9,7 +9,8 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 
-from .s2d_faces import FaceProcessor
+from .s2d_faces import (CachedBBoxFaceProcessor, FaceBBoxCache, FaceCacheEntry,
+                        FaceProcessor, PREPROCESSING_VERSION)
 from .s2d_manifest import S2DManifest
 from .s2d_sampling import Uniform16Sampler
 
@@ -60,13 +61,34 @@ def decode_uniform_clip(path: Path, sampler: Uniform16Sampler):
 class IEMOCAPS2DDataset(Dataset):
     def __init__(self, manifest: S2DManifest, split: str, face_processor: FaceProcessor,
                  sampler: Uniform16Sampler | None = None, transform: S2DTransform | None = None,
-                 decoder=decode_uniform_clip, *, allow_test_backend: bool = False):
+                 decoder=decode_uniform_clip, *, allow_test_backend: bool = False,
+                 face_cache: FaceBBoxCache | str | Path | None = None,
+                 require_face_cache_for_training: bool = False, remote_preprocessing: bool = False):
         self.manifest = manifest
         self.records = manifest.for_split(split, available_only=True)
         self.split = split
         self.face_processor = face_processor
         if face_processor.test_only and not allow_test_backend:
             raise ValueError("TEST/mock face backend requires explicit test-only use")
+        if remote_preprocessing and face_cache is not None:
+            raise ValueError("Remote preprocessing generates a new cache; do not supply an input cache")
+        self.remote_preprocessing = remote_preprocessing
+        self.face_cache = FaceBBoxCache.load(face_cache) if isinstance(face_cache, (str, Path)) else face_cache
+        if self.face_cache is not None:
+            self.face_cache.require_ids(r.utterance_id for r in self.records)
+            # A supplied cache always bypasses the configured detector, including MTCNN.
+            self.face_processor = CachedBBoxFaceProcessor()
+        elif not remote_preprocessing:
+            if face_processor.online_detection:
+                raise ValueError("Online MTCNN is forbidden in training; use remote_preprocessing=True to build cache")
+            if isinstance(face_processor, CachedBBoxFaceProcessor) or require_face_cache_for_training:
+                raise ValueError("Training requires a face bbox cache")
+        elif not face_processor.online_detection:
+            raise ValueError("Remote preprocessing requires the mtcnn_cpu face processor")
+        self.excluded_face_utterance_ids = tuple(
+            r.utterance_id for r in self.records
+            if self.face_cache is not None and not self.face_cache.entries[r.utterance_id].face_usable)
+        self.records = tuple(r for r in self.records if r.utterance_id not in self.excluded_face_utterance_ids)
         self.sampler = sampler or Uniform16Sampler()
         self.transform = transform or S2DTransform()
         self.decoder = decoder
@@ -80,9 +102,16 @@ class IEMOCAPS2DDataset(Dataset):
             frames, indices = self.decoder(record.video_path, self.sampler)
             if len(frames) != 16 or len(indices) != 16:
                 raise ValueError("Decoder must return exactly 16 sampled frames/indices")
+            if self.face_cache is not None:
+                clip = self.face_processor.process_cached_clip(
+                    frames, indices, self.face_cache.entries[record.utterance_id])
+            else:
+                clip = self.face_processor.process_clip(frames)
+            if self.remote_preprocessing:
+                # Iterate sequentially, not via training DataLoader. Failed clips are also retained.
+                return FaceCacheEntry.from_clip(record.utterance_id, indices, frames, clip).as_dict()
             faces = []
-            for position, frame in zip(indices, frames):
-                result = self.face_processor(frame)
+            for position, result in zip(indices, clip.frames):
                 if not result.face_valid:
                     raise ValueError(f"face_valid=False at frame {position}: {result.reason}")
                 faces.append(result.face)
@@ -92,4 +121,14 @@ class IEMOCAPS2DDataset(Dataset):
         return {"utterance_id": record.utterance_id, "video_path": str(record.video_path),
                 "benchmark_label": record.benchmark_label, "label_index": record.label_index,
                 "split": record.split, "v_available": True, "v_valid": True,
-                "frame_indices": torch.tensor(indices), "video": video}
+                "frame_indices": torch.tensor(indices), "video": video,
+                "face_usable": clip.face_usable, "valid_detection_count": clip.valid_detection_count,
+                "detection_valid": torch.tensor([r.detection_valid for r in clip.frames]),
+                "fallback_used": torch.tensor([r.fallback_used for r in clip.frames]),
+                "selected_bbox": torch.tensor([r.selected_bbox if r.selected_bbox is not None else (-1.,) * 4
+                                                for r in clip.frames], dtype=torch.float32),
+                "detection_probability": torch.tensor([
+                    r.detection_probability if r.detection_probability is not None else -1.
+                    for r in clip.frames], dtype=torch.float32),
+                "face_reason": [r.reason for r in clip.frames],
+                "preprocessing_version": PREPROCESSING_VERSION if self.face_cache is not None else "uncached"}

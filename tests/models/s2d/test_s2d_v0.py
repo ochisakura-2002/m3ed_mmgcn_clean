@@ -226,7 +226,7 @@ def test_config_is_data_free():
     summary = config_summary(config, vocab)
     assert summary["num_classes"] == 6 and not summary["data_or_weights_opened"]
     assert set(summary["REMOTE_REQUIRED_FIELDS"]) == {
-        "data_root", "manifest_path", "face.backend", "pretrained_checkpoint", "landmark_checkpoint"}
+        "data_root", "manifest_path", "face.cache_path", "pretrained_checkpoint", "landmark_checkpoint"}
     assert summary["REMOTE_GPU_SMOKE_REQUIRED"] == "YES"
 
 

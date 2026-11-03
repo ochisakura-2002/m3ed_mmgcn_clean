@@ -7,4 +7,4 @@ numpy>=1.24,<2
 Pillow>=9.1
 PyYAML>=6
 scikit-learn>=1.2
-# Detector backend dependencies remain pending remote selection.
+facenet-pytorch==2.5.3           # CPU MTCNN only; keep torch/torchvision reference route above.

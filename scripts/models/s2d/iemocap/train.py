@@ -105,7 +105,7 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     from torch.utils.data import DataLoader
 
     from datasets.iemocap.s2d_dataset import IEMOCAPS2DDataset
-    from datasets.iemocap.s2d_faces import build_face_processor
+    from datasets.iemocap.s2d_faces import FaceBBoxCache, PREPROCESSING_VERSION, build_face_processor
     from datasets.iemocap.s2d_manifest import S2DManifest
     from models.s2d.iemocap.model import build_s2d
     from utils.io import prepare_run_environment
@@ -124,10 +124,14 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     root = resolve_path(data["data_root"])
     manifest = S2DManifest(resolve_path(data["manifest_path"], root), root, vocab, data.get("columns"))
     face = build_face_processor(config["face"])
+    face_cache = FaceBBoxCache.load(resolve_path(config["face"]["cache_path"]))
+    face_cache.require_ids(r.utterance_id for r in manifest.records if r.v_available)
     generator = torch.Generator().manual_seed(config["train"]["seed"])
 
     def make_loader(split):
-        dataset = IEMOCAPS2DDataset(manifest, split, face)
+        dataset = IEMOCAPS2DDataset(
+            manifest, split, face, face_cache=face_cache,
+            require_face_cache_for_training=config["face"].get("require_cache_for_training", True))
         if not len(dataset):
             raise ValueError(f"No available V rows for {split}")
         return DataLoader(dataset, batch_size=config["train"]["batch_size"],
@@ -152,12 +156,24 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     metadata.update({"git_commit": commit, "checkpoint_selection_metric": "val_weighted_f1",
                      "upstream_s2d_commit": json.loads((PROJECT_ROOT / "third_party/S2D/UPSTREAM.json").read_text())["commit"],
                      "manifest_path": str(manifest.manifest_path), "data_root": str(root),
-                     "label_vocab": vocab.as_dict()})
+                     "label_vocab": vocab.as_dict(),
+                     "face_cache_path": str(resolve_path(config["face"]["cache_path"])),
+                     "face_preprocessing_version": PREPROCESSING_VERSION})
     write_json(metadata_path, metadata)
     write_json(run["artifacts_dir"] / "label_vocab.json", vocab.as_dict())
     write_json(run["artifacts_dir"] / "pretrained_load_report.json", model.load_reports)
     write_json(run["metrics_dir"] / "coverage.json", {
-        "counts": manifest.counts(), "metric_population": "V-available rows only; face/decode failure aborts",
+        "counts": manifest.counts(), "metric_population": "V-available and cached face_usable rows only; decode/cache mismatch aborts",
+        "face_preprocessing_version": PREPROCESSING_VERSION,
+        "face_coverage": {split: {
+            "face_usable": sum(face_cache.entries[r.utterance_id].face_usable for r in manifest.for_split(split)),
+            "face_unusable_utterance_ids": [r.utterance_id for r in manifest.for_split(split)
+                                            if not face_cache.entries[r.utterance_id].face_usable],
+            "valid_detection_count": sum(face_cache.entries[r.utterance_id].valid_detection_count
+                                         for r in manifest.for_split(split)),
+            "fallback_frame_count": sum(sum(face_cache.entries[r.utterance_id].fallback_used)
+                                        for r in manifest.for_split(split))}
+            for split in ("train", "dev", "test")},
         "v_unavailable_utterance_ids": [r.utterance_id for r in manifest.records if not r.v_available]})
     best, best_epoch = -math.inf, None
     best_path = run["checkpoints_dir"] / "best_model.pt"

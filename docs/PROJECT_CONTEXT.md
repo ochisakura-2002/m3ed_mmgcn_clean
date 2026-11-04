@@ -2,6 +2,14 @@
 
 本文档是跨 Codex 对话的长期项目记忆。新任务仍先读取 `AGENTS.md`，再读取本文档，并按任务类型补读 `docs/project_map.md` 与相关规范。
 
+## 长期 Workstream 入口
+
+任何 Codex 新任务首先声明 `WORKSTREAM = MULTIDAG`、`WORKSTREAM = S2D` 或 `WORKSTREAM = ASYMMETRIC_MERC`，随后在对应工作区执行 `python scripts/dev/check_workstream.py <multidag|s2d|asymmetric_merc>`；guard 失败时停止修改，不自动切分支、修改 remote 或 stash。
+
+- 分支、工作区和修改边界：[Git Workstream Policy](workflows/GIT_WORKSTREAM_POLICY.md)。
+- 组件复用与阶段架构：[Asymmetric MERC Architecture](workflows/ASYMMETRIC_MERC_ARCHITECTURE.md)。
+- 本地/远程工作区及共享资产：[Active Workstreams](handoffs/ACTIVE_WORKSTREAMS.md)。
+
 ## 项目目标与当前阶段
 
 当前研究任务是多模态对话情感识别（MERC），长期目标与机器人实时交互中的 causal MERC 有关。项目当前不是围绕单一 `M3ED + MMGCN` 组合开发，而是在多模型实验平台上建立作者官方复现、统一规程实现、causalization 和最终 baseline 决策的可审计链路。

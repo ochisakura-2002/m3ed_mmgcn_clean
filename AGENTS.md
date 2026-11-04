@@ -2,6 +2,14 @@
 
 本仓库是一个多模型多模态对话情感识别（MERC）实验平台，长期目标与机器人实时交互中的 causal MERC 有关。当前阶段正在建立作者官方复现、统一实验规程、causalization 和最终 baseline 决策；`MMGCN` 是经典锚点，但尚未确定为最终论文 baseline。后续 Codex 对话进入本仓库时，先按本文档建立上下文，不要默认全量扫描仓库。
 
+## 长期 Workstream 入口
+
+任何 Codex 新任务首先声明 `WORKSTREAM = MULTIDAG`、`WORKSTREAM = S2D` 或 `WORKSTREAM = ASYMMETRIC_MERC`，随后在对应工作区执行 `python scripts/dev/check_workstream.py <multidag|s2d|asymmetric_merc>`；guard 失败时停止修改，不自动切分支、修改 remote 或 stash。
+
+- 分支、工作区和修改边界：[Git Workstream Policy](docs/workflows/GIT_WORKSTREAM_POLICY.md)。
+- 组件复用与阶段架构：[Asymmetric MERC Architecture](docs/workflows/ASYMMETRIC_MERC_ARCHITECTURE.md)。
+- 本地/远程工作区及共享资产：[Active Workstreams](docs/handoffs/ACTIVE_WORKSTREAMS.md)。
+
 ## 任务开始规则
 
 1. 任何任务开始前，先读取 `docs/project_map.md`。

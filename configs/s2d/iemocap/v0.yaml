@@ -5,7 +5,7 @@ model_family: S2D
 model_variant: iemocap_v0
 system:
   device: cuda
-  output_dir: outputs
+  output_dir: outputs/s2d/iemocap/v0  # S2D root; resolver appends <date>/<run_id>.
 output:
   experiment_date: null
   experiment_group: s2d_iemocap_v0

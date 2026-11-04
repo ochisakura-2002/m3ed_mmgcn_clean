@@ -1,11 +1,24 @@
 # S2D-IEMOCAP V0 接入说明
 
-本地交付目标为 `CODE READY FOR REMOTE SMOKE`。这里只新增独立 V 分支，
-未修改已有 MultiDAG/TA/MMGCN 的模型、训练逻辑、标签或 split。
-远程已完成下述真实数据 face preprocessing 单 utterance pilot；本轮本地仅做
-synthetic/mock 检查，没有训练、安装依赖、下载数据/权重或生成真实 cache。
-2026-11-04 远程已完成两套真实 checkpoint 的容器、SHA256 和反序列化检查；
-本次 loader 修复后的真实 `build_s2d`、GPU forward/backward 与显存 smoke 仍待远程完成。
+当前阶段是正式 seed100 训练前的入口工程化；本轮只调整 runtime path、输出、
+provenance、测试与文档，不改变模型数学或训练协议。
+2026-11-04 用户已确认真实 build/checkpoint load、cached bbox V100 forward、
+single-sample backward、B=4 train step 与显存 pilot 全部 PASS。下一步是正式训练。
+本轮本地仅做 synthetic/mock 检查，不训练、不安装依赖、不下载数据/权重，
+不重做 GPU smoke 或 face preprocessing。
+
+## 正式 Workstream
+
+`WORKSTREAM = S2D`，branch 为 `feat/s2d-iemocap-v0`，origin 为
+`https://github.com/ochisakura-2002/m3ed_mmgcn_clean.git`。
+
+| 环境 | 正式 worktree |
+| --- | --- |
+| Windows | `E:\MERC\worktrees\s2d-iemocap-v0` |
+| Ubuntu | `/home/zhiyuan/research_lh/worktrees/s2d-iemocap-v0` |
+
+进入工作区先运行 `python scripts/dev/check_workstream.py s2d`；失败即停止修改。
+共享数据与权重不复制到 worktree，不纳入 Git。
 
 ## Upstream
 
@@ -102,8 +115,9 @@ CSV 必须具有 `utterance_id,video_path,benchmark_label,split,v_available`。
 - GPU MTCNN 曾发生 **segmentation fault**，因此 V0 detector 固定 **CPU**；
   **S2D 模型仍使用 GPU**（`system.device: cuda`）。
 
-以上 face detection 证据只覆盖一个真实 utterance，**不代表整个 IEMOCAP 的
-face detection 已验证**。本轮正式代码仍需在同一样本上重复远程 smoke。
+以上单 utterance 记录属于早期 pilot，不能单独证明全量 face detection 质量。
+当前用户已确认 cached bbox 真实模型/GPU 链路通过；本次不重做 preprocessing，
+正式 run 继续按既有 cache contract 检查条目并保存 coverage。
 
 ## Uniform16、FaceProcessor 与 transform
 
@@ -192,7 +206,7 @@ Dataset 输出各帧审计 tensor；缺概率/bbox 的 tensor sentinel 为 -1，
 只有 `build_face_processor(face_config, remote_preprocessing=True)` 且
 backend=mtcnn_cpu 才启用 detector；Dataset 的同名显式模式逐条返回 cache record，
 包含完全检测失败的 utterance，不能接入训练 DataLoader。远程可按下述 API 顺序
-生成 cache（先单 utterance smoke，再扩展全量；这里的全量代码仅作交接示例）：
+生成 cache（以下仅保留 API 参考，本轮不重建现有 cache）：
 
 ```python
 from datasets.iemocap.s2d_faces import FaceBBoxCache, FaceCacheEntry, build_face_processor
@@ -200,7 +214,8 @@ from datasets.iemocap.s2d_dataset import IEMOCAPS2DDataset
 from datasets.iemocap.s2d_manifest import S2DManifest
 from models.s2d.iemocap.config import load_config, resolve_path
 
-config, vocab = load_config("configs/s2d/iemocap/v0.yaml")  # 远程先填 data/cache 路径
+config, vocab = load_config("configs/s2d/iemocap/v0.yaml", overrides={
+    "data_root": "<data_root>", "manifest_path": "<manifest_path>", "face_cache": "<cache_path>"})
 root = resolve_path(config["dataset"]["data_root"])
 manifest = S2DManifest(resolve_path(config["dataset"]["manifest_path"], root), root,
                        vocab, config["dataset"]["columns"])
@@ -289,26 +304,82 @@ landmark key 剥离、FER classifier discard、`norm` → `ln_post` 的原有处
 load report 增加 `weights_only`、`sha256_verified`、`trusted_legacy_pickle`、
 `state_source`，保留 checkpoint `path` 和原有 key 明细。
 
-**修复后的真实 `build_s2d` 尚未重新验证，不能标为 PASS。**
-上述远程 PASS 仅表示用户已完成的反序列化检查，不代表真实模型构建或 GPU smoke。
-本次只调整 checkpoint loader、安全配置与测试，不改变模型结构、MCP/TMA、
+当时的反序列化检查只证明容器可读；后续用户已确认修复后的真实 build 与 GPU
+链路 PASS，最新状态见下节。loader 修复只调整安全配置与测试，不改变模型结构、MCP/TMA、
 freeze/trainable policy、classifier replacement、FaceProcessor、Dataset 或训练逻辑。
+
+### 当前远程 GPU 验证状态（用户提供，2026-11-04）
+
+```text
+REAL_BUILD_S2D_CHECKPOINT_LOAD=PASS
+REAL_CACHED_BBOX_V100_FORWARD=PASS
+REAL_V100_SINGLE_SAMPLE_BACKWARD=PASS
+BATCH4_REAL_TRAIN_STEP=PASS
+V100_MEMORY_PILOT=PASS
+```
+
+B=4 peak allocated 约 **10.08 GB**，reserved 约 **10.71 GB**。
+保留 batch_size=4 及既有 freeze/trainable policy；不以本次工程化重新设计显存或 batch。
 
 ## 训练与输出
 
-模板可配置 data_root、manifest_path、两种 checkpoint、num_frames、input_size、
-batch_size、num_workers、learning_rate、epochs、seed 和 `system.output_dir`。
-V0 对 16、224、seed=100、CrossEntropy、SDL=OFF 强制校验。
-`system.output_dir` 为 output base，公共 resolver 创建
-`<output_dir>/<YYYYMMDD>/s2d_iemocap_v0/runs/<run_id>/`，不会直接写旧结构。
-日期和 group 支持既有 CLI override；fixed run ID 碰撞由公共工具在 epoch 前拒绝。
+tracked YAML 保留实验身份、seed=100、Uniform16/224、batch_size=4、num_workers、
+learning rate、epochs、CrossEntropy、SDL=OFF、架构/冻结规则、预期 SHA256 和 face/cache
+合同。机器输入路径保持 null；不建立 Windows/Ubuntu 专属 YAML，不依赖隐藏环境变量。
+优先级为 **显式 CLI > YAML**；只覆盖提供的项，不改变其他科研配置。
+
+| CLI | 有效配置字段 | 相对路径基准 |
+| --- | --- | --- |
+| `--data-root` | `dataset.data_root` | 项目根 |
+| `--manifest-path` | `dataset.manifest_path` | data_root |
+| `--face-cache` | `face.cache_path` | 项目根 |
+| `--pretrained-checkpoint` | `model.pretrained_checkpoint` | 项目根 |
+| `--landmark-checkpoint` | `model.landmark_checkpoint` | 项目根 |
+| `--output-dir` | `system.output_dir` | 项目根 |
+
+支持原有 `--config`、`--check-config`、`--experiment-date`、`--experiment-group`，
+新增 `--run-id`。group 仅记录实验元数据，不再增加目录层级。
+默认 output root 为 `outputs/s2d/iemocap/v0`；S2D 专属 resolver 在其后追加 date/run_id，
+复用公共命名、日期/ID 校验、YAML 保存与 metadata 格式，公共 output system 不变。
+
+```text
+outputs/s2d/iemocap/v0/<YYYYMMDD>/<run_id>/
+  resolved_config.yaml
+  run_metadata.json
+  checkpoints/best_model.pt
+  logs/
+    experiment_config.yaml
+    label_vocab.json
+    pretrained_load_report.json
+    epochs.jsonl
+  predictions/test_predictions.csv
+  metrics/
+    coverage.json
+    test_final.json
+  representations/test_visual_outputs.pt  # 仅 export.representations=true 时创建
+```
+
+未指定 run_id 时使用时间、实验名和随机后缀并原子分配；固定 run_id 已存在时
+`mkdir(exist_ok=False)` 在 epoch 前失败，绝不覆盖。已 resolved 的 output.root
+若与新目标不一致也失败；本入口不提供 resume 或迁移旧 run。
+不额外创建 `runs/`、全局 launcher log 或散落的 run_configs 目录。
+
+`--check-config` 只读 YAML/vocab，应用 CLI 后打印静态摘要；不打开数据/checkpoint，
+不创建输出，即使本地没有输入资产也可 PASS。
+正式入口先检查五项输入非空，data_root 必须是 directory，其余必须是 file，
+output root 必须非空，再初始化 CUDA/模型；输入解析成实际使用的 native absolute path
+留存于 resolved config。checkpoint SHA256 与 legacy pickle 门禁继续由原 loader 执行，
+不因文件存在性检查而跳过 hash 或 strict load。
 
 仅以 dev Weighted-F1 选 best，分数相等保留最早 epoch；epoch loop 不读取 Test 视频。
 训练结束 strict 回载 best 后进行一次最终 Test，指标为 Accuracy、Weighted-F1、
 Macro-F1、UAR、每类 Precision/Recall/F1 和固定 6 类 confusion matrix，
 复用 `utils.metrics`。指标总体是 V-available 且 face_usable 子集，须结合 coverage 报告解释。
-保存 resolved config、项目/上游 commit、seed、label vocab、加载报告、epoch 日志，
-最终 `test_final.json`、按 utterance ID 的 logits/prob CSV；
+保存 CLI override 后的 resolved config（含实际路径、日期、run_id 和子目录）、
+项目 Git commit/branch、上游 S2D commit、seed、label vocab、checkpoint 路径与
+expected SHA256/verified 标记、完整 load report、manifest/data/cache 路径和 epoch 日志。
+hash verified 表示原 loader 已验证文件等于记录的 expected SHA256。
+最终保存 `test_final.json`、按 utterance ID 的 logits/prob CSV；
 `export.representations=true` 时额外保存 h_v/logits_v/prob_v tensor 文件。
 
 ## 本地检查与远程交接
@@ -330,7 +401,7 @@ utterance 状态重置、square margin/边界/224 输出、lazy import、CPU 构
 cache roundtrip/损坏拒绝/decoder 一致性、训练绕过 detector、coverage 过滤和模式门禁。
 本轮未安装任何本地依赖；远程 requirements 固定 `facenet-pytorch==2.5.3`，
 保持 torch==1.13.1 / torchvision==0.14.1 参考路线不变。
-`REMOTE_GPU_SMOKE_REQUIRED=YES`。
+`REMOTE_GPU_SMOKE_REQUIRED=NO`（用户已确认完成，非本轮重跑结果）。
 
 2026-11-02 本地检查结果：定向 pytest **25 passed**；新增适配/测试与上游源码
 合计 **37 个 Python 文件 py_compile 通过**；`--check-config` 通过且未打开数据/权重；
@@ -338,18 +409,43 @@ cache roundtrip/损坏拒绝/decoder 一致性、训练绕过 detector、coverag
 
 本轮 2026-11-03 的本地 face pipeline 检查结果见下方最终验收记录。
 
-远程下一步（在独立 S2D 工作区执行，不干预现有历史长训练）：
+下一步由用户审核并 push 后，在独立 S2D Ubuntu worktree 同步、记录 commit，
+直接使用已有 cache/权重启动正式训练，不干预其他 workstream 或历史长训练。
 
-1. 同步经用户处理的代码版本，记录 commit；在远程独立环境核对上述依赖版本。
-2. 填 data_root/manifest_path/cache_path，运行 `--check-config`；确认 7433/7423/10。
-3. 先用本次正式 MTCNNFaceProcessor 在 `Ses02F_script01_3_M001` 重做 Uniform16
-   单 utterance smoke，核对 bbox、crop、probability、flags 和 224×224 输出。
-4. pilot 通过后，对 7423 个 V-available utterance 做一次 CPU 预处理，保存完整 cache，
-   汇总 face_usable/全失败/有效帧/fallback 覆盖率并抽查背景脸跟踪；不要预先声称全量 PASS。
-5. 切回 cached_bbox，验证不触发 MTCNN；填官方两种权重并核对 load keys，运行
-   S2D GPU single-batch forward/backward 和显存 pilot；通过后才启动 V0 seed100 正式训练。
+Windows（由用户执行）：
 
-所有真实数据、权重和动态产物均不纳入 Git。此任务没有 commit/push 或远程操作。
+```powershell
+git push origin feat/s2d-iemocap-v0
+```
+
+Ubuntu：
+
+```bash
+cd /home/zhiyuan/research_lh/worktrees/s2d-iemocap-v0
+git pull --ff-only origin feat/s2d-iemocap-v0
+python scripts/dev/check_workstream.py s2d
+git rev-parse HEAD
+```
+
+正式 seed100 命令模板如下，使用已验证环境；示例日期为 20261104，实际运行时可
+替换为当天日期。同 date/run_id 重复启动会失败，另起运行时显式换 run_id。
+静态检查可在相同命令末尾追加 `--check-config`，但不会验证资产存在性或加载权重。
+
+```bash
+python -B scripts/models/s2d/iemocap/train.py \
+  --config configs/s2d/iemocap/v0.yaml \
+  --data-root /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1 \
+  --manifest-path /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1/metadata/model_input_manifest_v1.csv \
+  --face-cache /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1/metadata/s2d_face_cache_uniform16_mtcnn_cpu_v1.json \
+  --pretrained-checkpoint /home/zhiyuan/research_lh/models/S2D/pretrain-AffectNet-7.pth \
+  --landmark-checkpoint /home/zhiyuan/research_lh/models/S2D/mobilefacenet_model_best.pth.tar \
+  --output-dir outputs/s2d/iemocap/v0 \
+  --experiment-date 20261104 \
+  --run-id s2d_iemocap_v0_seed100
+```
+
+所有真实数据、权重和动态产物均不纳入 Git。本次只创建本地工程化 commit，不 push
+也不连接服务器；上面的命令留给用户审核后执行。
 
 ### 2026-11-03 本地 face pipeline 验收
 
@@ -375,4 +471,17 @@ cache roundtrip/损坏拒绝/decoder 一致性、训练绕过 detector、coverag
 - `LOCAL_CHECKPOINT_LOADER_FIX_READY=YES`。
 
 验收只使用 tiny synthetic/mock checkpoint；没有下载真实权重、训练、commit、push
-或远程操作。修复后的真实 `build_s2d` 仍待远程重新验证，未标记 PASS。
+或远程操作。这是 loader 修复阶段的本地验收；之后已获用户确认真实 build/GPU
+链路 PASS，见当前远程验证状态。
+
+### 2026-11-04 训练入口工程化本地验收
+
+- Workstream guard：**PASS**，正式 S2D worktree/branch/origin 匹配。
+- 在已有 `m3ed_mmgcn` 环境执行 `--check-config`：**PASS**，不打开数据/权重、不创建输出。
+- `python -B -m pytest tests/models/s2d -q -p no:cacheprovider`：**122 passed**；
+  原有 92 项保留通过，新增 30 项覆盖 CLI/YAML 优先级、无资产静态检查、
+  runtime 缺失/类型错误拦截、路径解析、输出布局、碰撞拒绝与 resolved config/provenance。
+- 本轮修改的 **3 个 Python 文件 py_compile PASS**；`git diff --check`：**PASS**。
+- epoch helper、worker seed、指标计算和预测导出的 AST 与任务前版本一致。
+- 只修改任务指定的 5 个文件；不修改公共 output utility、模型数学、采样/face 算法或数据资产。
+- 本轮真实训练、GPU smoke、远程操作、下载次数均为 **0**；本地独立 commit，**push=NO**。

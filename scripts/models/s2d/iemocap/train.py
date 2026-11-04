@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import random
+import secrets
 import subprocess
 import sys
 
@@ -14,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from models.s2d.iemocap.config import config_summary, load_config, resolve_path
+from models.s2d.iemocap.config import config_summary, load_config, resolve_path, validate_runtime_paths
 
 
 def write_json(path, value):
@@ -100,7 +101,87 @@ def export_predictions(batches, destination, vocab):
                                  *batch["logits_v"][i].tolist(), *batch["prob_v"][i].tolist()])
 
 
+def prepare_s2d_run_environment(config, experiment_date=None, experiment_group=None):
+    """Allocate <S2D root>/<date>/<run_id> without changing shared layouts."""
+    from utils.io import make_run_id, save_yaml
+    from utils.output_paths import configured_run_id, resolve_experiment_date, resolve_experiment_group
+    from utils.run_metadata import write_run_metadata
+
+    output_root = resolve_path(config["system"].get("output_dir"))
+    if output_root is None:
+        raise ValueError("system.output_dir must be a nonempty S2D output root")
+    frozen_date = resolve_experiment_date(experiment_date, config, env={})
+    group = resolve_experiment_group(experiment_group, config, default="s2d_iemocap_v0")
+    fixed_id = configured_run_id(config)
+    for _ in range(100):
+        run_id = fixed_id or f"{make_run_id(config['project']['experiment_name'])}_{secrets.token_hex(3)}"
+        run_dir = output_root / frozen_date / run_id
+        configured_root = config.get("output", {}).get("root") if fixed_id else None
+        if configured_root is not None and resolve_path(configured_root) != run_dir:
+            raise ValueError(f"Configured output.root does not match the S2D run root: {run_dir}")
+        try:
+            run_dir.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            if fixed_id:
+                raise
+            continue
+        break
+    else:
+        raise RuntimeError("Unable to allocate a unique S2D run directory after 100 attempts")
+    run = {"run_id": run_id, "run_dir": run_dir,
+           **{f"{name}_dir": run_dir / name
+              for name in ("checkpoints", "logs", "predictions", "metrics")}}
+    if config["export"]["representations"]:
+        run["representations_dir"] = run_dir / "representations"
+    for key, path in run.items():
+        if key.endswith("_dir"):
+            path.mkdir(exist_ok=True)
+    config["system"]["seed"] = config["train"]["seed"]
+    config["system"]["output_dir"] = str(output_root)
+    config.setdefault("output", {}).update({
+        "root": str(run_dir), "output_base": str(output_root), "output_root": str(output_root),
+        "experiment_root": str(output_root), "day_output_root": str(output_root / frozen_date),
+        "experiment_date": frozen_date, "experiment_group": group, "run_id": run_id,
+        "run_root": str(run_dir), "log_dir": str(run["logs_dir"]),
+        **{key: str(value) for key, value in run.items() if key.endswith("_dir")},
+    })
+    save_yaml(config, run_dir / "resolved_config.yaml")
+    save_yaml(config, run["logs_dir"] / "experiment_config.yaml")
+    write_run_metadata(config, run_dir / "run_metadata.json", PROJECT_ROOT)
+    return run
+
+
+def write_s2d_run_provenance(config, vocab, run, load_reports):
+    from datasets.iemocap.s2d_faces import PREPROCESSING_VERSION
+
+    metadata_path = run["run_dir"] / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT,
+                            capture_output=True, text=True, check=True).stdout.strip()
+    branch = subprocess.run(["git", "branch", "--show-current"], cwd=PROJECT_ROOT,
+                            capture_output=True, text=True, check=True).stdout.strip()
+    metadata.update({"git_commit": commit, "git_branch": branch, "run_id": run["run_id"],
+                     "checkpoint_selection_metric": "val_weighted_f1",
+                     "upstream_s2d_commit": json.loads((PROJECT_ROOT / "third_party/S2D/UPSTREAM.json").read_text())["commit"],
+                     "manifest_path": config["dataset"]["manifest_path"],
+                     "data_root": config["dataset"]["data_root"], "label_vocab": vocab.as_dict(),
+                     "checkpoints": {name: {
+                         "path": config["model"][field],
+                         "expected_sha256": config["model"].get(f"{field}_sha256"),
+                         "sha256_verified": load_reports[name]["sha256_verified"],
+                     } for name, field in (("s2d", "pretrained_checkpoint"), ("landmark", "landmark_checkpoint"))},
+                     "face_cache_path": config["face"]["cache_path"],
+                     "face_preprocessing_version": PREPROCESSING_VERSION,
+                     "predictions_dir": str(run["predictions_dir"]),
+                     "representations_dir": str(run["representations_dir"]) if "representations_dir" in run else None})
+    write_json(metadata_path, metadata)
+    write_json(run["logs_dir"] / "label_vocab.json", vocab.as_dict())
+    write_json(run["logs_dir"] / "pretrained_load_report.json", load_reports)
+
+
 def train(config, vocab, *, experiment_date=None, experiment_group=None):
+    validate_runtime_paths(config)
+
     import torch
     from torch.utils.data import DataLoader
 
@@ -108,12 +189,8 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     from datasets.iemocap.s2d_faces import FaceBBoxCache, PREPROCESSING_VERSION, build_face_processor
     from datasets.iemocap.s2d_manifest import S2DManifest
     from models.s2d.iemocap.model import build_s2d
-    from utils.io import prepare_run_environment
     from utils.seed import set_seed
 
-    missing = config_summary(config, vocab)["REMOTE_REQUIRED_FIELDS"]
-    if missing:
-        raise ValueError(f"Configure remote inputs before training: {missing}")
     if not config["model"]["enabled"]:
         raise ValueError("S2D branch disabled; use the unchanged TA baseline entrypoint")
     set_seed(config["train"]["seed"])
@@ -147,21 +224,8 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad),
                                  lr=config["train"]["learning_rate"],
                                  weight_decay=config["train"]["weight_decay"])
-    config["system"]["seed"] = config["train"]["seed"]
-    run = prepare_run_environment(config, experiment_date, experiment_group)
-    metadata_path = run["run_dir"] / "run_metadata.json"
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT,
-                            capture_output=True, text=True, check=True).stdout.strip()
-    metadata.update({"git_commit": commit, "checkpoint_selection_metric": "val_weighted_f1",
-                     "upstream_s2d_commit": json.loads((PROJECT_ROOT / "third_party/S2D/UPSTREAM.json").read_text())["commit"],
-                     "manifest_path": str(manifest.manifest_path), "data_root": str(root),
-                     "label_vocab": vocab.as_dict(),
-                     "face_cache_path": str(resolve_path(config["face"]["cache_path"])),
-                     "face_preprocessing_version": PREPROCESSING_VERSION})
-    write_json(metadata_path, metadata)
-    write_json(run["artifacts_dir"] / "label_vocab.json", vocab.as_dict())
-    write_json(run["artifacts_dir"] / "pretrained_load_report.json", model.load_reports)
+    run = prepare_s2d_run_environment(config, experiment_date, experiment_group)
+    write_s2d_run_provenance(config, vocab, run, model.load_reports)
     write_json(run["metrics_dir"] / "coverage.json", {
         "counts": manifest.counts(), "metric_population": "V-available and cached face_usable rows only; decode/cache mismatch aborts",
         "face_preprocessing_version": PREPROCESSING_VERSION,
@@ -197,25 +261,36 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
     test_report, batches = run_epoch(model, make_loader("test"), device, vocab, collect=True)
     test_report.update({"selected_epoch": best_epoch, "selected_val_weighted_f1": best})
     write_json(run["metrics_dir"] / "test_final.json", test_report)
-    export_predictions(batches, run["artifacts_dir"] / "test_predictions.csv", vocab)
+    export_predictions(batches, run["predictions_dir"] / "test_predictions.csv", vocab)
     if config["export"]["representations"]:
         torch.save({"label_vocab": vocab.as_dict(), "split": "test", "batches": batches},
-                   run["artifacts_dir"] / "test_visual_outputs.pt")
+                   run["representations_dir"] / "test_visual_outputs.pt")
     print(f"Final test and predictions saved in {run['run_dir']}")
 
 
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="configs/s2d/iemocap/v0.yaml")
     parser.add_argument("--check-config", action="store_true", help="Read YAML/vocab only; no data/weights/output")
     parser.add_argument("--experiment-date")
     parser.add_argument("--experiment-group")
-    args = parser.parse_args()
-    config, vocab = load_config(args.config)
+    parser.add_argument("--run-id", help="Fixed run ID; an existing destination is an error")
+    parser.add_argument("--data-root", help="IEMOCAP data directory; relative to project root or absolute")
+    parser.add_argument("--manifest-path", help="Manifest CSV; relative to data root or absolute")
+    parser.add_argument("--face-cache", help="Face bbox cache JSON; relative to project root or absolute")
+    parser.add_argument("--pretrained-checkpoint", help="External S2D checkpoint path")
+    parser.add_argument("--landmark-checkpoint", help="External MobileFaceNet checkpoint path")
+    parser.add_argument("--output-dir", help="S2D output root; appends <YYYYMMDD>/<run_id>/")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    config, vocab = load_config(args.config, overrides=vars(args))
     if args.check_config:
         print(json.dumps(config_summary(config, vocab), ensure_ascii=False, indent=2))
         return
-    train(config, vocab, experiment_date=args.experiment_date, experiment_group=args.experiment_group)
+    train(config, vocab)
 
 
 if __name__ == "__main__":

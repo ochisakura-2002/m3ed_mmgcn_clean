@@ -13,6 +13,14 @@ from datasets.iemocap.s2d_faces import validate_face_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+RUNTIME_PATH_FIELDS = {
+    "data_root": ("dataset", "data_root"),
+    "manifest_path": ("dataset", "manifest_path"),
+    "face_cache": ("face", "cache_path"),
+    "pretrained_checkpoint": ("model", "pretrained_checkpoint"),
+    "landmark_checkpoint": ("model", "landmark_checkpoint"),
+    "output_dir": ("system", "output_dir"),
+}
 
 
 def resolve_path(value: str | None, base: Path = PROJECT_ROOT) -> Path | None:
@@ -22,11 +30,17 @@ def resolve_path(value: str | None, base: Path = PROJECT_ROOT) -> Path | None:
     return (path if path.is_absolute() else base / path).resolve()
 
 
-def load_config(path: str | Path) -> tuple[dict, object]:
+def load_config(path: str | Path, *, overrides: dict | None = None) -> tuple[dict, object]:
     with resolve_path(str(path)).open(encoding="utf-8-sig") as stream:
         config = copy.deepcopy(yaml.safe_load(stream))
     if not isinstance(config, dict):
         raise ValueError("Expected a YAML mapping")
+    for name, (section, field) in RUNTIME_PATH_FIELDS.items():
+        if overrides is not None and overrides.get(name) is not None:
+            config[section][field] = str(overrides[name])
+    for name in ("experiment_date", "experiment_group", "run_id"):
+        if overrides is not None and overrides.get(name) is not None:
+            config.setdefault("output", {})[name] = overrides[name]
     validate_face_config(config["face"])
     model, train = config["model"], config["train"]
     for key in ("pretrained_checkpoint_sha256", "landmark_checkpoint_sha256"):
@@ -57,6 +71,23 @@ def load_config(path: str | Path) -> tuple[dict, object]:
     return config, vocab
 
 
+def validate_runtime_paths(config: dict) -> None:
+    """Fail before training, then store the native absolute paths actually used."""
+    resolved = {}
+    for name, (section, field) in RUNTIME_PATH_FIELDS.items():
+        base = resolved["data_root"] if name == "manifest_path" else PROJECT_ROOT
+        path = resolve_path(config[section].get(field), base)
+        if path is None:
+            raise ValueError(f"Required runtime path {section}.{field} is empty; set --{name.replace('_', '-')}")
+        if name == "data_root" and not path.is_dir():
+            raise FileNotFoundError(f"{section}.{field} must be an existing directory: {path}")
+        if name not in {"data_root", "output_dir"} and not path.is_file():
+            raise FileNotFoundError(f"{section}.{field} must be an existing file: {path}")
+        resolved[name] = path
+    for name, (section, field) in RUNTIME_PATH_FIELDS.items():
+        config[section][field] = str(resolved[name])
+
+
 def config_summary(config, vocab) -> dict:
     fields = {"data_root": config["dataset"].get("data_root"),
               "manifest_path": config["dataset"].get("manifest_path"),
@@ -70,4 +101,6 @@ def config_summary(config, vocab) -> dict:
             "REMOTE_REQUIRED_FIELDS": [key for key, value in fields.items() if not value],
             "FACE_TRAINING_MODE": "cached_bbox",
             "FACE_DETECTOR_DEVICE": config["face"].get("device", "cpu"),
-            "REMOTE_GPU_SMOKE_REQUIRED": "YES"}
+            "runtime_paths": {name: config[section].get(field)
+                              for name, (section, field) in RUNTIME_PATH_FIELDS.items()},
+            "REMOTE_GPU_SMOKE_REQUIRED": "NO"}  # Completed remote evidence supplied by user.

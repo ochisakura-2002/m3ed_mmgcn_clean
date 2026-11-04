@@ -4,12 +4,16 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import pickle
+from types import SimpleNamespace
+from unittest.mock import Mock
 import uuid
 
 import pytest
 import torch
 from torch import nn
 from PIL import Image
+import yaml
 
 from datasets.iemocap.label_vocab import load_label_vocab
 from datasets.iemocap.s2d_dataset import IEMOCAPS2DDataset, S2DTransform
@@ -17,7 +21,7 @@ from datasets.iemocap.s2d_faces import FaceProcessor, FaceResult, MockFullFrameB
 from datasets.iemocap.s2d_manifest import S2DManifest
 from datasets.iemocap.s2d_sampling import Uniform16Sampler
 from models.s2d.iemocap.config import config_summary, load_config
-from models.s2d.iemocap.model import S2DIEMOCAP, load_weights
+from models.s2d.iemocap.model import S2DIEMOCAP, build_s2d, load_weights
 from scripts.models.s2d.iemocap.train import classification_report, export_predictions
 
 
@@ -219,6 +223,189 @@ def test_checkpoint_modes(vocab, tmp_path):
     torch.save({"model": wrong}, path)
     with pytest.raises(ValueError, match="shape mismatches"):
         load_weights(core, path, strict=False)
+
+
+@pytest.mark.parametrize("container", [None, "model_state_dict", "model", "state_dict", "module"])
+def test_checkpoint_defaults_to_weights_only(tmp_path, monkeypatch, container):
+    module = nn.Linear(2, 2)
+    state = module.state_dict()
+    path = tmp_path / "TEST_SYNTHETIC_safe.pt"
+    torch.save(state if container is None else {container: state}, path)
+    loader = Mock(wraps=torch.load)
+    monkeypatch.setattr(torch, "load", loader)
+    report = load_weights(module, path, strict=True)
+    loader.assert_called_once()
+    assert loader.call_args.kwargs == {"map_location": "cpu", "weights_only": True}
+    assert report["weights_only"] and not report["trusted_legacy_pickle"]
+    assert not report["sha256_verified"] and report["path"] == str(path)
+    assert report["state_source"] == (container or "raw_state_dict")
+
+
+@pytest.mark.parametrize("container", [None, "model_state_dict"])
+def test_s2d_checkpoint_adaptation_preserved(tmp_path, container):
+    core = SyntheticCore(6)
+    core.ln_post = nn.LayerNorm(8)
+    state = {"module." + k.replace("ln_post.", "norm."): v.clone()
+             for k, v in core.state_dict().items()}
+    state["module.norm.weight"] = torch.full((8,), 2.)
+    state["module.head.fc_cls.weight"] = torch.zeros(7, 8)
+    state["module.head.fc_cls.bias"] = torch.zeros(7)
+    state["module.landmark.TEST_SYNTHETIC.weight"] = torch.zeros(1)
+    path = tmp_path / "TEST_SYNTHETIC_s2d_adaptation.pt"
+    torch.save(state if container is None else {container: state}, path)
+    report = load_weights(core, path, strict=False, drop_classifier=True, s2d_pretrained=True,
+                          expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    assert report["weights_only"] and report["sha256_verified"]
+    assert not report["trusted_legacy_pickle"]
+    assert report["state_source"] == (container or "raw_state_dict")
+    assert set(report["dropped_keys"]) == {
+        "landmark.TEST_SYNTHETIC.weight", "head.fc_cls.weight", "head.fc_cls.bias"}
+    assert set(report["missing_keys"]) == {"head.fc_cls.weight", "head.fc_cls.bias"}
+    assert not report["unexpected_keys"]
+    assert torch.equal(core.ln_post.weight, torch.full((8,), 2.))
+    assert core.head.fc_cls.out_features == 6
+
+
+def test_untrusted_legacy_never_falls_back(tmp_path, monkeypatch):
+    path = tmp_path / "TEST_SYNTHETIC_legacy.pth.tar"
+    path.write_bytes(b"TEST_SYNTHETIC_mock_legacy_container")
+    loader = Mock(side_effect=pickle.UnpicklingError("Weights only load failed"))
+    monkeypatch.setattr(torch, "load", loader)
+    with pytest.raises(pickle.UnpicklingError, match="Weights only load failed"):
+        load_weights(nn.Linear(2, 2), path, strict=True, trusted_legacy_pickle=False,
+                     expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    loader.assert_called_once()
+    assert loader.call_args.kwargs["weights_only"] is True
+
+
+@pytest.mark.parametrize("digest", [None, ""])
+def test_trusted_legacy_requires_hash_before_load(tmp_path, monkeypatch, digest):
+    loader = Mock()
+    monkeypatch.setattr(torch, "load", loader)
+    with pytest.raises(ValueError, match="requires a nonempty expected_sha256"):
+        load_weights(nn.Linear(2, 2), tmp_path / "TEST_SYNTHETIC_missing.pt", strict=True,
+                     trusted_legacy_pickle=True, expected_sha256=digest)
+    loader.assert_not_called()
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+def test_checkpoint_wrong_hash_blocks_load(tmp_path, monkeypatch, trusted):
+    path = tmp_path / "TEST_SYNTHETIC_wrong_hash.pt"
+    path.write_bytes(b"TEST_SYNTHETIC_mock_checkpoint")
+    loader = Mock()
+    monkeypatch.setattr(torch, "load", loader)
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        load_weights(nn.Linear(2, 2), path, strict=True, expected_sha256="0" * 64,
+                     trusted_legacy_pickle=trusted)
+    loader.assert_not_called()
+
+
+def test_trusted_legacy_hash_verified_before_full_pickle(tmp_path, monkeypatch):
+    module = nn.Linear(2, 2)
+    path = tmp_path / "TEST_SYNTHETIC_legacy.pth.tar"
+    content = b"TEST_SYNTHETIC_mock_legacy_container"
+    path.write_bytes(content)
+    state = {"module." + k: v.clone() for k, v in module.state_dict().items()}
+
+    def mock_load(stream, *, map_location, weights_only):
+        assert map_location == "cpu" and weights_only is False
+        assert stream.tell() == 0 and stream.read() == content
+        return {"epoch": 1, "state_dict": state, "acc": 0., "best_acc": 0., "optimizer": {}}
+
+    loader = Mock(side_effect=mock_load)
+    monkeypatch.setattr(torch, "load", loader)
+    report = load_weights(module, path, strict=True, trusted_legacy_pickle=True,
+                          expected_sha256=hashlib.sha256(content).hexdigest())
+    loader.assert_called_once()
+    assert not report["weights_only"] and report["sha256_verified"]
+    assert report["trusted_legacy_pickle"] and report["state_source"] == "state_dict"
+    assert report["strict"] and report["loaded_key_count"] == 2
+    assert not report["missing_keys"] and not report["unexpected_keys"]
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+def test_build_s2d_load_modes(vocab, tmp_path, monkeypatch, trusted):
+    core, mobile = SyntheticCore(6), nn.Linear(2, 2)
+    source = SimpleNamespace(s2d_base_patch16_224=lambda **kwargs: core)
+    landmark_source = SimpleNamespace(MobileFaceNet=lambda *args: mobile)
+    monkeypatch.setattr("models.s2d.iemocap.model._upstream_module",
+                        lambda name: source if name == "model_finetuning.py" else landmark_source)
+    s2d_path = tmp_path / "TEST_SYNTHETIC_s2d.pt"
+    landmark_path = tmp_path / "TEST_SYNTHETIC_mobile.pth.tar"
+    torch.save({"model_state_dict": core.state_dict()}, s2d_path)
+    torch.save({"epoch": 1, "state_dict": mobile.state_dict(), "optimizer": {}}, landmark_path)
+    loader = Mock(wraps=torch.load)
+    monkeypatch.setattr(torch, "load", loader)
+    model = build_s2d(vocab, {
+        "pretrained_checkpoint": s2d_path,
+        "pretrained_checkpoint_sha256": hashlib.sha256(s2d_path.read_bytes()).hexdigest(),
+        "landmark_checkpoint": landmark_path,
+        "landmark_checkpoint_sha256": hashlib.sha256(landmark_path.read_bytes()).hexdigest(),
+        "landmark_trusted_legacy_pickle": trusted,
+    })
+    assert [call.kwargs["weights_only"] for call in loader.call_args_list] == [True, not trusted]
+    s2d, landmark = model.load_reports["s2d"], model.load_reports["landmark"]
+    assert s2d["weights_only"] and s2d["sha256_verified"] and not s2d["trusted_legacy_pickle"]
+    assert s2d["state_source"] == "model_state_dict"
+    assert landmark["strict"] and landmark["sha256_verified"]
+    assert landmark["weights_only"] is not trusted and landmark["trusted_legacy_pickle"] is trusted
+    assert landmark["state_source"] == "state_dict"
+
+
+@pytest.mark.parametrize("mismatch,exception,match", [
+    ("missing", RuntimeError, "Missing key"),
+    ("unexpected", RuntimeError, "Unexpected key"),
+    ("shape", ValueError, "shape mismatches"),
+])
+def test_legacy_landmark_strict_mismatch_fails(tmp_path, mismatch, exception, match):
+    module = nn.Linear(2, 2)
+    state = module.state_dict()
+    if mismatch == "missing":
+        del state["bias"]
+    elif mismatch == "unexpected":
+        state["TEST_SYNTHETIC_extra"] = torch.zeros(1)
+    else:
+        state["weight"] = torch.zeros(3, 2)
+    path = tmp_path / "TEST_SYNTHETIC_bad_mobile.pth.tar"
+    torch.save({"state_dict": state}, path)
+    with pytest.raises(exception, match=match):
+        load_weights(module, path, strict=True, trusted_legacy_pickle=True,
+                     expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_s2d_rejects_legacy_full_pickle(tmp_path, monkeypatch):
+    loader = Mock()
+    monkeypatch.setattr(torch, "load", loader)
+    with pytest.raises(ValueError, match="S2D pretrained checkpoints require weights_only=True"):
+        load_weights(SyntheticCore(6), tmp_path / "TEST_SYNTHETIC_missing.pt", strict=False,
+                     s2d_pretrained=True, trusted_legacy_pickle=True, expected_sha256="0" * 64)
+    loader.assert_not_called()
+
+
+@pytest.mark.parametrize("key,value,match", [
+    ("landmark_trusted_legacy_pickle", "false", "must be a boolean"),
+    ("landmark_checkpoint_sha256", None, "requires landmark_checkpoint_sha256"),
+    ("landmark_checkpoint_sha256", "", "lowercase SHA256"),
+    ("pretrained_checkpoint_sha256", "bad", "lowercase SHA256"),
+    ("landmark_checkpoint_sha256", "g" * 64, "lowercase SHA256"),
+    ("landmark_checkpoint_sha256", 123, "lowercase SHA256"),
+    ("landmark_strict", False, "landmark_strict=True"),
+])
+def test_config_checkpoint_safety(tmp_path, key, value, match):
+    config, _ = load_config(ROOT / "configs/s2d/iemocap/v0.yaml")
+    config["model"][key] = value
+    path = tmp_path / "TEST_SYNTHETIC_config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
+        load_config(path)
+
+
+def test_build_s2d_rejects_non_strict_landmark(vocab, monkeypatch):
+    source = Mock()
+    monkeypatch.setattr("models.s2d.iemocap.model._upstream_module", source)
+    with pytest.raises(ValueError, match="landmark_strict=True"):
+        build_s2d(vocab, {"landmark_strict": False})
+    source.assert_not_called()
 
 
 def test_config_is_data_free():

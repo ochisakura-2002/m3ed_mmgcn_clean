@@ -36,9 +36,12 @@ model:
   head_dropout_ratio: 0.5
   sdl: false
   pretrained_checkpoint: null    # External official S2D weight file; no auto-download.
+  pretrained_checkpoint_sha256: "1c0924519dc7be0e6e4c0187a61664ac282d3f8ddb17483df65f6b0f02a71c48"
   pretrained_strict: false
   replace_fer_classifier: true
   landmark_checkpoint: null      # External mobilefacenet_model_best.pth.tar.
+  landmark_checkpoint_sha256: "b994af026bfddbafc507a6f1c8737a9896bab20ed2b0cfb6ae90b81736970313"
+  landmark_trusted_legacy_pickle: true  # Full-pickle load only after SHA256 matches.
   landmark_strict: true
 train:
   loss: CrossEntropy

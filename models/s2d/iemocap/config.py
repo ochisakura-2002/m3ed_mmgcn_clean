@@ -29,6 +29,18 @@ def load_config(path: str | Path) -> tuple[dict, object]:
         raise ValueError("Expected a YAML mapping")
     validate_face_config(config["face"])
     model, train = config["model"], config["train"]
+    for key in ("pretrained_checkpoint_sha256", "landmark_checkpoint_sha256"):
+        digest = model.get(key)
+        if digest is not None and (not isinstance(digest, str) or len(digest) != 64
+                                   or any(c not in "0123456789abcdef" for c in digest)):
+            raise ValueError(f"model.{key} must be a 64-character lowercase SHA256")
+    trusted_legacy = model.get("landmark_trusted_legacy_pickle", False)
+    if not isinstance(trusted_legacy, bool):
+        raise ValueError("model.landmark_trusted_legacy_pickle must be a boolean")
+    if trusted_legacy and not model.get("landmark_checkpoint_sha256"):
+        raise ValueError("model.landmark_trusted_legacy_pickle=True requires landmark_checkpoint_sha256")
+    if model.get("landmark_strict", True) is not True:
+        raise ValueError("S2D-V0 requires landmark_strict=True")
     if (model["num_frames"], model["input_size"]) != (16, 224):
         raise ValueError("S2D-V0 requires num_frames=16 and input_size=224")
     if model["sdl"] is not False or train["loss"] != "CrossEntropy" or train["seed"] != 100:

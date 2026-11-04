@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 import importlib.util
 from pathlib import Path
 import sys
@@ -35,20 +36,45 @@ def _upstream_module(relative_path: str):
 
 
 def load_weights(module: nn.Module, checkpoint_path: str | Path, *, strict: bool,
-                 drop_classifier: bool = False, s2d_pretrained: bool = False) -> dict:
-    """Load a trusted local checkpoint; never download weights.
+                 drop_classifier: bool = False, s2d_pretrained: bool = False,
+                 expected_sha256: str | None = None,
+                 trusted_legacy_pickle: bool = False) -> dict:
+    """Load local weights safely by default; never download or auto-fallback.
 
     strict=True enforces all names and shapes. Non-strict reports missing and
     unexpected keys but still rejects shape mismatches. Explicit classifier
     replacement is allowed only with strict=False. All other mismatches fail.
+    Full-pickle loading requires explicit legacy trust and a matching SHA256.
+    S2D pretrained weights always use weights_only=True.
     """
     if strict and drop_classifier:
         raise ValueError("Classifier replacement requires strict=False")
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    if not isinstance(trusted_legacy_pickle, bool):
+        raise ValueError("trusted_legacy_pickle must be a boolean")
+    if s2d_pretrained and trusted_legacy_pickle:
+        raise ValueError("S2D pretrained checkpoints require weights_only=True")
+    if trusted_legacy_pickle and not expected_sha256:
+        raise ValueError("trusted_legacy_pickle=True requires a nonempty expected_sha256")
+    weights_only = not trusted_legacy_pickle
+    sha256_verified = False
+    with Path(checkpoint_path).open("rb") as stream:
+        if expected_sha256:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+            if actual_sha256 != expected_sha256:
+                raise ValueError(f"Checkpoint SHA256 mismatch for {checkpoint_path}: "
+                                 f"expected {expected_sha256}, got {actual_sha256}")
+            sha256_verified = True
+            stream.seek(0)
+        checkpoint = torch.load(stream, map_location="cpu", weights_only=weights_only)
     state = checkpoint
+    state_source = "raw_state_dict"
     for key in ("model_state_dict", "model", "state_dict", "module"):
         if isinstance(checkpoint, dict) and isinstance(checkpoint.get(key), dict):
             state = checkpoint[key]
+            state_source = key
             break
     if not isinstance(state, dict) or not state or not all(isinstance(v, torch.Tensor) for v in state.values()):
         raise ValueError("Expected a nonempty tensor state_dict")
@@ -78,6 +104,8 @@ def load_weights(module: nn.Module, checkpoint_path: str | Path, *, strict: bool
         raise ValueError("Checkpoint has no compatible parameter names")
     result = module.load_state_dict(state, strict=strict)
     return {"path": str(checkpoint_path), "strict": strict,
+            "weights_only": weights_only, "sha256_verified": sha256_verified,
+            "trusted_legacy_pickle": trusted_legacy_pickle, "state_source": state_source,
             "missing_keys": list(result.missing_keys), "unexpected_keys": list(result.unexpected_keys),
             "dropped_keys": dropped, "loaded_key_count": len(compatible)}
 
@@ -153,6 +181,8 @@ def build_s2d(vocab: LabelVocab, config: dict) -> S2DIEMOCAP:
         raise ValueError("SDL must remain OFF for S2D-V0")
     if (config.get("num_frames", 16), config.get("input_size", 224)) != (16, 224):
         raise ValueError("S2D-V0 requires 16 frames at 224x224")
+    if config.get("landmark_strict", True) is not True:
+        raise ValueError("S2D-V0 requires landmark_strict=True")
     try:
         source = _upstream_module("model_finetuning.py")
     except ImportError as error:
@@ -169,10 +199,13 @@ def build_s2d(vocab: LabelVocab, config: dict) -> S2DIEMOCAP:
         reports["s2d"] = load_weights(core, config["pretrained_checkpoint"],
                                      strict=config.get("pretrained_strict", False),
                                      drop_classifier=config.get("replace_fer_classifier", True),
-                                     s2d_pretrained=True)
+                                     s2d_pretrained=True,
+                                     expected_sha256=config.get("pretrained_checkpoint_sha256"))
     if config.get("landmark_checkpoint"):
         reports["landmark"] = load_weights(mobile, config["landmark_checkpoint"],
-                                          strict=config.get("landmark_strict", True))
+                                          strict=True,
+                                          expected_sha256=config.get("landmark_checkpoint_sha256"),
+                                          trusted_legacy_pickle=config.get("landmark_trusted_legacy_pickle", False))
     model = S2DIEMOCAP(core, FrozenLandmark(mobile), vocab,
                       config.get("num_frames", 16), config.get("input_size", 224))
     if "s2d" in reports:

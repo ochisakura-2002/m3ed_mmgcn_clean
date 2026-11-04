@@ -4,7 +4,8 @@
 未修改已有 MultiDAG/TA/MMGCN 的模型、训练逻辑、标签或 split。
 远程已完成下述真实数据 face preprocessing 单 utterance pilot；本轮本地仅做
 synthetic/mock 检查，没有训练、安装依赖、下载数据/权重或生成真实 cache。
-真实 S2D 权重加载、GPU forward/backward 与显存 smoke 仍待远程完成。
+2026-11-04 远程已完成两套真实 checkpoint 的容器、SHA256 和反序列化检查；
+本次 loader 修复后的真实 `build_s2d`、GPU forward/backward 与显存 smoke 仍待远程完成。
 
 ## Upstream
 
@@ -21,10 +22,10 @@ synthetic/mock 检查，没有训练、安装依赖、下载数据/权重或生�
   349 MB；发布页 SHA256 为
   `1c0924519dc7be0e6e4c0187a61664ac282d3f8ddb17483df65f6b0f02a71c48`。
   官方 shell 示例使用 `Pretrain-AffectNet-7.pth`，大小写与发布文件不同，
-  Linux 上应以实际文件名配置。此次未下载该权重。
+  Linux 上应以实际文件名配置。初次本地接入未下载该权重；远程获取记录见下文。
 - landmark 文件预期为 `mobilefacenet_model_best.pth.tar`，官方 Git tree 自带；
   原始 clone 含这一约 12 MB 文件，但正式源码快照明确排除它。
-  后续在远程外部模型目录保存，通过配置路径加载。
+  现已在远程外部模型目录保存，通过配置路径加载，不纳入 Git。
 
 ## Label space
 
@@ -255,6 +256,44 @@ shape mismatch；缺失/额外/丢弃 keys 完整返回并记录。冻结的 ViT
 避免随机冻结主体。landmark 默认 strict=True。最终项目 best checkpoint strict=True 回载。
 正式入口要求两种 checkpoint 均配置；纯代码构建 API 不因没有权重而禁止使用。
 
+### 2026-11-04 真实 checkpoint 检查与最小 loader 修复
+
+以下为用户提供的远程检查结果：两套权重均已从公开来源获得，并在远程验证 SHA256。
+本轮本地不下载或使用真实大 checkpoint，也不修改 checkpoint 内容或官方 key。
+
+| checkpoint | SHA256 | 容器 / state source | 反序列化检查 |
+| --- | --- | --- | --- |
+| `pretrain-AffectNet-7.pth` | `1c0924519dc7be0e6e4c0187a61664ac282d3f8ddb17483df65f6b0f02a71c48` | dict，`model_state_dict`，597 keys | `weights_only=True` **PASS** |
+| `mobilefacenet_model_best.pth.tar` | `b994af026bfddbafc507a6f1c8737a9896bab20ed2b0cfb6ae90b81736970313` | dict，`state_dict`，333 keys | `weights_only=True` **FAIL**；`weights_only=False` **PASS** |
+
+S2D 顶层 keys 为 `['model_state_dict']`；MobileFaceNet 顶层 keys 为
+`['epoch', 'state_dict', 'acc', 'best_acc', 'optimizer']`。
+此前正式 `build_s2d` 在 landmark 的 `torch.load(weights_only=True)` 阶段触发
+`_pickle.UnpicklingError: Weights only load failed`。这项容器兼容性检查不等同于
+模型 key/shape 兼容性检查；修复后的 landmark 仍须通过 strict 加载。
+
+`load_weights` 默认 `trusted_legacy_pickle=False`，使用 `weights_only=True`，
+遇到错误直接抛出，禁止自动 fallback。仅当显式 `trusted_legacy_pickle=True`
+且提供非空 `expected_sha256` 时，才计算实际文件 SHA256 并要求完全一致；缺失或
+不匹配均在 `torch.load` 之前报错。一致后才允许 `weights_only=False`。
+哈希验证与加载使用同一文件句柄，验证后 rewind 再反序列化。
+安全模式配置了 expected hash 时也执行相同校验。
+
+正式 YAML 的 `model.pretrained_checkpoint_sha256` 与
+`model.landmark_checkpoint_sha256` 固定为上表摘要，路径仍由远程配置。
+S2D 主权重始终 `weights_only=True`，保留 `model_state_dict`、`module.`、
+landmark key 剥离、FER classifier discard、`norm` → `ln_post` 的原有处理。
+只有 MobileFaceNet 配置 `model.landmark_trusted_legacy_pickle: true` 且 hash 匹配
+时开放 full-pickle load，提取 `state_dict` 并强制 `strict=True`；
+`landmark_strict=False` 被拒绝，不静默忽略 missing/unexpected/shape mismatch。
+load report 增加 `weights_only`、`sha256_verified`、`trusted_legacy_pickle`、
+`state_source`，保留 checkpoint `path` 和原有 key 明细。
+
+**修复后的真实 `build_s2d` 尚未重新验证，不能标为 PASS。**
+上述远程 PASS 仅表示用户已完成的反序列化检查，不代表真实模型构建或 GPU smoke。
+本次只调整 checkpoint loader、安全配置与测试，不改变模型结构、MCP/TMA、
+freeze/trainable policy、classifier replacement、FaceProcessor、Dataset 或训练逻辑。
+
 ## 训练与输出
 
 模板可配置 data_root、manifest_path、两种 checkpoint、num_frames、input_size、
@@ -324,3 +363,16 @@ cache roundtrip/损坏拒绝/decoder 一致性、训练绕过 detector、coverag
 
 这些本地结果不代表真实 S2D GPU smoke 或全量 IEMOCAP face detection 已完成；
 未改 MultiDAG、TA backbone、MMGCN、S2D 核心 MCP/TMA、既有权重或数据。
+
+### 2026-11-04 本地 checkpoint loader 验收
+
+- `tests/models/s2d` 定向 pytest：**92 passed**，原有 **65 项全部 PASS**，新增 **27 项**。
+  新增覆盖默认安全模式、各 state_dict 容器、S2D key 适配、禁止 fallback、
+  缺失/错误 hash 拦截、hash 正确后 legacy 加载、build 调用模式、strict mismatch 与配置门禁。
+- `py_compile`：本轮修改的 **3 个 Python 文件 PASS**。
+- `--check-config`：**PASS**，`CONFIG_VALID_ONLY`，未打开数据/权重。
+- `git diff --check`：**PASS**。
+- `LOCAL_CHECKPOINT_LOADER_FIX_READY=YES`。
+
+验收只使用 tiny synthetic/mock checkpoint；没有下载真实权重、训练、commit、push
+或远程操作。修复后的真实 `build_s2d` 仍待远程重新验证，未标记 PASS。

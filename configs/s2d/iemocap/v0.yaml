@@ -50,7 +50,14 @@ train:
   num_workers: 4
   learning_rate: 0.00001
   weight_decay: 0.05
-  epochs: 100
+  epochs: 30                    # Safety cap; Dev Weighted-F1 may stop training earlier.
+early_stopping:
+  enabled: true
+  min_epochs: 10
+  patience: 8
+  metric: weighted_f1
+  split: dev
+  mode: max
 logging:
   monitor_metric: val_weighted_f1
 test:

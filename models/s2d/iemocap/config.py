@@ -67,6 +67,18 @@ def load_config(path: str | Path, *, overrides: dict | None = None) -> tuple[dic
         raise ValueError("The only V0 training target is benchmark_label")
     if train["epochs"] < 1 or train["batch_size"] < 1 or train["num_workers"] < 0 or train["learning_rate"] <= 0:
         raise ValueError("Invalid training sizes/learning rate")
+    if type(train["epochs"]) is not int:
+        raise ValueError("train.epochs must be a positive integer")
+    early = config.get("early_stopping")
+    if not isinstance(early, dict) or type(early.get("enabled")) is not bool:
+        raise ValueError("early_stopping.enabled must be a boolean")
+    for key in ("min_epochs", "patience"):
+        if type(early.get(key)) is not int or early[key] < 1:
+            raise ValueError(f"early_stopping.{key} must be a positive integer")
+    if early["enabled"] and early["min_epochs"] > train["epochs"]:
+        raise ValueError("early_stopping.min_epochs must not exceed train.epochs")
+    if (early.get("metric"), early.get("split"), early.get("mode")) != ("weighted_f1", "dev", "max"):
+        raise ValueError("S2D-V0 early stopping requires metric=weighted_f1, split=dev, mode=max")
     vocab = load_label_vocab(resolve_path(config["dataset"]["label_vocab_path"]))
     return config, vocab
 
@@ -96,6 +108,8 @@ def config_summary(config, vocab) -> dict:
               "pretrained_checkpoint": config["model"].get("pretrained_checkpoint"),
               "landmark_checkpoint": config["model"].get("landmark_checkpoint")}
     return {"status": "CONFIG_VALID_ONLY", "data_or_weights_opened": False,
+            "training": {key: config["train"][key] for key in ("learning_rate", "weight_decay", "epochs")},
+            "early_stopping": dict(config["early_stopping"]),
             "num_classes": vocab.num_classes, "label_vocab": vocab.as_dict(),
             "TA_LABEL_INDEX_MAPPING_UNVERIFIED": "NO" if vocab.ta_mapping_verified else "YES",
             "REMOTE_REQUIRED_FIELDS": [key for key, value in fields.items() if not value],

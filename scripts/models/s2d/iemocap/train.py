@@ -1,6 +1,9 @@
 """Remote S2D-V0 training; --check-config is local, read-only, and data-free."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from dataclasses import dataclass
 import argparse
 import csv
 import json
@@ -16,6 +19,32 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.s2d.iemocap.config import config_summary, load_config, resolve_path, validate_runtime_paths
+
+
+@dataclass
+class EarlyStopping:
+    """Dev Weighted-F1 only; count every non-improving epoch, including warmup."""
+
+    enabled: bool
+    min_epochs: int
+    patience: int
+    best_epoch: int | None = None
+    best_val_weighted_f1: float = -math.inf
+    epochs_without_improvement: int = 0
+
+    def update(self, epoch, score):
+        if not math.isfinite(score):
+            raise FloatingPointError("Non-finite Dev Weighted-F1")
+        if score > self.best_val_weighted_f1:
+            self.best_epoch, self.best_val_weighted_f1 = epoch, score
+            self.epochs_without_improvement = 0
+            return True
+        self.epochs_without_improvement += 1
+        return False
+
+    def should_stop(self, epoch):
+        return (self.enabled and epoch >= self.min_epochs
+                and self.epochs_without_improvement >= self.patience)
 
 
 def write_json(path, value):
@@ -161,6 +190,9 @@ def write_s2d_run_provenance(config, vocab, run, load_reports):
     branch = subprocess.run(["git", "branch", "--show-current"], cwd=PROJECT_ROOT,
                             capture_output=True, text=True, check=True).stdout.strip()
     metadata.update({"git_commit": commit, "git_branch": branch, "run_id": run["run_id"],
+                     "training_completed": False, "test_evaluation_count": 0,
+                     "test_split_used_for_selection": False,
+                     "early_stopping": dict(config["early_stopping"]),
                      "checkpoint_selection_metric": "val_weighted_f1",
                      "upstream_s2d_commit": json.loads((PROJECT_ROOT / "third_party/S2D/UPSTREAM.json").read_text())["commit"],
                      "manifest_path": config["dataset"]["manifest_path"],
@@ -239,32 +271,52 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
                                         for r in manifest.for_split(split))}
             for split in ("train", "dev", "test")},
         "v_unavailable_utterance_ids": [r.utterance_id for r in manifest.records if not r.v_available]})
-    best, best_epoch = -math.inf, None
+    early = config["early_stopping"]
+    selection = EarlyStopping(early["enabled"], early["min_epochs"], early["patience"])
+    stop_reason = "max_epochs"
     best_path = run["checkpoints_dir"] / "best_model.pt"
     for epoch in range(1, config["train"]["epochs"] + 1):
         training, _ = run_epoch(model, train_loader, device, vocab, optimizer)
         validation, _ = run_epoch(model, dev_loader, device, vocab)
         score = validation["weighted_f1"]
-        if score > best:  # Deterministic earliest epoch wins ties; test never consulted.
-            best, best_epoch = score, epoch
+        if selection.update(epoch, score):  # Strict improvement; earliest epoch wins ties.
             torch.save({"model": model.state_dict(), "epoch": epoch,
-                        "val_weighted_f1": best, "label_vocab": vocab.as_dict(),
+                        "val_weighted_f1": selection.best_val_weighted_f1, "label_vocab": vocab.as_dict(),
                         "config": config}, best_path)
         record = {"epoch": epoch, "train": training, "dev": validation,
-                  "best_epoch": best_epoch, "best_val_weighted_f1": best}
+                  "best_epoch": selection.best_epoch,
+                  "best_val_weighted_f1": selection.best_val_weighted_f1,
+                  "epochs_without_improvement": selection.epochs_without_improvement}
         with (run["logs_dir"] / "epochs.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, allow_nan=False) + "\n")
-        print(f"epoch={epoch} dev_weighted_f1={score:.6f} best_epoch={best_epoch}", flush=True)
+        print(f"epoch={epoch} dev_weighted_f1={score:.6f} best_epoch={selection.best_epoch}", flush=True)
+        if selection.should_stop(epoch):
+            stop_reason = "early_stopping"
+            break
+    stopped_epoch = epoch
     checkpoint = torch.load(best_path, map_location="cpu", weights_only=True)
     model.load_state_dict(checkpoint["model"], strict=True)
     # Test loader and frames are accessed only after validation selection is finished.
+    test_evaluation_count = 0
     test_report, batches = run_epoch(model, make_loader("test"), device, vocab, collect=True)
-    test_report.update({"selected_epoch": best_epoch, "selected_val_weighted_f1": best})
+    test_evaluation_count += 1
+    test_report.update({"selected_epoch": selection.best_epoch,
+                        "selected_val_weighted_f1": selection.best_val_weighted_f1})
     write_json(run["metrics_dir"] / "test_final.json", test_report)
     export_predictions(batches, run["predictions_dir"] / "test_predictions.csv", vocab)
     if config["export"]["representations"]:
         torch.save({"label_vocab": vocab.as_dict(), "split": "test", "batches": batches},
                    run["representations_dir"] / "test_visual_outputs.pt")
+    metadata_path = run["run_dir"] / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata.update({"training_completed": True, "stop_reason": stop_reason,
+                     "stopped_epoch": stopped_epoch, "best_epoch": selection.best_epoch,
+                     "best_val_weighted_f1": selection.best_val_weighted_f1,
+                     "min_epochs": selection.min_epochs, "patience": selection.patience,
+                     "epochs_without_improvement_at_stop": selection.epochs_without_improvement,
+                     "test_evaluation_count": test_evaluation_count,
+                     "test_split_used_for_selection": False})
+    write_json(metadata_path, metadata)
     print(f"Final test and predictions saved in {run['run_dir']}")
 
 

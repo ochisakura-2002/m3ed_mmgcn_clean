@@ -1,9 +1,12 @@
 # S2D-IEMOCAP V0 接入说明
 
-当前阶段是正式 seed100 训练前的入口工程化；本轮只调整 runtime path、输出、
-provenance、测试与文档，不改变模型数学或训练协议。
+当前阶段是正式 seed100 训练前的 early-stopping 协议冻结；原入口工程化已完成
+runtime path、输出和 provenance。本轮只改训练停止控制与元数据，不改变模型数学。
 2026-11-04 用户已确认真实 build/checkpoint load、cached bbox V100 forward、
-single-sample backward、B=4 train step 与显存 pilot 全部 PASS。下一步是正式训练。
+single-sample backward、B=4 train step 与显存 pilot 全部 PASS。
+用户提供的 seed100 训练 pilot 完成 epoch 1–10，Dev Weighted-F1 最佳为
+epoch 7 / 0.34355913724532466，之后 train 改善而 dev 停滞/恶化；从未运行 Test。
+20261104 pilot 输出保留，正式训练使用新的 date/run_id，从预训练权重重新开始。
 本轮本地仅做 synthetic/mock 检查，不训练、不安装依赖、不下载数据/权重，
 不重做 GPU smoke 或 face preprocessing。
 
@@ -82,6 +85,7 @@ single-sample backward、B=4 train step 与显存 pilot 全部 PASS。下一步�
 | 远程模板 | `configs/s2d/iemocap/v0.yaml` |
 | 远程最小依赖清单 | `models/s2d/iemocap/requirements-remote.txt` |
 | 合成测试 | `tests/models/s2d/test_s2d_v0.py` |
+| Early-stopping 状态与流程测试 | `tests/models/s2d/test_s2d_early_stopping.py` |
 
 ## Manifest contract
 
@@ -324,7 +328,7 @@ B=4 peak allocated 约 **10.08 GB**，reserved 约 **10.71 GB**。
 ## 训练与输出
 
 tracked YAML 保留实验身份、seed=100、Uniform16/224、batch_size=4、num_workers、
-learning rate、epochs、CrossEntropy、SDL=OFF、架构/冻结规则、预期 SHA256 和 face/cache
+learning rate、CrossEntropy、SDL=OFF、架构/冻结规则、预期 SHA256 和 face/cache
 合同。机器输入路径保持 null；不建立 Windows/Ubuntu 专属 YAML，不依赖隐藏环境变量。
 优先级为 **显式 CLI > YAML**；只覆盖提供的项，不改变其他科研配置。
 
@@ -371,9 +375,37 @@ output root 必须非空，再初始化 CUDA/模型；输入解析成实际使�
 留存于 resolved config。checkpoint SHA256 与 legacy pickle 门禁继续由原 loader 执行，
 不因文件存在性检查而跳过 hash 或 strict load。
 
-仅以 dev Weighted-F1 选 best，分数相等保留最早 epoch；epoch loop 不读取 Test 视频。
-训练结束 strict 回载 best 后进行一次最终 Test，指标为 Accuracy、Weighted-F1、
-Macro-F1、UAR、每类 Precision/Recall/F1 和固定 6 类 confusion matrix，
+正式配置沿用已有 `train` 字段，预先冻结为：
+
+```yaml
+train:
+  learning_rate: 1.0e-5
+  weight_decay: 0.05
+  epochs: 30
+early_stopping:
+  enabled: true
+  min_epochs: 10
+  patience: 8
+  metric: weighted_f1
+  split: dev
+  mode: max
+```
+
+不增加 scheduler。每个 epoch 完整 Train 后完整 Dev，保存 Accuracy、Weighted-F1、
+Macro-F1、UAR、每类 Precision/Recall/F1/support、confusion matrix 和 loss。
+唯一选模和停止指标是 Dev Weighted-F1；初始 best 为负无穷、未改善计数为 0。
+严格提升时更新 best_epoch/best_val_weighted_f1，覆盖 `best_model.pt` 并清零计数；
+相等或下降只把计数加 1，保留更早 checkpoint。计数从 epoch 1 开始，不在
+min_epochs 边界重置；epoch < 10 禁止停止，epoch >= 10 且计数 >= 8 时停止。
+例如 best 停在 epoch 7、之后连续 8 轮未改善，会在 epoch 15 完成 Dev 后停止。
+30 是安全上限；若第 30 轮恰好满足停止条件，stop_reason 记为 early_stopping，
+否则记为 max_epochs。`enabled: false` 保留按上限训练、仍仅用 Dev 选 best 的路径。
+
+epoch loop 不构造 Test loader、不读取 Test 视频或计算 Test 指标。停止或达到上限后，
+使用 `weights_only=True` 加载 `best_model.pt` 并 `load_state_dict(..., strict=True)`；
+reload 失败则中止，不执行 Test。成功后仅进行一次最终 Test，不据此重选 epoch、
+checkpoint 或超参数。Test 指标为 Accuracy、Weighted-F1、
+Macro-F1、UAR、每类 Precision/Recall/F1/support、固定 6 类 confusion matrix 和 loss，
 复用 `utils.metrics`。指标总体是 V-available 且 face_usable 子集，须结合 coverage 报告解释。
 保存 CLI override 后的 resolved config（含实际路径、日期、run_id 和子目录）、
 项目 Git commit/branch、上游 S2D commit、seed、label vocab、checkpoint 路径与
@@ -381,6 +413,24 @@ expected SHA256/verified 标记、完整 load report、manifest/data/cache 路�
 hash verified 表示原 loader 已验证文件等于记录的 expected SHA256。
 最终保存 `test_final.json`、按 utterance ID 的 logits/prob CSV；
 `export.representations=true` 时额外保存 h_v/logits_v/prob_v tensor 文件。
+
+`logs/epochs.jsonl` 继续保存完整 Train/Dev report，并补充每轮
+`epochs_without_improvement`。`run_metadata.json` 在启动时记录
+`training_completed=false`、`test_evaluation_count=0` 和 early_stopping 配置；
+strict reload、最终 Test 与导出全部成功后补充/更新以下字段，目录结构不变：
+
+```text
+training_completed: true
+stop_reason: early_stopping | max_epochs
+stopped_epoch
+best_epoch
+best_val_weighted_f1
+min_epochs
+patience
+epochs_without_improvement_at_stop
+test_evaluation_count: 1
+test_split_used_for_selection: false
+```
 
 ## 本地检查与远程交接
 
@@ -427,21 +477,23 @@ python scripts/dev/check_workstream.py s2d
 git rev-parse HEAD
 ```
 
-正式 seed100 命令模板如下，使用已验证环境；示例日期为 20261104，实际运行时可
-替换为当天日期。同 date/run_id 重复启动会失败，另起运行时显式换 run_id。
+正式 seed100 命令模板如下，使用已验证环境；先将 `IEMOCAP_ROOT` 和
+`S2D_WEIGHTS_ROOT` 设为已有共享数据和权重目录。示例日期为 20261105，实际运行时
+替换为当天日期；使用新的 `s2d_iemocap_v0_seed100_es30` run_id，保留 20261104 pilot。
+同 date/run_id 重复启动会失败，另起运行时显式换 run_id。
 静态检查可在相同命令末尾追加 `--check-config`，但不会验证资产存在性或加载权重。
 
 ```bash
 python -B scripts/models/s2d/iemocap/train.py \
   --config configs/s2d/iemocap/v0.yaml \
-  --data-root /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1 \
-  --manifest-path /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1/metadata/model_input_manifest_v1.csv \
-  --face-cache /home/zhiyuan/research_lh/data/IEMOCAP/asymmetric_merc_v1/metadata/s2d_face_cache_uniform16_mtcnn_cpu_v1.json \
-  --pretrained-checkpoint /home/zhiyuan/research_lh/models/S2D/pretrain-AffectNet-7.pth \
-  --landmark-checkpoint /home/zhiyuan/research_lh/models/S2D/mobilefacenet_model_best.pth.tar \
+  --data-root "$IEMOCAP_ROOT" \
+  --manifest-path metadata/model_input_manifest_v1.csv \
+  --face-cache "$IEMOCAP_ROOT/metadata/s2d_face_cache_uniform16_mtcnn_cpu_v1.json" \
+  --pretrained-checkpoint "$S2D_WEIGHTS_ROOT/pretrain-AffectNet-7.pth" \
+  --landmark-checkpoint "$S2D_WEIGHTS_ROOT/mobilefacenet_model_best.pth.tar" \
   --output-dir outputs/s2d/iemocap/v0 \
-  --experiment-date 20261104 \
-  --run-id s2d_iemocap_v0_seed100
+  --experiment-date 20261105 \
+  --run-id s2d_iemocap_v0_seed100_es30
 ```
 
 所有真实数据、权重和动态产物均不纳入 Git。本次只创建本地工程化 commit，不 push
@@ -485,3 +537,22 @@ python -B scripts/models/s2d/iemocap/train.py \
 - epoch helper、worker seed、指标计算和预测导出的 AST 与任务前版本一致。
 - 只修改任务指定的 5 个文件；不修改公共 output utility、模型数学、采样/face 算法或数据资产。
 - 本轮真实训练、GPU smoke、远程操作、下载次数均为 **0**；本地独立 commit，**push=NO**。
+
+### 2026-11-05 Early-stopping 协议本地验收
+
+- `python -B -m pytest tests/models/s2d -q -p no:cacheprovider`：**158 passed**；
+  原有 **122 项**全部保留通过，新增 **36 项** synthetic/mock 测试。
+- 新增覆盖严格提升清零、未改善累加、相等保留更早 best、min_epochs 门禁、
+  patience 边界、30 轮上限、上限同轮触发 early stop、关闭停止开关、
+  Train/Dev 顺序与完整指标日志、循环内无 Test、最终 Test 恰好一次、
+  best checkpoint strict reload/失败中止、完成元数据、CSV 与 representation 导出开关。
+- 配置门禁拒绝非 Dev/非 Weighted-F1/非 max 和非法 epoch/patience 类型或范围。
+  静态检查测试只允许打开配置与 vocab，禁止 mkdir、权重加载和 train 调用。
+- 实际 `--check-config`：**PASS / CONFIG_VALID_ONLY**，显示冻结参数，
+  `data_or_weights_opened=false`，未创建正式输出。
+- 本轮 **3 个 Python 文件 py_compile PASS**；`git diff --check`：**PASS**。
+- worker seed、指标、run_epoch、预测导出和输出分配函数 AST 与任务前一致；
+  YAML 语义仅 epochs=30 与新增 early_stopping。模型/冻结、Uniform16、face/cache、
+  label mapping、CrossEntropy、SDL=OFF 和无 scheduler 均保留。
+- 真实训练、Test 资产评估、GPU smoke、远程访问、push 均为 **0**；
+  不读取或修改 20261104 pilot 输出。**PUSH=NO**。

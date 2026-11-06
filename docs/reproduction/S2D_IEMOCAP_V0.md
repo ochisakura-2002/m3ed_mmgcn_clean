@@ -1,7 +1,10 @@
 # S2D-IEMOCAP V0 接入说明
 
-当前阶段是正式 seed100 训练前的 early-stopping 协议冻结；原入口工程化已完成
-runtime path、输出和 provenance。本轮只改训练停止控制与元数据，不改变模型数学。
+当前阶段是正式 seed100 Train/Dev 完成后的 checkpoint/finalization 修复；
+2026-11-06 用户提供：epoch 15 early stop，best epoch 7，Dev Weighted-F1 为
+0.34355913724532466，Test 从未执行。旧混合 checkpoint 的受限 reload 失败，
+已在 Ubuntu 显式导出并验证纯权重副本，无需重训。独立 finalizer 的使用见文末。
+以下记录保留此前入口工程化、early-stopping 协议冻结与 GPU 验证的历史上下文。
 2026-11-04 用户已确认真实 build/checkpoint load、cached bbox V100 forward、
 single-sample backward、B=4 train step 与显存 pilot 全部 PASS。
 用户提供的 seed100 训练 pilot 完成 epoch 1–10，Dev Weighted-F1 最佳为
@@ -82,10 +85,13 @@ epoch 7 / 0.34355913724532466，之后 train 改善而 dev 停滞/恶化；从�
 | 官方核心 wrapper | `models/s2d/iemocap/model.py` |
 | config reader | `models/s2d/iemocap/config.py` |
 | 训练及最终导出 | `scripts/models/s2d/iemocap/train.py` |
+| 纯权重保存/严格 reload | `scripts/models/s2d/iemocap/checkpoints.py` |
+| 已有 run 独立收尾 | `scripts/models/s2d/iemocap/finalize_run.py` |
 | 远程模板 | `configs/s2d/iemocap/v0.yaml` |
 | 远程最小依赖清单 | `models/s2d/iemocap/requirements-remote.txt` |
 | 合成测试 | `tests/models/s2d/test_s2d_v0.py` |
 | Early-stopping 状态与流程测试 | `tests/models/s2d/test_s2d_early_stopping.py` |
+| 真实格式 round-trip / historical finalization 测试 | `tests/models/s2d/test_s2d_finalization.py` |
 
 ## Manifest contract
 
@@ -556,3 +562,80 @@ python -B scripts/models/s2d/iemocap/train.py \
   label mapping、CrossEntropy、SDL=OFF 和无 scheduler 均保留。
 - 真实训练、Test 资产评估、GPU smoke、远程访问、push 均为 **0**；
   不读取或修改 20261104 pilot 输出。**PUSH=NO**。
+
+### 2026-11-06 Checkpoint 合同与 existing-run finalizer
+
+后续新训练的 `checkpoints/best_model.pt` 只保存 `model.state_dict()`，
+即字符串 key 到 Tensor 的 OrderedDict；不混入 epoch、score、config、vocab、
+optimizer 或 scheduler。best/stopped/patience 等状态继续保存在
+`logs/epochs.jsonl` 和 `run_metadata.json`，配置和 vocab 保留原文件。
+生产保存与加载共用 `checkpoints.py`，加载固定为
+`torch.load(..., map_location="cpu", weights_only=True)` 与
+`model.load_state_dict(..., strict=True)`，不接受混合容器、不忽略 key/shape 错误，
+不提供 run checkpoint 的 full-pickle fallback。
+
+旧保存允许 pickle 序列化整个混合容器，而受限 unpickler 只能读取其支持的指令和
+对象。用户提供的 `Unsupported operand 71` 中，71 是 pickle 的 BINFLOAT 指令，
+属于该环境受限加载器不支持的浮点 metadata 序列化内容；这不表示 Tensor 损坏。
+新 PyTorch 即使能够安全读取某些混合容器，也仍不满足上述纯权重合同。
+外部 MobileFaceNet 的既有显式信任/hash 门禁保持原样，不能用于绕过 run checkpoint 合同。
+
+`finalize_run.py` 不调用训练 loop、不分配新 run，只读取指定 run 的 resolved config。
+必需参数为 `--run-dir`；`--checkpoint` 显式指定纯权重，否则只使用
+`<run-dir>/checkpoints/best_model.pt`，不会自动寻找或覆盖旁边的历史文件。
+显式 checkpoint 相对路径以项目根目录为基准。可选路径参数与训练入口一致：
+`--data-root`、`--manifest-path`、`--face-cache`、`--pretrained-checkpoint`、
+`--landmark-checkpoint`；继续调用现有 `load_config/validate_runtime_paths`。
+它们仅用于资产路径重定位，不修改 resolved config 或训练科学参数。
+
+执行顺序为：
+
+1. 只读检查 run、metadata、epoch 日志、resolved config、vocab、coverage 和选定 checkpoint。
+   要求 `test_evaluation_count` 为整数 0、`test_split_used_for_selection=false`、
+   `training_completed=false`；既有最终输出或尝试标记均拒绝继续。
+2. 重放每个 epoch 的 Dev Weighted-F1 与原 EarlyStopping 状态机，逐轮核对
+   best epoch/score/未改善计数，要求日志恰好结束于首次 early stop 或 max_epochs。
+   与 metadata 已有结果字段、seed、vocab、路径、checkpoint hash 配置和预处理版本一致。
+   当前历史日志应恢复 epoch 15 / best 7 / 0.34355913724532466 / 未改善 8 轮；
+   无需也不允许 CLI 手填这些结果。
+3. 使用原 manifest/cache API 核对 universe、V availability、缺 V 的 ID、
+   face_usable、face_unusable ID、检测与 fallback 计数，不读取视频。
+4. 依原配置构建模型，再对选定 checkpoint 做纯权重安全加载与 strict reload。
+   上述任一步失败均不构造 Test dataset/loader，不执行 Test。
+5. 再次检查 Test 状态，独占创建并 flush/fsync
+   `logs/finalization_attempt.json`，然后才构造 Test loader，调用原指标/预测导出实现。
+   正常训练入口也共用此 Test 预留门禁。并发、Test 异常、导出失败或进程中断均保留
+   标记，后续自动重跑被拒绝；没有自动删除、重置或覆盖开关。
+6. 保存原命名 `metrics/test_final.json` 和 `predictions/test_predictions.csv`；
+   仅在原配置 `export.representations=true` 时保存
+   `representations/test_visual_outputs.pt`。所有必需导出成功后，使用同目录临时文件、
+   flush/fsync 与 `os.replace` 原子更新 metadata。
+
+完成 metadata 包括原 best/stopped/stop_reason/min_epochs/patience/未改善计数，
+`training_completed=true`、`test_evaluation_count=1`、
+`test_split_used_for_selection=false`，以及 `finalization_mode=existing_run`、
+实际 checkpoint path/SHA256 和实际 runtime input paths。
+Test 或导出失败时 metadata 保持未完成；尝试标记作为独立的拒绝重跑证据保留。
+
+当前历史 run `20261105/s2d_iemocap_v0_seed100_es30` 无需重训。
+以下模板仅供未来在已验证的 Ubuntu S2D worktree/环境中执行，本地验收未执行：
+
+```bash
+python scripts/dev/check_workstream.py s2d && \
+S2D_RUN_DIR="outputs/s2d/iemocap/v0/20261105/s2d_iemocap_v0_seed100_es30" && \
+python -B scripts/models/s2d/iemocap/finalize_run.py \
+  --run-dir "$S2D_RUN_DIR" \
+  --checkpoint "$S2D_RUN_DIR/checkpoints/best_model_weights_only.pt"
+```
+
+使用现有 resolved config 的数据、manifest、cache、两套预训练权重和 export 配置；
+如果资产移动，只显式补充上述路径参数。原始 `best_model.pt` 保留不动。
+用户提供的原文件 SHA256 为
+`be57f328b409e937e630808efcd5da751783ebef97660afe2d6bbb8a893cd86c`，
+纯权重副本 SHA256 为
+`e54ccb228002578fa2c9a0faa8bdacbd61774e8952fcf06a306afa7b8518639b`；
+本轮不访问远程 run，不重新核验真实资产。
+
+本地验收：`tests/models/s2d` **211 passed**（原有 158 项，新增 53 项），
+仅 tiny Tensor checkpoint 和 synthetic 临时 run，不代表真实 Test 已执行。
+未修改模型、label/split、Uniform16、face/V-valid 合同、训练超参数或停止规则。

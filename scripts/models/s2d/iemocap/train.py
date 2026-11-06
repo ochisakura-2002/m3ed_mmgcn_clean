@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
 import secrets
 import subprocess
@@ -19,6 +20,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.s2d.iemocap.config import config_summary, load_config, resolve_path, validate_runtime_paths
+from scripts.models.s2d.iemocap.checkpoints import reload_model_weights, save_model_weights
+
+
+FINAL_TEST_ATTEMPT_FILE = "logs/finalization_attempt.json"
+FINAL_TEST_OUTPUTS = ("metrics/test_final.json", "predictions/test_predictions.csv",
+                      "representations/test_visual_outputs.pt")
 
 
 @dataclass
@@ -50,6 +57,24 @@ class EarlyStopping:
 def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
                           encoding="utf-8")
+
+
+def reserve_test_evaluation(run_dir, evidence):
+    """Fail closed across concurrent finalizers, interrupted Test, and export failure."""
+    run_dir = Path(run_dir)
+    metadata = json.loads((run_dir / "run_metadata.json").read_text(encoding="utf-8"))
+    if (type(metadata.get("test_evaluation_count")) is not int or metadata["test_evaluation_count"] != 0
+            or metadata.get("training_completed") is not False
+            or metadata.get("test_split_used_for_selection") is not False):
+        raise ValueError("Test-once gate: invalid or already completed evaluation state")
+    for name in FINAL_TEST_OUTPUTS:
+        if (run_dir / name).exists():
+            raise FileExistsError(f"Refusing to overwrite {name}")
+    # Retain this exclusive, durable marker on both success and failure. Never auto-reset it.
+    with (run_dir / FINAL_TEST_ATTEMPT_FILE).open("x", encoding="utf-8") as stream:
+        json.dump({**evidence, "test_evaluation_reserved": True}, stream, indent=2, allow_nan=False)
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def worker_seed(worker_id):
@@ -280,9 +305,7 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
         validation, _ = run_epoch(model, dev_loader, device, vocab)
         score = validation["weighted_f1"]
         if selection.update(epoch, score):  # Strict improvement; earliest epoch wins ties.
-            torch.save({"model": model.state_dict(), "epoch": epoch,
-                        "val_weighted_f1": selection.best_val_weighted_f1, "label_vocab": vocab.as_dict(),
-                        "config": config}, best_path)
+            save_model_weights(model, best_path)
         record = {"epoch": epoch, "train": training, "dev": validation,
                   "best_epoch": selection.best_epoch,
                   "best_val_weighted_f1": selection.best_val_weighted_f1,
@@ -294,8 +317,9 @@ def train(config, vocab, *, experiment_date=None, experiment_group=None):
             stop_reason = "early_stopping"
             break
     stopped_epoch = epoch
-    checkpoint = torch.load(best_path, map_location="cpu", weights_only=True)
-    model.load_state_dict(checkpoint["model"], strict=True)
+    reload_model_weights(model, best_path)
+    reserve_test_evaluation(run["run_dir"], {"finalization_mode": "training_run",
+                                           "selected_epoch": selection.best_epoch})
     # Test loader and frames are accessed only after validation selection is finished.
     test_evaluation_count = 0
     test_report, batches = run_epoch(model, make_loader("test"), device, vocab, collect=True)

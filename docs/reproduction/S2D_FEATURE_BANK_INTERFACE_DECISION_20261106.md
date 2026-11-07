@@ -143,7 +143,7 @@ git diff --check
 git status --short
 ```
 
-下一步在既有 Ubuntu `s2d_iemocap` 环境、按正常代码交接流程后执行（本轮不连接、
+以下为 Q1-2A 当时记录的 Ubuntu 待验收命令（后续验收结果见下一节；本轮不连接、
 不同步远程，不停止其他实验，不执行 git add/commit/push）：
 
 ```bash
@@ -155,6 +155,32 @@ python -B -m pytest tests/models/s2d/test_s2d_features.py -q -p no:cacheprovider
 `S2D_FEATURE_TEST_DEVICE=cuda`。两种模式均仅使用 synthetic 输入与随机测试权重，
 不得在缺依赖时将核心对齐测试改成 mock。必须取得六项真实-core 通过结果后，
 才把接口数值验收记为完成。真实 bank 及 Train/Dev probe 另行立项，Test 继续隔离。
+
+## Q1-2A Ubuntu canonical validation（2026-11-07 用户提供）
+
+Environment：Ubuntu，conda env `s2d_iemocap`。本节是用户提供的远程验收证据，
+不是 Q1-2B 本地重新执行的结果。
+
+```bash
+PYTHONNOUSERSITE=1 \
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+python -B -m pytest \
+  tests/models/s2d/test_s2d_features.py \
+  -q -p no:cacheprovider -rs
+```
+
+Result：**29 passed in 58.21s；0 failed；0 skipped**。
+
+`Q1-2A FINAL ACCEPTANCE = PASS`
+
+六项 canonical-core 验收均 PASS：A0/C0/D0 canonical numerical alignment、
+frame independence、N=32 static extraction、B shape + mean(B) == h_v、
+determinism、read-only / no parameter mutation。
+
+上节 **Windows local contract validation（23 passed, 6 skipped）** 及缺少
+`timm/einops` 的历史限制完整保留；它与此处 **Ubuntu canonical-core numerical
+validation** 是两组不同证据。Ubuntu 结果完成了 Q1-2A 的数值验收，不等于
+Q1-2B single-pass bundle 已验收，也不表示真实 Train/Dev feature bank 已导出。
 
 ## 保留边界
 

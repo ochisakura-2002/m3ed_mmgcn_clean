@@ -148,3 +148,57 @@ def extract_contextual_slots(model: S2DIEMOCAP, video: torch.Tensor) -> dict[str
     if len(captured) != 1:
         raise RuntimeError(f"Expected one canonical head call, got {len(captured)}")
     return {"s2d_contextual_slots": captured[0]}
+
+
+@torch.inference_mode()
+def extract_uniform16_feature_bundle(model: S2DIEMOCAP, video: torch.Tensor) -> dict[str, torch.Tensor]:
+    """Read A0/C0/D0/B and h_v/logits_v from ONE unchanged wrapper forward.
+
+    This interface is only for fixed Uniform16 clips, not arbitrary candidates.
+    All hooks are temporary and preserve caller hooks, including on failure.
+    Use the same model instance serially while extraction is in progress.
+    """
+    _validate(model, video, contextual=True)
+    b = video.shape[0]
+    captured = {name: [] for name in ("a0", "c0", "slots")}
+
+    def capture_a0(module, inputs, output):
+        if tuple(output.shape) != (b * 16, 196, 768):
+            raise ValueError("Expected canonical RGB tokens [B*16,196,768]")
+        captured["a0"].append(output.clone())
+
+    def capture_c0(module, inputs, output):
+        if (not isinstance(output, tuple) or len(output) != 2
+                or tuple(output[0].shape) != (b * 16, 768, 14, 14)):
+            raise ValueError("Expected canonical MCP0 (static_map, temporal_tokens)")
+        captured["c0"].append(output[0].clone())
+
+    def capture_slots(module, inputs):
+        value = inputs[0]
+        if tuple(value.shape) != (b, 768, 16, 1, 1):
+            raise ValueError("Expected canonical pre-head tensor [B,768,16,1,1]")
+        captured["slots"].append(value[..., 0, 0].transpose(1, 2).contiguous().clone())
+
+    handles = []
+    try:
+        handles.append(model.core.patch_embed.register_forward_hook(capture_a0))
+        handles.append(model.core.prompt_blocks[0].register_forward_hook(capture_c0))
+        handles.append(model.core.head.register_forward_pre_hook(capture_slots))
+        output = model(video)
+    finally:
+        for handle in handles:
+            handle.remove()
+    if any(len(values) != 1 for values in captured.values()):
+        raise RuntimeError("Expected exactly one canonical A0, MCP0 and head call")
+    if output["h_v"].shape != (b, 768) or output["logits_v"].shape != (b, 6):
+        raise ValueError("Expected canonical h_v [B,768] and logits_v [B,6]")
+    a0 = captured["a0"][0]
+    c0_tokens = captured["c0"][0].flatten(2).transpose(1, 2).contiguous()
+    return {
+        "a0_rgb_mean": a0.mean(1).reshape(b, 16, 768),
+        "c0_mcp_static_mean": c0_tokens.mean(1).reshape(b, 16, 768),
+        "d0_static_residual_mean": (a0 + c0_tokens).mean(1).reshape(b, 16, 768),
+        "s2d_contextual_slots": captured["slots"][0],
+        "h_v": output["h_v"],
+        "logits_v": output["logits_v"],
+    }

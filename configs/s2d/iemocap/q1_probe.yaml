@@ -1,0 +1,14 @@
+# Independent frozen-bank diagnosis. Does not alter S2D or its training config.
+protocol_version: s2d_q1_probe_v1
+enabled: true
+seeds: [100, 101, 102, 103, 104]
+normalization: train_channel_standardize
+train:
+  learning_rate: 0.001
+  weight_decay: 0.01
+  max_epochs: 100
+  patience: 10
+  batch_size: 128
+  cpu_threads: 1
+# Architectures are fixed in probes.py, shared across all matching features.
+# enabled=false runs reference/dummy diagnostics only, with no new classifier.

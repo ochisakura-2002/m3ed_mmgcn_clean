@@ -26,7 +26,8 @@ def cpu_threads():
 
 
 def batch():
-    dataset = TAV0Dataset(*synthetic_package(), split="train")
+    package = synthetic_package()
+    dataset = TAV0Dataset(*package, split="train", expected_rows=len(package[1]))
     return ta_v0_collate([dataset[1], dataset[0]])
 
 

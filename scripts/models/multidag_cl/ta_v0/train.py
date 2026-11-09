@@ -35,7 +35,7 @@ def validate_config(raw):
     config = TAV0Config(**raw["model"])
     if raw["dataset"] != {
         "package": VERSION, "label_vocab": list(LABEL_VOCAB),
-        "asset_path": None, "bridge_path": None, "canonical_path": None,
+        "asset_path": None, "model_manifest_path": None, "provenance_manifest_path": None,
     }:
         raise ValueError("this stage freezes dataset identity and unresolved real-data paths")
     if raw["runtime"] != {
@@ -130,7 +130,7 @@ def weighted_f1(labels, predictions):
 def synthetic_package():
     """Deliberately scrambled storage; Test has metadata only and is never loaded."""
     rng = np.random.default_rng(100)
-    dialogues, bridge, canonical = {}, [], []
+    dialogues, model, provenance = {}, [], []
     split_ids = {"train": [], "dev": [], "test": []}
     for number, (split, n) in enumerate((("train", 3), ("train", 2), ("dev", 3), ("dev", 1), ("test", 1)), 1):
         did = f"Ses01F_impro{number:02d}"
@@ -149,17 +149,32 @@ def synthetic_package():
         for row_index, canonical_index in enumerate(permutation):
             uid = ids[row_index]
             speaker = dialogues[did]["speakers"][row_index]
-            bridge.append({
-                "dataset_version": VERSION, "utterance_id": uid, "dialogue_id": did,
+            current = {
+                "utterance_id": uid, "dialogue_id": did,
                 "ta_dialogue_id": did, "speaker": speaker, "split": split,
                 "benchmark_label": LABEL_VOCAB[labels[row_index]], "benchmark_label_id": labels[row_index],
-                "ta_row_index": row_index, "canonical_dialogue_order": canonical_index + 1,
-            })
-            canonical.append({"utterance_id": uid, "dialogue_id": did, "speaker": speaker,
-                              "global_order": canonical_index + 1})
+                "ta_row_index": row_index,
+            }
+            model.append(dict(current, session="Session1",
+                              ta_asset_relative_path="ta/iemocap_asym_ta_v1.pkl"))
+            provenance.append(dict(current, dialogue_order=row_index + 1,
+                                   canonical_dialogue_order=canonical_index + 1))
     asset = {"schema": SCHEMA, "dataset_version": VERSION,
              "feature_spec": {"text": {"dimension": 768}, "audio_ta": {"dimension": 1582}},
              "label_vocab": {"itos": list(LABEL_VOCAB)}, "dialogues": dialogues, "splits": split_ids}
+    return asset, model, provenance
+
+
+def legacy_synthetic_package():
+    """Pre-portable fixture, used only with LegacySyntheticTAV0Dataset."""
+    asset, model, provenance = synthetic_package()
+    orders = {r["utterance_id"]: r["canonical_dialogue_order"] for r in provenance}
+    bridge = [dict((k, v) for k, v in row.items()
+                   if k not in ("session", "ta_asset_relative_path")) for row in model]
+    for row in bridge:
+        row.update(dataset_version=VERSION, canonical_dialogue_order=orders[row["utterance_id"]])
+    canonical = [{k: row[k] for k in ("utterance_id", "dialogue_id", "speaker")}
+                 | {"global_order": row["canonical_dialogue_order"]} for row in provenance]
     return asset, bridge, canonical
 
 
@@ -167,7 +182,7 @@ def synthetic_runner(config=None):
     torch.manual_seed(100)
     package = synthetic_package()
     return DevelopmentRunner(
-        TAV0(config), lambda split: TAV0Dataset(*package, split=split),
+        TAV0(config), lambda split: TAV0Dataset(*package, split=split, expected_rows=len(package[1])),
     )
 
 

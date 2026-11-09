@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 
 from datasets.iemocap.ta_v0_dataset import (
-    BRIDGE_FIELDS, CANONICAL_FIELDS, TAV0Dataset, ta_v0_collate,
+    BRIDGE_FIELDS, CANONICAL_FIELDS, LegacySyntheticTAV0Dataset as TAV0Dataset, ta_v0_collate,
 )
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
-from scripts.models.multidag_cl.ta_v0.train import synthetic_package
+from scripts.models.multidag_cl.ta_v0.train import legacy_synthetic_package as synthetic_package
 
 
 def test_canonical_order_fetches_exact_original_rows_without_mutation():

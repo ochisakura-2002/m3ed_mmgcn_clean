@@ -1,8 +1,8 @@
 """Read-only canonical-order view of the asymmetric_merc_v1 TA package.
 
-Only trusted local PKLs are supported. The separate authoritative canonical CSV
-may be a superset of the six-class TA universe. It is joined by exact ID, never
-by row position or timestamp. No media/visual columns are consumed.
+The model manifest owns identity, split, targets and TA row mapping. Provenance
+must join it exactly by utterance_id and supplies canonical_dialogue_order.
+Only trusted local PKLs are supported. No media/visual columns are consumed.
 """
 
 import csv
@@ -18,8 +18,17 @@ from models.multidag_cl.ta_v0.config import LABEL_VOCAB
 
 SCHEMA = "iemocap_asym_ta_v1"
 VERSION = "asymmetric_merc_v1"
+PACKAGE_ROWS = 7433
 SPLITS = ("train", "dev", "test")
 UID = re.compile(r"(Ses0[1-5][FM]_(?:impro\d+[ab]?|script\d+_\d+[ab]?))_([FM])\d+")
+JOIN_FIELDS = (
+    "utterance_id", "dialogue_id", "split", "speaker", "benchmark_label",
+    "benchmark_label_id", "ta_dialogue_id", "ta_row_index",
+)
+MODEL_MANIFEST_FIELDS = (*JOIN_FIELDS, "session", "ta_asset_relative_path")
+PROVENANCE_MANIFEST_FIELDS = (*JOIN_FIELDS, "canonical_dialogue_order")
+
+# Retained solely for the explicit LegacySyntheticTAV0Dataset helper below.
 BRIDGE_FIELDS = (
     "dataset_version", "utterance_id", "dialogue_id", "ta_dialogue_id",
     "speaker", "split", "benchmark_label", "benchmark_label_id",
@@ -64,8 +73,31 @@ def read_columns(path, fields, optional_fields=()):
 
 
 class TAV0Dataset(Dataset):
-    def __init__(self, asset, bridge_rows, canonical_rows, *, split):
+    def __init__(self, asset, model_rows, provenance_rows, *, split, expected_rows=PACKAGE_ROWS):
         require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
+        # The portable v1 universe is frozen; only synthetic callers override this count.
+        require(type(expected_rows) is int and expected_rows > 0, "invalid expected_rows")
+        model = unique_rows(model_rows, MODEL_MANIFEST_FIELDS, "model manifest")
+        provenance = unique_rows(provenance_rows, PROVENANCE_MANIFEST_FIELDS, "provenance manifest")
+        require(len(model) == len(provenance) == expected_rows,
+                f"manifest row counts must both equal {expected_rows}")
+        require(set(model) == set(provenance), "model/provenance ID sets differ")
+        ranks = set()
+        for uid, row in model.items():
+            authority = provenance[uid]
+            for key in JOIN_FIELDS:
+                left, right = row[key], authority[key]
+                if key in ("benchmark_label_id", "ta_row_index"):
+                    left, right = integer(left, key), integer(right, key)
+                require(left == right, f"model/provenance {key} conflict: {uid}")
+            match = UID.fullmatch(uid)
+            require(match is not None and match[1] == row["dialogue_id"] and match[2] == row["speaker"],
+                    f"manifest identity conflict: {uid}")
+            order = integer(authority["canonical_dialogue_order"], "canonical_dialogue_order")
+            key = (row["dialogue_id"], order)
+            require(order > 0 and key not in ranks, f"canonical order conflict: {uid}")
+            ranks.add(key)
+
         require(isinstance(asset, dict) and asset.get("schema") == SCHEMA, "wrong TA schema")
         require(set(asset) == {"schema", "dataset_version", "feature_spec", "label_vocab", "dialogues", "splits"},
                 "unexpected asset fields")
@@ -81,21 +113,11 @@ class TAV0Dataset(Dataset):
         require(len(set(flat)) == len(flat) and set(flat) == set(asset["dialogues"]),
                 "duplicate/cross-split/missing dialogue membership")
         membership = {d: s for s in SPLITS for d in splits[s]}
-        bridge = unique_rows(bridge_rows, BRIDGE_FIELDS, "bridge")
-        canonical = unique_rows(canonical_rows, CANONICAL_FIELDS, "canonical")
-        ranks = {}
-        for uid, row in canonical.items():
-            match = UID.fullmatch(uid)
-            require(match is not None and match[1] == row["dialogue_id"] and match[2] == row["speaker"],
-                    f"canonical identity conflict: {uid}")
-            order = integer(row["global_order"], "global_order")
-            key = (row["dialogue_id"], order)
-            require(order > 0 and key not in ranks, f"canonical order conflict: {uid}")
-            ranks[key] = uid
 
         self.split = split
         self._asset = asset
         self._ordered = {}
+        self._model_dialogue_ids = {}
         seen = set()
         fields = {"utterance_ids", "speakers", "benchmark_labels", "benchmark_label_ids",
                   "sentences", "text_features", "audio_features"}
@@ -106,33 +128,29 @@ class TAV0Dataset(Dataset):
             for key in ("speakers", "benchmark_labels", "benchmark_label_ids", "sentences"):
                 require(len(dialogue[key]) == len(ids), f"metadata lengths differ: {did}")
             ordered = []
+            model_did = None
             for index, uid in enumerate(ids):
-                require(uid not in seen and uid in bridge and uid in canonical,
-                        f"duplicate/missing exact ID: {uid}")
+                require(uid not in seen and uid in model, f"duplicate/missing exact ID: {uid}")
                 seen.add(uid)
-                row, authority = bridge[uid], canonical[uid]
-                match = UID.fullmatch(uid)
+                row, authority = model[uid], provenance[uid]
+                if model_did is None:
+                    model_did = row["dialogue_id"]
                 speaker = dialogue["speakers"][index]
-                require(match is not None and match[1] == did and match[2] == speaker,
-                        f"asset identity conflict: {uid}")
-                require(row["dataset_version"] == VERSION
-                        and row["dialogue_id"] == row["ta_dialogue_id"] == authority["dialogue_id"] == did
-                        and row["speaker"] == authority["speaker"] == speaker
-                        and row["split"] == membership[did], f"bridge identity/split conflict: {uid}")
+                require(row["ta_dialogue_id"] == did and row["dialogue_id"] == model_did
+                        and row["speaker"] == speaker and row["split"] == membership[did],
+                        f"asset identity/split conflict: {uid}")
                 require(integer(row["ta_row_index"], "ta_row_index") == index,
                         f"wrong TA row mapping: {uid}")
-                order = integer(authority["global_order"], "global_order")
-                require(integer(row["canonical_dialogue_order"], "canonical_dialogue_order") == order,
-                        f"bridge/canonical order conflict: {uid}")
                 label_id = dialogue["benchmark_label_ids"][index]
                 require(type(label_id) is int and 0 <= label_id < 6, f"invalid source label: {uid}")
-                label = LABEL_VOCAB[label_id]
-                require(dialogue["benchmark_labels"][index] == row["benchmark_label"] == label
+                require(dialogue["benchmark_labels"][index] == row["benchmark_label"] == LABEL_VOCAB[label_id]
                         and integer(row["benchmark_label_id"], "benchmark_label_id") == label_id,
                         f"label mapping conflict: {uid}")
-                if authority.get("split") not in (None, ""):
-                    require(authority["split"] == membership[did], f"canonical split conflict: {uid}")
+                order = integer(authority["canonical_dialogue_order"], "canonical_dialogue_order")
                 ordered.append((order, index, uid))
+            require(model_did not in self._model_dialogue_ids.values(),
+                    f"model dialogue maps to multiple TA dialogues: {model_did}")
+            self._model_dialogue_ids[did] = model_did
             self._ordered[did] = tuple(sorted(ordered))
             if membership[did] == split:
                 for key, dim in (("text_features", 768), ("audio_features", 1582)):
@@ -140,19 +158,20 @@ class TAV0Dataset(Dataset):
                     require(isinstance(arr, np.ndarray) and arr.shape == (len(ids), dim)
                             and arr.dtype == np.float32 and np.isfinite(arr).all(),
                             f"wrong feature shape/dtype/finite: {did}/{key}")
-        require(seen == set(bridge), "bridge/TA ID sets differ")
+        require(seen == set(model), "manifest/TA ID sets differ")
         self.dialogue_ids = tuple(splits[split])
         require(bool(self.dialogue_ids), f"empty {split} split")
 
     @classmethod
-    def from_files(cls, asset_path, bridge_path, canonical_path, *, split):
+    def from_files(cls, asset_path, model_manifest_path, provenance_manifest_path, *,
+                   split, expected_rows=PACKAGE_ROWS):
         require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
-        # Explicit caller paths only; no search, writeback, or source-array reorder.
-        bridge = read_columns(bridge_path, BRIDGE_FIELDS)
-        canonical = read_columns(canonical_path, CANONICAL_FIELDS, optional_fields=("split",))
+        # Explicit caller paths only; no dialogue split bridge, search or writeback.
+        model = read_columns(model_manifest_path, MODEL_MANIFEST_FIELDS)
+        provenance = read_columns(provenance_manifest_path, PROVENANCE_MANIFEST_FIELDS)
         with Path(asset_path).open("rb") as stream:
             asset = pickle.load(stream)
-        return cls(asset, bridge, canonical, split=split)
+        return cls(asset, model, provenance, split=split, expected_rows=expected_rows)
 
     def __len__(self):
         return len(self.dialogue_ids)
@@ -165,7 +184,7 @@ class TAV0Dataset(Dataset):
         speakers = [dialogue["speakers"][i] for i in indices]
         # Advanced indexing copies the selected rows; the source array is untouched.
         return {
-            "dialogue_id": did, "utterance_ids": tuple(r[2] for r in ordered),
+            "dialogue_id": self._model_dialogue_ids[did], "utterance_ids": tuple(r[2] for r in ordered),
             "text_features": torch.from_numpy(dialogue["text_features"][indices].copy()),
             "audio_features": torch.from_numpy(dialogue["audio_features"][indices].copy()),
             "speaker_ids_int": torch.tensor([{"F": 0, "M": 1}[s] for s in speakers]),
@@ -173,6 +192,53 @@ class TAV0Dataset(Dataset):
             "canonical_order": tuple(r[0] for r in ordered),
             "ta_row_indices": tuple(indices), "split": self.split,
         }
+
+
+class LegacySyntheticTAV0Dataset(TAV0Dataset):
+    """Explicit compatibility helper for pre-portable synthetic fixtures only.
+
+    This retains the old canonical-superset/global_order tests. The portable
+    constructor/from_files never detect or fall back to this legacy contract.
+    """
+
+    def __init__(self, asset, bridge_rows, canonical_rows, *, split):
+        require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
+        bridge = unique_rows(bridge_rows, BRIDGE_FIELDS, "legacy synthetic bridge")
+        canonical = unique_rows(canonical_rows, CANONICAL_FIELDS, "legacy synthetic canonical")
+        ranks = set()
+        for uid, row in canonical.items():
+            match = UID.fullmatch(uid)
+            require(match is not None and match[1] == row["dialogue_id"] and match[2] == row["speaker"],
+                    f"canonical identity conflict: {uid}")
+            order = integer(row["global_order"], "global_order")
+            key = (row["dialogue_id"], order)
+            require(order > 0 and key not in ranks, f"canonical order conflict: {uid}")
+            ranks.add(key)
+        model, provenance = [], []
+        for uid, row in bridge.items():
+            require(uid in canonical, f"missing exact ID: {uid}")
+            authority = canonical[uid]
+            require(row["dataset_version"] == VERSION
+                    and row["dialogue_id"] == row["ta_dialogue_id"] == authority["dialogue_id"]
+                    and row["speaker"] == authority["speaker"], f"bridge identity conflict: {uid}")
+            require(authority.get("split") in (None, "", row["split"]), f"canonical split conflict: {uid}")
+            order = integer(authority["global_order"], "global_order")
+            require(integer(row["canonical_dialogue_order"], "canonical_dialogue_order") == order,
+                    f"bridge/canonical order conflict: {uid}")
+            current = {k: row[k] for k in JOIN_FIELDS}
+            model.append(dict(current, session=f"Session{int(row['dialogue_id'][3:5])}",
+                              ta_asset_relative_path="ta/iemocap_asym_ta_v1.pkl"))
+            provenance.append(dict(current, canonical_dialogue_order=order))
+        super().__init__(asset, model, provenance, split=split, expected_rows=len(model))
+
+    @classmethod
+    def from_files(cls, asset_path, bridge_path, canonical_path, *, split):
+        require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
+        bridge = read_columns(bridge_path, BRIDGE_FIELDS)
+        canonical = read_columns(canonical_path, CANONICAL_FIELDS, optional_fields=("split",))
+        with Path(asset_path).open("rb") as stream:
+            asset = pickle.load(stream)
+        return cls(asset, bridge, canonical, split=split)
 
 
 def ta_v0_collate(samples):

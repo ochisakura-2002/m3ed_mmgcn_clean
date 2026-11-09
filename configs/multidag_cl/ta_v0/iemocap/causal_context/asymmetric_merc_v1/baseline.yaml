@@ -14,8 +14,8 @@ dataset:
   label_vocab: [hap, sad, neu, ang, exc, fru]
   # Deliberately unresolved in this synthetic-only implementation stage.
   asset_path: null
-  bridge_path: null
-  canonical_path: null
+  model_manifest_path: null
+  provenance_manifest_path: null
 runtime:
   mode: development
   synthetic_only: true

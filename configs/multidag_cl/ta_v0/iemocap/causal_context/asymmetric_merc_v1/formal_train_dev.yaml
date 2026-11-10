@@ -1,0 +1,50 @@
+# Explicit --formal-train-dev and all three input paths are required by the CLI.
+# The existing baseline.yaml remains the synthetic development contract.
+model:
+  text_dim: 768
+  audio_dim: 1582
+  encoder_dim: 100
+  dag_hidden_dim: 300
+  dag_layers: 4
+  num_classes: 6
+  window_past_same_speaker: 1
+  classifier_dropout: 0.4
+dataset:
+  package: asymmetric_merc_v1
+  label_vocab: [hap, sad, neu, ang, exc, fru]
+  asset_path: null
+  model_manifest_path: null
+  provenance_manifest_path: null
+runtime:
+  mode: formal_train_dev
+  synthetic_only: false
+  device: cpu
+  splits: [train, dev]
+  curriculum: false
+  seed: 100
+training:
+  seed: 100
+  max_epochs: 30
+  batch_size: 16
+  optimizer:
+    name: AdamW
+    learning_rate: 0.0005
+    betas: [0.9, 0.999]
+    eps: 1.0e-6
+    weight_decay: 0.0
+  scheduler: null
+  gradient_clip_norm: 5.0
+  class_weight: null
+  label_smoothing: 0.0
+  curriculum: false
+  early_stopping: false
+  train_shuffle: true
+  dev_shuffle: false
+checkpoint:
+  selection_metric: dev_weighted_f1
+  test_evaluation_count: 0
+  test_split_used_for_selection: false
+output:
+  root: outputs
+  experiment_date: null
+  experiment_group: ta_v0_formal

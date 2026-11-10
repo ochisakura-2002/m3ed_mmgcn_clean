@@ -1,4 +1,4 @@
-"""Train/dev development interface. This stage permits synthetic CPU dry-runs only."""
+"""TA-v0 synthetic dry-run or explicitly authorized frozen formal Train/Dev."""
 
 from __future__ import annotations
 
@@ -209,12 +209,37 @@ def synthetic_dry_run(config):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default=DEFAULT_CONFIG)
-    parser.add_argument("--synthetic-dry-run", action="store_true")
+    parser.add_argument("--config")
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--synthetic-dry-run", action="store_true")
+    modes.add_argument("--formal-train-dev", action="store_true")
+    parser.add_argument("--asset-path")
+    parser.add_argument("--model-manifest-path")
+    parser.add_argument("--provenance-manifest-path")
+    parser.add_argument("--output-dir", help="formal group root, e.g. outputs/YYYYMMDD/ta_v0_formal")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--resume", help="explicit trusted structured checkpoint; fresh output run")
+    parser.add_argument("--smoke-one-step", action="store_true",
+                        help="bounded remote readiness check: one Train optimizer step, then Dev")
     args = parser.parse_args(argv)
-    if not args.synthetic_dry_run:
-        parser.error("this stage requires --synthetic-dry-run; real training is not implemented")
-    raw = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    if args.formal_train_dev:
+        for name in ("config", "asset_path", "model_manifest_path", "provenance_manifest_path", "output_dir"):
+            if not getattr(args, name):
+                parser.error("formal mode explicitly requires --" + name.replace("_", "-"))
+        from scripts.runtime.multidag_cl_ta_v0.formal import run_formal
+        result = run_formal(
+            formal_train_dev=True, config_path=args.config, asset_path=args.asset_path,
+            model_manifest_path=args.model_manifest_path, provenance_manifest_path=args.provenance_manifest_path,
+            output_dir=args.output_dir, device=args.device, resume=args.resume,
+            one_step_smoke=args.smoke_one_step,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if (args.resume or args.smoke_one_step or args.device != "cpu"
+            or any(getattr(args, name) for name in
+                   ("asset_path", "model_manifest_path", "provenance_manifest_path", "output_dir"))):
+        parser.error("real-data/output/resume options require --formal-train-dev")
+    raw = yaml.safe_load(Path(args.config or DEFAULT_CONFIG).read_text(encoding="utf-8"))
     config = validate_config(raw)
     torch.set_num_threads(1)
     print(json.dumps(synthetic_dry_run(config), sort_keys=True))

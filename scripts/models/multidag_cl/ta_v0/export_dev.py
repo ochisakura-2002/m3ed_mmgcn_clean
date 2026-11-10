@@ -25,12 +25,14 @@ PREDICTION_COLUMNS = (
 
 
 def export_dev(runner, batches, output_dir, *, expected_ids, checkpoint_identity,
-               config_identity, expected_rows=980):
+               config_identity, expected_rows=980, split="dev", formal_layout=False):
     """Validate the entire export before writing; exclude padding, sort by exact ID.
 
     Real Dev callers must supply the authoritative 980-ID set. Synthetic callers
     explicitly override expected_rows. No inference from observed counts.
     """
+    if split != "dev":
+        raise ValueError("Dev exporter only; Test predictions forbidden")
     if (not isinstance(checkpoint_identity, str) or not checkpoint_identity.strip()
             or not isinstance(config_identity, str) or not config_identity.strip()):
         raise ValueError("checkpoint and config identity are required")
@@ -77,16 +79,30 @@ def export_dev(runner, batches, output_dir, *, expected_ids, checkpoint_identity
             or np.any(probabilities < 0)):
         raise ValueError("nonfinite/invalid TA output contract")
     output_dir = Path(output_dir)
-    # A fresh export directory prevents silent overwrite or mixing checkpoint identities.
-    output_dir.mkdir(parents=True, exist_ok=False)
-    with (output_dir / "predictions.csv").open("x", encoding="utf-8", newline="") as stream:
-        writer = csv.writer(stream)
+    if formal_layout:
+        prediction_dir, representation_dir = output_dir / "predictions", output_dir / "representations"
+        # Validate both destinations before creating either; a formal run owns
+        # its parent, but each export subtree must still be fresh.
+        if prediction_dir.exists() or representation_dir.exists():
+            raise FileExistsError("Dev export destination already exists")
+        prediction_dir.mkdir(parents=True, exist_ok=False)
+        representation_dir.mkdir(exist_ok=False)
+        prediction_path = prediction_dir / "validation_best_predictions.tsv"
+        representation_path = representation_dir / "validation_best_h_ta.npz"
+        metadata_path = representation_dir / "validation_best_h_ta.metadata.json"
+    else:
+        output_dir.mkdir(parents=True, exist_ok=False)
+        prediction_path = output_dir / "predictions.csv"
+        representation_path = output_dir / "h_ta.npz"
+        metadata_path = output_dir / "metadata.json"
+    with prediction_path.open("x", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream, delimiter="\t" if formal_layout else ",")
         writer.writerow(PREDICTION_COLUMNS)
         for i, uid in enumerate(ids):
             writer.writerow((uid, int(labels[i]), int(logits[i].argmax()),
                              *logits[i].tolist(), *probabilities[i].tolist()))
     np.savez_compressed(
-        output_dir / "h_ta.npz", utterance_ids=np.array(ids), h_ta=h_ta,
+        representation_path, utterance_ids=np.array(ids), h_ta=h_ta,
         labels=labels, split=np.array(["dev"] * len(ids)),
     )
     metadata = {
@@ -95,8 +111,9 @@ def export_dev(runner, batches, output_dir, *, expected_ids, checkpoint_identity
         "config_identity": config_identity, "split": "dev", "rows": len(ids),
         "unique_utterance_ids": len(ids), "padding_rows": 0, "duplicate_ids": 0,
         "prediction_representation_id_set_identical": True,
+        "prediction_representation_order_identical": True,
     }
-    (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return metadata
 
 

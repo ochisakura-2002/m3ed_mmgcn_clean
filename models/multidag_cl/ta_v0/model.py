@@ -1,6 +1,6 @@
 """Canonical utterance-order causal TA baseline; no wall-clock streaming claim."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 import torch
 from torch import nn
@@ -9,6 +9,7 @@ from models.multidag_cl.paper_reimplementation.dag_layer import MultiDAGLayer
 from models.multidag_cl.paper_reimplementation.graph import (
     CausalPredecessorBuilder, SpeakerRelationBuilder,
 )
+from .causal_history_gate import CausalHistoryGate
 from .config import LABEL_VOCAB, TAV0Config
 from .encoders import TAEncoders
 
@@ -41,8 +42,17 @@ class TAV0(nn.Module):
             nn.Linear(300, c.num_classes),
         )
 
+        # Attach after all frozen modules initialize, preserving their seed/RNG order.
+        if c.use_causal_history_gate:
+            for layer in self.graph_layers:
+                layer.attention.history_gate = CausalHistoryGate(
+                    c.dag_hidden_dim, c.chg_speaker_embedding_dim,
+                    c.chg_distance_embedding_dim, c.chg_hidden_dim,
+                )
+
     def get_extra_state(self):
-        return {"lineage": "ta_v0", "config": asdict(self.config), "label_vocab": LABEL_VOCAB}
+        return {"lineage": self.config.lineage, "config": self.config.checkpoint_config(),
+                "label_vocab": LABEL_VOCAB}
 
     def set_extra_state(self, state):
         if state != self.get_extra_state():

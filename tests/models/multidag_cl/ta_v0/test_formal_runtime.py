@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import asdict
 import csv
 import json
 from pathlib import Path
@@ -143,7 +142,8 @@ def test_best_last_weights_logs_manifest_and_exports(completed):
     assert last["epoch"] == 2 and last["global_step"] == 2
     assert last["best_checkpoint"]["epoch"] == best["epoch"]
     assert best["training_config"] == PROTOCOL and best["label_vocab"] == list(LABEL_VOCAB)
-    assert best["model_config"] == asdict(TAV0Config())
+    assert best["model_config"] == yaml.safe_load(
+        Path(FORMAL_CONFIG).read_text(encoding="utf-8"))["model"]
     assert best["optimizer_state_dict"]["state"]
     assert best["test_evaluation_count"] == best["test_loader_built"] == 0
     weights = torch.load(checkpoints / "best_model_weights_only.pt", map_location="cpu", weights_only=True)

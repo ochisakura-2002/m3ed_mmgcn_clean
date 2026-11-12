@@ -16,6 +16,7 @@ import torch
 import yaml
 
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
+from models.multidag_cl.ta_v0.causal_history_gate import collect_gate_diagnostics
 from scripts.models.multidag_cl.ta_v0.train import DEFAULT_CONFIG, synthetic_runner, validate_config
 
 PREDICTION_COLUMNS = (
@@ -44,7 +45,7 @@ def export_dev(runner, batches, output_dir, *, expected_ids, checkpoint_identity
     records = {}
     was_training = runner.model.training
     try:
-        with torch.no_grad():
+        with collect_gate_diagnostics(runner.model) as diagnostics, torch.no_grad():
             for batch in batches:
                 output, _ = runner.forward_batch(batch, split="dev")
                 ids_by_dialogue = batch["utterance_ids"]
@@ -114,6 +115,11 @@ def export_dev(runner, batches, output_dir, *, expected_ids, checkpoint_identity
         "prediction_representation_order_identical": True,
     }
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    if runner.model.config.use_causal_history_gate:
+        (output_dir / "chg_gate_diagnostics.json").write_text(json.dumps(
+            {"split": "dev", "checkpoint_identity": checkpoint_identity,
+             "config_identity": config_identity, "groups": diagnostics.summary()},
+            indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return metadata
 
 

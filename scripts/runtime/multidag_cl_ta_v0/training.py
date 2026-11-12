@@ -1,7 +1,6 @@
 """TA-v0 Train/Dev mechanics; no Test path or historical trainer dependency."""
 
 from copy import deepcopy
-from dataclasses import asdict
 import math
 import random
 
@@ -12,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from datasets.iemocap.ta_v0_dataset import ta_v0_collate
 from models.multidag_cl.ta_v0 import LABEL_VOCAB, TAV0, TAV0Config
+from models.multidag_cl.ta_v0.causal_history_gate import collect_gate_diagnostics
 from scripts.models.multidag_cl.ta_v0.train import (
     BATCH_FIELDS, MODEL_INPUTS, require_development_split,
 )
@@ -103,7 +103,8 @@ class TrainDevRuntime:
         self.device = torch.device(device)
         if synthetic_only and self.device.type != "cpu":
             raise ValueError("synthetic checks are CPU only")
-        if not isinstance(model, TAV0) or model.config != TAV0Config():
+        if not isinstance(model, TAV0) or model.config not in (
+                TAV0Config(), TAV0Config(use_causal_history_gate=True)):
             raise ValueError("formal TA-v0 architecture is frozen")
         self.model = model.to(self.device)
         self.dataset_factory = dataset_factory
@@ -123,7 +124,7 @@ class TrainDevRuntime:
 
     @property
     def identity(self):
-        return {"schema": CHECKPOINT_SCHEMA, "model_config": asdict(self.model.config),
+        return {"schema": CHECKPOINT_SCHEMA, "model_config": self.model.config.checkpoint_config(),
                 "label_vocab": list(LABEL_VOCAB), "seed": 100,
                 "training_config": deepcopy(PROTOCOL), "data_identity": self.data_identity}
 
@@ -175,7 +176,7 @@ class TrainDevRuntime:
         labels, predictions, numerator, count = [], [], 0.0, 0
         was_training = self.model.training
         try:
-            with torch.no_grad():
+            with collect_gate_diagnostics(self.model) as diagnostics, torch.no_grad():
                 for batch in batches:
                     output, loss = self.forward_batch(batch, split="dev")
                     mask = output.mask.cpu()
@@ -188,7 +189,10 @@ class TrainDevRuntime:
             self.model.train(was_training)
         if count == 0:
             raise ValueError("empty Dev evaluation")
-        return classification_report(labels, predictions, loss=numerator / count)
+        report = classification_report(labels, predictions, loss=numerator / count)
+        if self.model.config.use_causal_history_gate:
+            report["chg_gate_diagnostics"] = diagnostics.summary()
+        return report
 
     @property
     def test_loader(self):

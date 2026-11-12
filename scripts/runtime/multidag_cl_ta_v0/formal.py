@@ -1,7 +1,6 @@
 """Frozen formal TA-v0 orchestration and provenance, restricted to Train/Dev."""
 
 from copy import deepcopy
-from dataclasses import asdict
 from datetime import datetime
 import csv
 import hashlib
@@ -48,8 +47,18 @@ def json_identity(value):
 def validate_formal_config(raw):
     if set(raw) != {"model", "dataset", "runtime", "training", "checkpoint", "output"}:
         raise ValueError("unexpected/missing formal config sections")
+    config = TAV0Config(**raw["model"])
+    if config not in (TAV0Config(), TAV0Config(use_causal_history_gate=True)):
+        raise ValueError("formal model protocol is frozen except for CHG v0")
+    expected_model = config.checkpoint_config()
+    if not config.use_causal_history_gate:
+        for key in ("use_causal_history_gate", "chg_speaker_embedding_dim",
+                    "chg_distance_embedding_dim", "chg_hidden_dim"):
+            if key in raw["model"]:
+                expected_model[key] = getattr(config, key)
+    experiment_group = "ta_v0_chg_v0_formal" if config.use_causal_history_gate else "ta_v0_formal"
     expected = {
-        "model": asdict(TAV0Config()),
+        "model": expected_model,
         "dataset": {"package": VERSION, "label_vocab": list(LABEL_VOCAB),
                     "asset_path": None, "model_manifest_path": None, "provenance_manifest_path": None},
         "runtime": {"mode": "formal_train_dev", "synthetic_only": False, "device": "cpu",
@@ -57,11 +66,11 @@ def validate_formal_config(raw):
         "training": PROTOCOL,
         "checkpoint": {"selection_metric": "dev_weighted_f1", "test_evaluation_count": 0,
                        "test_split_used_for_selection": False},
-        "output": {"root": "outputs", "experiment_date": None, "experiment_group": "ta_v0_formal"},
+        "output": {"root": "outputs", "experiment_date": None, "experiment_group": experiment_group},
     }
     if json_identity(raw) != json_identity(expected):
         raise ValueError("formal model/data/training protocol is frozen; no tuning or Test access")
-    return TAV0Config(**raw["model"])
+    return config
 
 
 def load_train_dev(asset_path, model_manifest_path, provenance_manifest_path):
@@ -186,6 +195,12 @@ def fit(runtime, run_dir, *, resolved_config, manifest, expected_dev_ids,
                 if count == 0:
                     raise ValueError("empty Train epoch")
                 dev = runtime.evaluate()
+                if "chg_gate_diagnostics" in dev:
+                    with (run_dir / "logs" / "chg_gate_diagnostics.jsonl").open(
+                            "a", encoding="utf-8") as diagnostics_stream:
+                        diagnostics_stream.write(json.dumps(
+                            {"epoch": epoch, "split": "dev", "groups": dev["chg_gate_diagnostics"]},
+                            sort_keys=True, allow_nan=False) + "\n")
                 if dev["metrics"]["valid_target_count"] != len(expected_dev_ids):
                     raise ValueError("Dev valid target count mismatch")
                 if not one_step_smoke and not runtime.synthetic_only and count != 4830:
@@ -251,7 +266,7 @@ def run_formal(*, formal_train_dev=False, config_path, asset_path, model_manifes
     if resume is not None:
         runtime.resume(resume)
     stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
-    run_id = f"ta_v0_seed100_{stamp}_{json_identity(data_identity)[:8]}"
+    run_id = f"{config.lineage}_seed100_{stamp}_{json_identity(data_identity)[:8]}"
     run_dir = Path(output_dir) / "runs" / run_id
     resolved = deepcopy(raw)
     resolved["dataset"].update(asset_path=paths["asset"], model_manifest_path=paths["model_manifest"],
@@ -264,8 +279,8 @@ def run_formal(*, formal_train_dev=False, config_path, asset_path, model_manifes
         "run_id": run_id, "run_dir": run_dir.as_posix(), **git, "seed": 100,
         "device": str(device), "formal_train_dev": True, "synthetic_only": False,
         "model_parameter_count": sum(p.numel() for p in runtime.model.parameters()),
-        "model_architecture_identity": json_identity(asdict(config)),
-        "model_lineage": "ta_v0", "model_config": asdict(config),
+        "model_architecture_identity": json_identity(config.checkpoint_config()),
+        "model_lineage": config.lineage, "model_config": config.checkpoint_config(),
         "data_paths": paths, "data_identity": data_identity, "label_vocab": list(LABEL_VOCAB),
         "training_config": deepcopy(PROTOCOL),
         "checkpoint_metric": "dev_weighted_f1",

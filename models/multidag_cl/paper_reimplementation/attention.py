@@ -21,6 +21,7 @@ class RelationAwareAttention(nn.Module):
         self.score_linear = nn.Linear(2 * hidden_dim, 1, bias=True)
         self.W_same = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.W_different = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.history_gate = None  # Optional TA-v0 extension; no baseline parameters.
 
     def forward(
         self,
@@ -85,6 +86,11 @@ class RelationAwareAttention(nn.Module):
                 torch.finfo(active_weights.dtype).tiny
             )
             weights[nonempty] = active_weights
+
+        if self.history_gate is not None:
+            weights = self.history_gate.reweight(
+                query, predecessor_states, edge_mask, relation_same, weights
+            )
 
         same_values = self.W_same(predecessor_states)
         different_values = self.W_different(predecessor_states)

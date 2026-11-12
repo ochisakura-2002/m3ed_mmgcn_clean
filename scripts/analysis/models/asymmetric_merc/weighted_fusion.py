@@ -52,8 +52,14 @@ class Joined:
     audit: dict[str, Any]
 
 
-def load_predictions(path: Path) -> Predictions:
-    """Strict numeric six-class CSV/TSV contract; preserve exact ID strings."""
+def load_predictions(path: Path, *, split: str = "dev", score_columns: bool = False) -> Predictions:
+    """One six-class reader for frozen probabilities and Q2-2 reference scores.
+
+    Defaults preserve the Dev probability contract. Score columns are only for
+    reading the existing Q2-2 fusion artifact, never for base-expert inputs.
+    """
+    if split not in {"train", "dev"}:
+        raise AuditError("Only train/dev prediction splits allowed; Test is forbidden")
     path = Path(path)
     before = compute_file_sha256(path)
     audit: dict[str, Any] = {"path": path.as_posix(), "sha256": before}
@@ -81,7 +87,8 @@ def load_predictions(path: Path) -> Predictions:
         fields = reader.fieldnames or []
         if len(fields) != len(set(fields)):
             fail("duplicate column names")
-        required = {"utterance_id", "true_label", *(f"prob_{k}" for k in LABEL_IDS)}
+        prefix = "score" if score_columns else "prob"
+        required = {"utterance_id", "true_label", *(f"{prefix}_{k}" for k in LABEL_IDS)}
         aliases = [name for name in ("predicted_label", "pred_label") if name in fields]
         if required - set(fields) or not aliases:
             fail("missing required columns", missing_columns=sorted(required - set(fields)))
@@ -94,22 +101,24 @@ def load_predictions(path: Path) -> Predictions:
             if uid in seen:
                 duplicates.add(uid)
             seen.add(uid)
-            # If present, split metadata must affirm Dev. A bare file is a
-            # caller-declared Dev artifact; its split cannot be inferred by ID.
-            if "split" in fields and row["split"].strip().lower() not in {
-                "dev", "val", "validation"
-            }:
-                fail(f"non-Dev split at line {line}")
+            aliases_for_split = {"train"} if split == "train" else {"dev", "val", "validation"}
+            if "split" in fields and row["split"].strip().lower() not in aliases_for_split:
+                fail(f"non-{'Dev' if split == 'dev' else 'Train'} split at line {line}")
             target = label(row["true_label"], "true_label", line)
             predictions = [label(row[name], name, line) for name in aliases]
             if len(set(predictions)) != 1:
                 fail(f"conflicting prediction aliases at line {line}")
             try:
-                probs = np.array([float(row[f"prob_{k}"]) for k in LABEL_IDS])
+                probs = np.array([float(row[f"{prefix}_{k}"]) for k in LABEL_IDS])
             except ValueError:
                 fail(f"non-numeric probabilities at line {line}")
             if not np.isfinite(probs).all():
                 fail(f"non-finite probabilities (NaN/Inf) at line {line}")
+            if score_columns:
+                # Q2-2 stores weighted log-probability scores. Softmax is only
+                # for this reference format; legal base probabilities are untouched.
+                probs = np.exp(probs - probs.max())
+                probs = probs / probs.sum()
             if (probs < 0).any():
                 fail(f"negative probability at line {line}")
             if not np.isclose(probs.sum(), 1, atol=PROBABILITY_SUM_ATOL, rtol=0):
@@ -128,7 +137,7 @@ def load_predictions(path: Path) -> Predictions:
     probabilities = np.stack([row[3] for row in rows])
     audit.update(
         predicted_label_field=aliases,
-        split_evidence="validated_column" if "split" in fields else "caller_declared_dev",
+        split_evidence="validated_column" if "split" in fields else f"caller_declared_{split}",
         probability_clipping_count=int((probabilities < EPSILON).sum()),
     )
     return Predictions(

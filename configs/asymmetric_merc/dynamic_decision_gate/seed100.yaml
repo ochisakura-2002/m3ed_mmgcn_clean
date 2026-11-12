@@ -1,0 +1,17 @@
+# Frozen protocol. Input paths are explicit CLI arguments; no feature/checkpoint inputs.
+protocol_version: asymmetric_merc_dynamic_decision_gate_v0
+splits: [train, dev]
+dynamic_decision_gate:
+  enabled: true  # false: untrained constant g=0.12 implementation sanity control
+train:
+  seed: 100
+  loss: CrossEntropy
+  optimizer: AdamW
+  lr: 0.001
+  weight_decay: 0.01
+  batch_size: 128
+  max_epochs: 100
+  patience: 10
+  train_shuffle: true
+  dev_shuffle: false
+  selection: dev_weighted_f1_strict_improvement_earliest_epoch

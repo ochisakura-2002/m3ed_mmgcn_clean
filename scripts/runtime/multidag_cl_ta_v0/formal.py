@@ -20,9 +20,11 @@ from datasets.iemocap.ta_v0_dataset import (
 from models.multidag_cl.ta_v0 import LABEL_VOCAB, TAV0, TAV0Config
 from scripts.models.multidag_cl.ta_v0.export_dev import export_dev
 from scripts.runtime.multidag_cl_paper_reimplementation.checkpoint import (
-    load_checkpoint, save_checkpoint_atomic,
+    save_checkpoint_atomic,
 )
-from .training import PROTOCOL, TrainDevRuntime, classification_report, seed_everything
+from .training import (
+    PROTOCOL, TrainDevRuntime, classification_report, reload_model_checkpoint, seed_everything,
+)
 
 SPLIT_COUNTS = {"train": {"utterances": 4830, "dialogues": 100},
                 "dev": {"utterances": 980, "dialogues": 20}}
@@ -115,9 +117,7 @@ def git_identity():
 
 def export_best(runtime, run_dir, *, expected_ids, expected_rows):
     checkpoint_path = run_dir / "checkpoints" / "best_model.pt"
-    checkpoint = load_checkpoint(checkpoint_path, torch.device("cpu"))
-    runtime.validate_checkpoint(checkpoint)
-    runtime.model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    reload_model_checkpoint(runtime.model, checkpoint_path, validate=runtime.validate_checkpoint)
     metadata = export_dev(
         runtime, runtime.loader("dev"), run_dir, expected_ids=expected_ids,
         expected_rows=expected_rows, checkpoint_identity=sha256_file(checkpoint_path),

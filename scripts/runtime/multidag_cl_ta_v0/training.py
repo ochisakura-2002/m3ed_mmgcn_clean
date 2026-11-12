@@ -31,6 +31,21 @@ PROTOCOL = {
 CHECKPOINT_SCHEMA = "ta_v0_train_dev_checkpoint_v1"
 
 
+def checkpoint_identity(config, data_identity):
+    """Shared immutable identity for training and read-only checkpoint reloads."""
+    return {"schema": CHECKPOINT_SCHEMA, "model_config": config.checkpoint_config(),
+            "label_vocab": list(LABEL_VOCAB), "seed": 100,
+            "training_config": deepcopy(PROTOCOL), "data_identity": deepcopy(data_identity)}
+
+
+def reload_model_checkpoint(model, path, *, validate):
+    """Load a trusted structured checkpoint, validate, then strictly copy weights."""
+    checkpoint = load_checkpoint(path, torch.device("cpu"))
+    validate(checkpoint)
+    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    return checkpoint
+
+
 def seed_everything(device):
     random.seed(100)
     np.random.seed(100)
@@ -124,9 +139,7 @@ class TrainDevRuntime:
 
     @property
     def identity(self):
-        return {"schema": CHECKPOINT_SCHEMA, "model_config": self.model.config.checkpoint_config(),
-                "label_vocab": list(LABEL_VOCAB), "seed": 100,
-                "training_config": deepcopy(PROTOCOL), "data_identity": self.data_identity}
+        return checkpoint_identity(self.model.config, self.data_identity)
 
     def loader(self, split, *, epoch=1):
         require_development_split(split)

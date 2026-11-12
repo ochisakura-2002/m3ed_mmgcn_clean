@@ -1,0 +1,17 @@
+# Frozen B1/B2 first-round protocol. CLI --model sets this same switch.
+protocol_version: asymmetric_merc_frozen_tav_vrg_v0
+splits: [train, dev]
+vrg:
+  enabled: false  # false: exact Concat-Linear B1; true: scalar VRG-v0 B2
+train:
+  seed: 100
+  loss: CrossEntropy
+  optimizer: AdamW
+  lr: 0.001
+  weight_decay: 0.01
+  batch_size: 128
+  max_epochs: 100
+  patience: 10
+  train_shuffle: true
+  dev_shuffle: false
+  selection: [dev_weighted_f1_desc, dev_loss_asc, epoch_asc]

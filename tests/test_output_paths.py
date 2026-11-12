@@ -327,10 +327,10 @@ def test_all_output_owning_yaml_resolves_to_canonical_outputs_layout() -> None:
             Path("outputs") / "20260726" / group / "runs" / "layout_audit"
         )
 
-    # Current repository inventory, including the four Paper Curriculum
-    # Ablation configs added by this task.
-    assert len(config_paths) == 210
-    assert len(output_owning) == 142
+    # Audited HEAD inventory: 227 YAML / 158 output owners. Q2-2A adds one
+    # read-only regression reference YAML, which does not own any output.
+    assert len(config_paths) == 228
+    assert len(output_owning) == 158
 
 
 def test_original_pipeline_passes_one_frozen_date_to_every_job(

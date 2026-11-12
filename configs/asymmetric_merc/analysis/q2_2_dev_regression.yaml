@@ -1,0 +1,42 @@
+# User-provided frozen references, not algorithm parameters or substituted results.
+# The runtime always recomputes observations from the seven raw Dev files.
+metric_atol: 0.000005
+source_declarations:
+  ta: {model: TA-v0, seed: 100, best_epoch: 18, dev_rows: 980, h_ta_shape: [980, 1500]}
+  visual_primary: {model: Linear-B, feature: B, seeds: [100, 101, 102, 103, 104], dev_rows: 978}
+  visual_reference: {model: Original S2D, head_epoch: 7, role: reference_only}
+primary:
+  join: {ta_rows: 980, v_rows: 978, common_rows: 978, label_mismatch: 0}
+  ta_full_dev:
+    accuracy: 0.580612
+    weighted_f1: 0.559320
+    macro_f1: 0.494189
+    uar: 0.513883
+  ta_common_dev:
+    accuracy: 0.579755
+    weighted_f1: 0.558461
+    macro_f1: 0.493549
+    uar: 0.513336
+  complementarity:
+    q11: 271
+    q10: 296
+    q01: 126
+    q00: 285
+    ta_errors: 411
+    ta_weighted_f1: 0.558461
+  classwise:
+    hap: {rescued: 0, ta_errors: 60}
+    sad: {rescued: 3, ta_errors: 21}
+    neu: {rescued: 25, ta_errors: 82}
+    ang: {rescued: 13, ta_errors: 68}
+    exc: {rescued: 22, ta_errors: 62}
+    fru: {rescued: 63, ta_errors: 118}
+  selection:
+    alpha: 0.88
+    weighted_f1: 0.570588
+    macro_f1: 0.506756
+    uar: 0.524482
+    accuracy: 0.592025
+  delta_weighted_f1: 0.012127
+robustness:
+  positive_weighted_f1_seeds: 5

@@ -50,9 +50,12 @@ def validate_formal_config(raw):
     if set(raw) != {"model", "dataset", "runtime", "training", "checkpoint", "output"}:
         raise ValueError("unexpected/missing formal config sections")
     config = TAV0Config(**raw["model"])
-    if config not in (TAV0Config(), TAV0Config(use_causal_history_gate=True)):
-        raise ValueError("formal model protocol is frozen except for CHG v0")
+    if config not in (TAV0Config(), TAV0Config(use_causal_history_gate=True),
+                      TAV0Config(text_dim=1024, diagnostic_t1024_ab1=True)):
+        raise ValueError("formal model protocol is frozen except for CHG v0 or AB-1 T1024 diagnostic")
     expected_model = config.checkpoint_config()
+    if "diagnostic_t1024_ab1" in raw["model"]:
+        expected_model["diagnostic_t1024_ab1"] = config.diagnostic_t1024_ab1
     if not config.use_causal_history_gate:
         for key in ("use_causal_history_gate", "chg_speaker_embedding_dim",
                     "chg_distance_embedding_dim", "chg_hidden_dim"):
@@ -75,7 +78,7 @@ def validate_formal_config(raw):
     return config
 
 
-def load_train_dev(asset_path, model_manifest_path, provenance_manifest_path):
+def load_train_dev(asset_path, model_manifest_path, provenance_manifest_path, *, config=None):
     paths = {"asset": Path(asset_path), "model_manifest": Path(model_manifest_path),
              "provenance_manifest": Path(provenance_manifest_path)}
     hashes = {key: sha256_file(path) for key, path in paths.items()}
@@ -86,7 +89,7 @@ def load_train_dev(asset_path, model_manifest_path, provenance_manifest_path):
     # Package-wide identity metadata is checked by the adapter; Test features
     # are never indexed, validated, collated, evaluated or exported.
     datasets = {split: TAV0Dataset(asset, model_rows, provenance_rows, split=split,
-                                  expected_rows=PACKAGE_ROWS) for split in ("train", "dev")}
+                                  expected_rows=PACKAGE_ROWS, config=config) for split in ("train", "dev")}
     counts = {split: {"utterances": sum(r["split"] == split for r in model_rows),
                       "dialogues": len(dataset)} for split, dataset in datasets.items()}
     if counts != SPLIT_COUNTS:
@@ -258,7 +261,9 @@ def run_formal(*, formal_train_dev=False, config_path, asset_path, model_manifes
         raise ValueError("explicit CUDA device is unavailable")
     if one_step_smoke and resume is not None:
         raise ValueError("one-step smoke cannot resume a partial epoch")
-    datasets, data_identity, paths = load_train_dev(asset_path, model_manifest_path, provenance_manifest_path)
+    load_options = {"config": config} if config.diagnostic_t1024_ab1 else {}
+    datasets, data_identity, paths = load_train_dev(
+        asset_path, model_manifest_path, provenance_manifest_path, **load_options)
     seed_everything(device)
     git = git_identity()
     runtime = TrainDevRuntime(TAV0(config), datasets.__getitem__, device=device,

@@ -1,6 +1,7 @@
 """TA-v0 Train/Dev mechanics; no Test path or historical trainer dependency."""
 
 from copy import deepcopy
+from functools import partial
 import math
 import random
 
@@ -119,7 +120,8 @@ class TrainDevRuntime:
         if synthetic_only and self.device.type != "cpu":
             raise ValueError("synthetic checks are CPU only")
         if not isinstance(model, TAV0) or model.config not in (
-                TAV0Config(), TAV0Config(use_causal_history_gate=True)):
+                TAV0Config(), TAV0Config(use_causal_history_gate=True),
+                TAV0Config(text_dim=1024, diagnostic_t1024_ab1=True)):
             raise ValueError("formal TA-v0 architecture is frozen")
         self.model = model.to(self.device)
         self.dataset_factory = dataset_factory
@@ -148,7 +150,7 @@ class TrainDevRuntime:
             raise ValueError("dataset split identity mismatch")
         generator = torch.Generator().manual_seed(100 + epoch - 1 if split == "train" else 100)
         return DataLoader(dataset, batch_size=16, shuffle=split == "train", num_workers=0,
-                          collate_fn=ta_v0_collate, generator=generator)
+                          collate_fn=partial(ta_v0_collate, config=self.model.config), generator=generator)
 
     def forward_batch(self, batch, *, split):
         require_development_split(split)

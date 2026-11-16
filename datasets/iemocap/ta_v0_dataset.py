@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from models.multidag_cl.ta_v0.config import LABEL_VOCAB
+from models.multidag_cl.ta_v0.config import LABEL_VOCAB, TAV0Config
 
 SCHEMA = "iemocap_asym_ta_v1"
 VERSION = "asymmetric_merc_v1"
@@ -73,8 +73,11 @@ def read_columns(path, fields, optional_fields=()):
 
 
 class TAV0Dataset(Dataset):
-    def __init__(self, asset, model_rows, provenance_rows, *, split, expected_rows=PACKAGE_ROWS):
+    def __init__(self, asset, model_rows, provenance_rows, *, split, expected_rows=PACKAGE_ROWS,
+                 config=None):
         require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
+        config = TAV0Config() if config is None else config
+        require(isinstance(config, TAV0Config), "config must be TAV0Config")
         # The portable v1 universe is frozen; only synthetic callers override this count.
         require(type(expected_rows) is int and expected_rows > 0, "invalid expected_rows")
         model = unique_rows(model_rows, MODEL_MANIFEST_FIELDS, "model manifest")
@@ -103,6 +106,10 @@ class TAV0Dataset(Dataset):
                 "unexpected asset fields")
         require(asset["dataset_version"] == VERSION, "wrong package version")
         require(set(asset["feature_spec"]) == {"text", "audio_ta"}, "TA-only feature schema required")
+        if config.diagnostic_t1024_ab1:
+            require(asset["feature_spec"]["text"].get("dimension") == config.text_dim
+                    and asset["feature_spec"]["audio_ta"].get("dimension") == 1582,
+                    "AB-1 requires text=1024/audio=1582 feature metadata")
         vocab = asset["label_vocab"]
         require(vocab.get("itos") == list(LABEL_VOCAB), "source label order mismatch; explicit remap required")
         if "stoi" in vocab:
@@ -153,7 +160,7 @@ class TAV0Dataset(Dataset):
             self._model_dialogue_ids[did] = model_did
             self._ordered[did] = tuple(sorted(ordered))
             if membership[did] == split:
-                for key, dim in (("text_features", 768), ("audio_features", 1582)):
+                for key, dim in (("text_features", config.text_dim), ("audio_features", 1582)):
                     arr = dialogue[key]
                     require(isinstance(arr, np.ndarray) and arr.shape == (len(ids), dim)
                             and arr.dtype == np.float32 and np.isfinite(arr).all(),
@@ -164,14 +171,14 @@ class TAV0Dataset(Dataset):
 
     @classmethod
     def from_files(cls, asset_path, model_manifest_path, provenance_manifest_path, *,
-                   split, expected_rows=PACKAGE_ROWS):
+                   split, expected_rows=PACKAGE_ROWS, config=None):
         require(split in ("train", "dev"), "development allows only train/dev; Test loader forbidden")
         # Explicit caller paths only; no dialogue split bridge, search or writeback.
         model = read_columns(model_manifest_path, MODEL_MANIFEST_FIELDS)
         provenance = read_columns(provenance_manifest_path, PROVENANCE_MANIFEST_FIELDS)
         with Path(asset_path).open("rb") as stream:
             asset = pickle.load(stream)
-        return cls(asset, model, provenance, split=split, expected_rows=expected_rows)
+        return cls(asset, model, provenance, split=split, expected_rows=expected_rows, config=config)
 
     def __len__(self):
         return len(self.dialogue_ids)
@@ -241,13 +248,15 @@ class LegacySyntheticTAV0Dataset(TAV0Dataset):
         return cls(asset, bridge, canonical, split=split)
 
 
-def ta_v0_collate(samples):
+def ta_v0_collate(samples, *, config=None):
+    config = TAV0Config() if config is None else config
+    require(isinstance(config, TAV0Config), "config must be TAV0Config")
     require(bool(samples), "empty batch")
     require(len({s["split"] for s in samples}) == 1, "mixed split batch")
     lengths = torch.tensor([len(s["utterance_ids"]) for s in samples], dtype=torch.int64)
     b, length = len(samples), int(lengths.max())
     batch = {
-        "text_features": torch.zeros(b, length, 768),
+        "text_features": torch.zeros(b, length, config.text_dim),
         "audio_features": torch.zeros(b, length, 1582),
         "speaker_ids_int": torch.full((b, length), -1, dtype=torch.int64),
         "labels": torch.full((b, length), -100, dtype=torch.int64),

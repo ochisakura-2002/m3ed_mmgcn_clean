@@ -1,0 +1,69 @@
+schema: multidag_tav_full_audit_v1
+experiment_id: tav_dcn_cl7_tav_past_all_causal_s100
+model_name: multidag_tav_t1024
+architecture_lineage: tav_architecture_t1024_a1582_v342_unilstm_100_each_v1
+frontend_source:
+  config_path: configs/multidag_cl/paper_reimplementation/iemocap/full_context/paper_data_reproduction/causal_text_encoder_diagnostic/modality_ablation/cl7_unilstm_tav.yaml
+  sha256: 89dd22f1b9d2e4f7ef67b554a8ab5ba564a07e156bfb43e50e2a2e872c4063b7
+  hash_policy: UTF8_LF
+  encoder: PaperFormulaModalityEncoder
+  causal_text: true
+graph_core:
+  enabled: true
+  variant: dcn
+active_modalities: TAV
+context_mode: past_all_causal
+modality_mask: deterministic_zero_after_encoder
+curriculum:
+  variant: ORIGINAL_CL7
+  bucket_count: 7
+  partition: balanced_stable_contiguous
+  schedule: official_one_bucket_per_epoch
+  difficulty: within_speaker_emotion_shifts_plus_speakers_over_utterances_plus_speakers
+  code_lineage: scripts/runtime/multidag_cl_paper_reimplementation/curriculum.py
+  source_config: configs/multidag_cl/paper_reimplementation/iemocap/full_context/paper_data_reproduction/causal_text_encoder_diagnostic/modality_ablation/cl7_unilstm_tav.yaml
+dataset:
+  schema: iemocap_asym_tav_t1024_v1
+  asset_path: null
+  model_manifest_path: null
+  provenance_manifest_path: null
+  feature_dimensions:
+    text: 1024
+    audio: 1582
+    visual: 342
+training:
+  seed: 100
+  max_epochs: 30
+  batch_size: 16
+  optimizer:
+    name: AdamW
+    learning_rate: 0.0005
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-06
+    weight_decay: 0.0
+  scheduler: null
+  gradient_clip_norm: 5.0
+  class_weight: null
+  label_smoothing: 0.0
+  curriculum: true
+  early_stopping: false
+  train_shuffle: true
+  dev_shuffle: false
+runtime:
+  splits:
+  - train
+  - dev
+  test_policy: HOLD
+checkpoint:
+  selector:
+  - dev_weighted_f1_desc
+  - dev_loss_asc
+  - epoch_asc
+  test_split_used_for_selection: false
+  test_evaluation_count: 0
+output:
+  root: outputs
+  experiment_date: null
+  experiment_group: tav_audit_dcn_cl7_tav_past_all_causal

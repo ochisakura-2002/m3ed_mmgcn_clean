@@ -86,15 +86,17 @@ class AuditRuntime(TrainDevRuntime):
         return {"schema": "tav_full_audit_checkpoint_v1", "audit_config": deepcopy(self.model.audit_config),
                 "data_identity": deepcopy(self.data_identity),
                 "curriculum_membership_sha256": self.curriculum.manifest.membership_sha256,
-                "training_config": deepcopy(self.model.audit_config["training"]), "seed": 100}
+                "training_config": deepcopy(self.model.audit_config["training"]),
+                "seed": self.model.audit_config["training"]["seed"]}
 
     def loader(self, split, *, epoch=1):
         require_split(split)
         dataset = self.dataset(split)
+        seed = self.model.audit_config["training"]["seed"]
         if split == "train":
-            return self.curriculum.build_loader(dataset, global_epoch=epoch, batch_size=16, seed=100, collate_fn=collate)
+            return self.curriculum.build_loader(dataset, global_epoch=epoch, batch_size=16, seed=seed, collate_fn=collate)
         return torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=False, num_workers=0, collate_fn=collate,
-                                           generator=torch.Generator().manual_seed(100))
+                                           generator=torch.Generator().manual_seed(seed))
 
     def forward_batch(self, batch, *, split, active_modalities=None):
         require_split(split)
@@ -127,11 +129,11 @@ class AuditRuntime(TrainDevRuntime):
         return {"loss": float(loss.detach()), "valid_target_count": int(output.mask.sum()),
                 "gradient_norm": float(norm), "optimizer_steps": self.optimizer_steps}
 
-    def evaluate(self, batches=None, *, split="dev", active_modalities=None):
+    def evaluate(self, batches=None, *, split="dev", active_modalities=None, include_predictions=False):
         if split != "dev":
             raise ValueError("Dev evaluation only; Test forbidden")
         batches = self.loader("dev") if batches is None else batches
-        labels, predictions, numerator, count = [], [], 0.0, 0
+        labels, predictions, utterance_ids, numerator, count = [], [], [], 0.0, 0
         was_training = self.model.training
         try:
             with torch.no_grad():
@@ -140,13 +142,21 @@ class AuditRuntime(TrainDevRuntime):
                     targets = batch["labels"][output.mask.cpu()].tolist()
                     labels.extend(targets)
                     predictions.extend(output.logits_ta[output.mask].argmax(-1).cpu().tolist())
+                    if include_predictions:
+                        utterance_ids.extend(uid for dialogue in batch["utterance_ids"] for uid in dialogue)
                     numerator += float(loss) * len(targets)
                     count += len(targets)
         finally:
             self.model.train(was_training)
         if not count:
             raise ValueError("empty Dev evaluation")
-        return classification_report(labels, predictions, loss=numerator / count)
+        report = classification_report(labels, predictions, loss=numerator / count)
+        if include_predictions:
+            if len(utterance_ids) != count or len(set(utterance_ids)) != count:
+                raise ValueError("Dev prediction utterance identity mismatch")
+            report["predictions"] = [dict(utterance_id=uid, true_label=label, predicted_label=prediction)
+                                     for uid, label, prediction in zip(utterance_ids, labels, predictions)]
+        return report
 
 
 class SyntheticDialogues(Dataset):
@@ -170,7 +180,7 @@ class SyntheticDialogues(Dataset):
 
 
 def synthetic_runtime(raw):
-    seed_everything("cpu")
+    seed_everything("cpu", raw["training"]["seed"])
     datasets = {split: SyntheticDialogues(split) for split in ("train", "dev")}
     return AuditRuntime(TAVFullAudit(raw), datasets.__getitem__, synthetic_only=True,
                         data_identity={"kind": "synthetic_train_dev_only"}, git_head="synthetic")

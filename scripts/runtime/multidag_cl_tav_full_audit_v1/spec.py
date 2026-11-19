@@ -23,6 +23,9 @@ SCHEMA = "multidag_tav_full_audit_v1"
 LINEAGE = "tav_architecture_t1024_a1582_v342_unilstm_100_each_v1"
 TRAIN_MATRIX = "TAV_FULL_AUDIT_MATRIX.csv"
 EVAL_MATRIX = "TAV_MISSING_MODALITY_EVAL_MATRIX.csv"
+CONFIRM_GROUP = "tav_multiseed_confirm_v1"
+CONFIRM_SEEDS = (42, 100, 2024, 2026, 3407)
+CONFIRM_AXES = (("original", "TAV"), ("original", "TA"), ("track", "TAV"), ("dcn", "TAV"))
 
 
 def experiment_id(core, modalities, curriculum, context):
@@ -75,11 +78,27 @@ def validate_config(raw):
     try:
         expected = make_config(raw["graph_core"]["variant"], raw["active_modalities"],
                                raw["curriculum"]["variant"], raw["context_mode"])
+        if raw["output"]["experiment_group"] == CONFIRM_GROUP:
+            expected = confirm_config(expected, raw["training"]["seed"])
     except (KeyError, TypeError) as error:
         raise ValueError("missing audit config identity") from error
     if json_identity(raw) != json_identity(expected):
         raise ValueError("frozen TAV audit protocol/config identity mismatch")
     return deepcopy(raw)
+
+
+def confirm_config(source, seed):
+    """Derive one immutable execution config from its frozen Full Audit YAML."""
+    axes = source["graph_core"]["variant"], source["active_modalities"]
+    if axes not in CONFIRM_AXES or source["context_mode"] != "past_all_causal":
+        raise ValueError("configuration is outside the GraphCore confirmatory design")
+    if type(seed) is not int or seed not in CONFIRM_SEEDS:
+        raise ValueError("seed is outside the GraphCore confirmatory design")
+    raw = deepcopy(source)
+    raw["training"]["seed"] = seed
+    raw["experiment_id"] = f"confirm_{source['experiment_id'].removesuffix('_s100')}_s{seed}"
+    raw["output"]["experiment_group"] = CONFIRM_GROUP
+    return raw
 
 
 def design():

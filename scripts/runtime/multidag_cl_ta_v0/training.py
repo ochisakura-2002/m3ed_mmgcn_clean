@@ -47,12 +47,12 @@ def reload_model_checkpoint(model, path, *, validate):
     return checkpoint
 
 
-def seed_everything(device):
-    random.seed(100)
-    np.random.seed(100)
-    torch.manual_seed(100)
+def seed_everything(device, seed=100):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     if torch.device(device).type == "cuda":
-        torch.cuda.manual_seed_all(100)
+        torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 

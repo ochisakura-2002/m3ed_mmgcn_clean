@@ -38,7 +38,8 @@ def completed_manifest(run_dir, raw, data_identity):
     return manifest
 
 
-def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, synthetic_epochs=None):
+def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, synthetic_epochs=None,
+            export_dev_evidence=False):
     raw = validate_config(raw)
     if raw != runtime.model.audit_config:
         raise ValueError("runtime/config mismatch")
@@ -81,12 +82,14 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                                                            if k in ("architecture_lineage", "frontend_source", "graph_core")}),
                     "config_sha256": json_identity(raw), "data_identity": deepcopy(runtime.data_identity),
                     "data_paths": data_paths or {}, **(git or {"git_head": runtime.git_head}),
-                    "seed": 100, "feature_dimensions": {"text": 1024, "audio": 1582, "visual": 342},
+                    "seed": raw["training"]["seed"],
+                    "feature_dimensions": {"text": 1024, "audio": 1582, "visual": 342},
                     "active_modalities": raw["active_modalities"], "graph_core": raw["graph_core"],
                     "curriculum": raw["curriculum"], "context": raw["context_mode"],
                     "curriculum_membership_sha256": runtime.curriculum.manifest.membership_sha256,
                     "training_config": raw["training"], "parameter_count": count,
                     "test_loader_built": 0, "test_evaluation_count": 0, "test_labels_inspected": 0,
+                    "test_used_for_selection": False,
                     "synthetic_only": runtime.synthetic_only, "status": "initialized", "training_finished": False,
                     "last_completed_epoch": 0, "optimizer_steps": 0}
     if type(epochs) is not int or not 1 <= epochs <= 30 or runtime.epoch > epochs:
@@ -140,11 +143,20 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                                   "dev_weighted_f1": metrics["weighted_f1"], "test_evaluation_count": 0}), flush=True)
         best_path = run_dir / "checkpoints" / "best_model.pt"
         reload_model_checkpoint(runtime.model, best_path, validate=runtime.validate_checkpoint)
-        report = runtime.evaluate()
+        steps_before = runtime.optimizer_steps
+        report = runtime.evaluate(include_predictions=True) if export_dev_evidence else runtime.evaluate()
+        checkpoint_sha = sha256_file(best_path)
+        if export_dev_evidence:
+            if steps_before != runtime.optimizer_steps:
+                raise ValueError("best-Dev export changed optimizer steps")
+            write_json_atomic(run_dir / "reports" / "validation_best_dev_evidence.json",
+                              {**report, "split": "dev", "checkpoint_sha256": checkpoint_sha,
+                               "export_mode": "final_selected_checkpoint_reload", "optimizer_steps_performed": 0,
+                               "test_loader_built": 0, "test_evaluation_count": 0})
         write_json_atomic(run_dir / "reports" / "validation_best_metrics.json", report["metrics"])
         manifest.update(status="synthetic_completed" if runtime.synthetic_only else "completed",
                         training_finished=True, best_checkpoint_reloaded=True, best_dev_metrics=report["metrics"],
-                        best_checkpoint_sha256=sha256_file(best_path), optimizer_steps=runtime.optimizer_steps)
+                        best_checkpoint_sha256=checkpoint_sha, optimizer_steps=runtime.optimizer_steps)
         write_json_atomic(manifest_path, manifest)
         return manifest
     except Exception as error:
@@ -157,7 +169,7 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
 
 def real_runtime(raw, *, asset_path, model_manifest_path, provenance_manifest_path, device):
     datasets, identity, paths = load_train_dev(asset_path, model_manifest_path, provenance_manifest_path)
-    seed_everything(device)
+    seed_everything(device, raw["training"]["seed"])
     git = git_identity()
     runtime = AuditRuntime(TAVFullAudit(raw), datasets.__getitem__, formal_train_dev=True, device=device,
                            data_identity=identity, git_head=git["git_head"])

@@ -99,12 +99,8 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
-def summarize(batch_manifest, *, output_root="outputs", batch_id=None):
-    batch, training, missing = collect(batch_manifest)
-    paths = resolve_output_paths(output_base=output_root, experiment_date=batch["experiment_date"],
-                                 experiment_group="tav_full_audit_v1", batch_id=batch_id or batch["batch_id"] + "_summary")
-    paths.analysis_root.mkdir(parents=True, exist_ok=False)
-    tables = {
+def result_tables(training, missing):
+    return {
         "TAV_FULL_AUDIT_RESULTS.csv": training,
         "TAV_GRAPHCORE_RESULTS.csv": [row for row in training if row["modalities"] == "TAV" and row["context_mode"] == "past_all_causal"],
         "TAV_CL_RESULTS.csv": [row for row in training if row["context_mode"] == "past_all_causal"],
@@ -112,6 +108,14 @@ def summarize(batch_manifest, *, output_root="outputs", batch_id=None):
         "TAV_CONTEXT_RESULTS.csv": [row for row in training if row["graph_core"] == "original" and row["curriculum"] == "CL_OFF" and row["modalities"] == "TAV"],
         "TAV_MISSING_MODALITY_RESULTS.csv": missing,
     }
+
+
+def summarize(batch_manifest, *, output_root="outputs", batch_id=None):
+    batch, training, missing = collect(batch_manifest)
+    paths = resolve_output_paths(output_base=output_root, experiment_date=batch["experiment_date"],
+                                 experiment_group="tav_full_audit_v1", batch_id=batch_id or batch["batch_id"] + "_summary")
+    paths.analysis_root.mkdir(parents=True, exist_ok=False)
+    tables = result_tables(training, missing)
     for name, rows in tables.items():
         write_csv(paths.analysis_root / name, rows)
     return {"analysis_dir": paths.analysis_root.as_posix(), "rows": {name: len(rows) for name, rows in tables.items()},

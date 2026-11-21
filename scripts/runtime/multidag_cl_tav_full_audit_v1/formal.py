@@ -17,6 +17,14 @@ from .runtime import AuditRuntime, load_train_dev
 from .spec import validate_config
 
 
+def validate_training_config(raw):
+    if isinstance(raw, dict) and ("fusion" in raw or raw.get("schema") == "multidag_tav_fusion_screen_v1"):
+        from scripts.runtime.multidag_cl_fusion.spec import validate_screen_config
+
+        return validate_screen_config(raw)
+    return validate_config(raw)
+
+
 def run_path(raw, *, output_root=None, experiment_date=None):
     return resolve_output_paths(output_base=output_root or raw["output"]["root"],
                                 experiment_date=resolve_experiment_date(experiment_date, raw),
@@ -40,7 +48,8 @@ def completed_manifest(run_dir, raw, data_identity):
 
 def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, synthetic_epochs=None,
             export_dev_evidence=False):
-    raw = validate_config(raw)
+    raw = validate_training_config(raw)
+    fusion = "fusion" in raw
     if raw != runtime.model.audit_config:
         raise ValueError("runtime/config mismatch")
     if os.name == "nt" and not runtime.synthetic_only:
@@ -66,6 +75,8 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         runtime.resume(resume)
         if previous.get("last_completed_epoch") != runtime.epoch:
             raise ValueError("manifest/checkpoint completed epoch mismatch")
+        if fusion:
+            runtime.restore_pairing(previous)
         manifest = previous
     else:
         run_dir.mkdir(parents=True, exist_ok=False)
@@ -79,7 +90,7 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         manifest = {"schema": raw["schema"], "experiment_id": raw["experiment_id"], "run_id": raw["experiment_id"],
                     "model_name": raw["model_name"], "architecture_lineage": raw["architecture_lineage"],
                     "architecture_identity": json_identity({k: v for k, v in raw.items()
-                                                           if k in ("architecture_lineage", "frontend_source", "graph_core")}),
+                                                           if k in ("architecture_lineage", "frontend_source", "graph_core", "fusion")}),
                     "config_sha256": json_identity(raw), "data_identity": deepcopy(runtime.data_identity),
                     "data_paths": data_paths or {}, **(git or {"git_head": runtime.git_head}),
                     "seed": raw["training"]["seed"],
@@ -92,6 +103,9 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                     "test_used_for_selection": False,
                     "synthetic_only": runtime.synthetic_only, "status": "initialized", "training_finished": False,
                     "last_completed_epoch": 0, "optimizer_steps": 0}
+        if fusion:
+            manifest.update(fusion=raw["fusion"], shared_initialization=runtime.initialization,
+                            batch_pairing=deepcopy(runtime.pairing))
     if type(epochs) is not int or not 1 <= epochs <= 30 or runtime.epoch > epochs:
         raise ValueError("invalid training/resume epoch limit")
     # Exclusive lock protects a run from concurrent resumes as well as fresh fits.
@@ -103,6 +117,8 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         write_json_atomic(manifest_path, manifest)
         columns = ("epoch", "train_loss", "dev_loss", "dev_accuracy", "dev_weighted_f1", "dev_macro_f1",
                    "dev_uar", "gradient_norm", "train_dialogues", "train_targets", "is_best", "optimizer_steps")
+        if fusion:
+            columns += ("dev_acc", "dev_wf1")
         epoch_path = run_dir / "logs" / "epoch_metrics.tsv"
         if resume is not None:
             with epoch_path.open(encoding="utf-8", newline="") as stream:
@@ -129,13 +145,23 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                 dev = runtime.evaluate()
                 if not runtime.synthetic_only and dev["metrics"]["valid_target_count"] != 980:
                     raise ValueError("canonical Dev target count mismatch")
+                if fusion:
+                    mechanism = dev["fusion_mechanism"]
+                    if mechanism:
+                        write_json_atomic(run_dir / "logs" / f"fusion_mechanism_epoch_{epoch:02d}.json", mechanism)
+                        if mechanism["activity"]["FUSION_ACTIVITY_WARNING"]:
+                            print(f"{raw['experiment_id']} epoch {epoch}: FUSION_ACTIVITY_WARNING = NEAR_IDENTITY",
+                                  flush=True)
                 improved = runtime.save_epoch(run_dir / "checkpoints", epoch=epoch, dev=dev)
                 metrics = dev["metrics"]
+                aliases = {"dev_acc": metrics["accuracy"], "dev_wf1": metrics["weighted_f1"]} if fusion else {}
                 writer.writerow({"epoch": epoch, "train_loss": total / count,
                                  **{f"dev_{key}": metrics[key] for key in ("loss", "accuracy", "weighted_f1", "macro_f1", "uar")},
                                  "gradient_norm": norm, "train_dialogues": len(visible), "train_targets": count,
-                                 "is_best": improved, "optimizer_steps": runtime.optimizer_steps})
+                                 "is_best": improved, "optimizer_steps": runtime.optimizer_steps, **aliases})
                 stream.flush()
+                if fusion:
+                    manifest["batch_pairing"] = deepcopy(runtime.pairing)
                 manifest.update(last_completed_epoch=epoch, optimizer_steps=runtime.optimizer_steps,
                                 best_epoch=runtime.selector.best.epoch)
                 write_json_atomic(manifest_path, manifest)
@@ -144,11 +170,15 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         best_path = run_dir / "checkpoints" / "best_model.pt"
         reload_model_checkpoint(runtime.model, best_path, validate=runtime.validate_checkpoint)
         steps_before = runtime.optimizer_steps
-        report = runtime.evaluate(include_predictions=True) if export_dev_evidence else runtime.evaluate()
+        report = runtime.evaluate(include_predictions=True) if export_dev_evidence or fusion else runtime.evaluate()
         checkpoint_sha = sha256_file(best_path)
-        if export_dev_evidence:
+        if export_dev_evidence or fusion:
             if steps_before != runtime.optimizer_steps:
                 raise ValueError("best-Dev export changed optimizer steps")
+        if fusion:
+            write_json_atomic(run_dir / "reports" / "fusion_best_dev.json",
+                              {key: report[key] for key in ("metrics", "per_class", "fusion_mechanism")})
+        if export_dev_evidence:
             write_json_atomic(run_dir / "reports" / "validation_best_dev_evidence.json",
                               {**report, "split": "dev", "checkpoint_sha256": checkpoint_sha,
                                "export_mode": "final_selected_checkpoint_reload", "optimizer_steps_performed": 0,
@@ -169,10 +199,15 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
 
 def real_runtime(raw, *, asset_path, model_manifest_path, provenance_manifest_path, device):
     datasets, identity, paths = load_train_dev(asset_path, model_manifest_path, provenance_manifest_path)
-    seed_everything(device, raw["training"]["seed"])
     git = git_identity()
-    runtime = AuditRuntime(TAVFullAudit(raw), datasets.__getitem__, formal_train_dev=True, device=device,
-                           data_identity=identity, git_head=git["git_head"])
+    options = dict(formal_train_dev=True, device=device, data_identity=identity, git_head=git["git_head"])
+    if "fusion" in raw:
+        from scripts.runtime.multidag_cl_fusion.runtime import paired_runtime
+
+        runtime, _ = paired_runtime(raw, datasets, **options)
+    else:
+        seed_everything(device, raw["training"]["seed"])
+        runtime = AuditRuntime(TAVFullAudit(raw), datasets.__getitem__, **options)
     return runtime, paths, git
 
 
@@ -182,7 +217,7 @@ def run_formal(*, formal_train_dev=False, config_path, asset_path, model_manifes
         raise ValueError("explicit --formal-train-dev required before data access")
     if os.name == "nt":
         raise ValueError("formal TAV training is remote-only; use --synthetic-smoke on Windows")
-    raw = validate_config(yaml.safe_load(Path(config_path).read_text(encoding="utf-8")))
+    raw = validate_training_config(yaml.safe_load(Path(config_path).read_text(encoding="utf-8")))
     if device != "cuda" or not torch.cuda.is_available():
         raise ValueError("formal audit requires explicit available CUDA")
     directory = Path(resume).resolve().parents[1] if resume else run_path(raw, output_root=output_root, experiment_date=experiment_date)

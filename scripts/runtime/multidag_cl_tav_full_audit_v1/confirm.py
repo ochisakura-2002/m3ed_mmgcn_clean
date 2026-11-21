@@ -158,7 +158,9 @@ def source_unchanged(*args):
 
 
 def frozen_model_source():
+    # The screening backbone is separate and never imported by the historical model.
     return source_unchanged(AUDIT_REFERENCE, "--", *SOURCE_SCOPE, *EXECUTION_EDITS,
+                            ":(exclude)models/multidag_cl/fusion/**",
                             ":(exclude)scripts/runtime/multidag_cl_tav_full_audit_v1/confirm.py")
 
 

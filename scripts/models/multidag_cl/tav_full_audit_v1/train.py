@@ -13,9 +13,8 @@ if str(ROOT) not in sys.path:
 import torch
 import yaml
 
-from scripts.runtime.multidag_cl_tav_full_audit_v1.formal import execute, run_formal
+from scripts.runtime.multidag_cl_tav_full_audit_v1.formal import execute, run_formal, validate_training_config
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import synthetic_runtime
-from scripts.runtime.multidag_cl_tav_full_audit_v1.spec import validate_config
 
 
 def main(argv=None):
@@ -29,7 +28,7 @@ def main(argv=None):
         parser.add_argument("--" + name)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     args = parser.parse_args(argv)
-    raw = validate_config(yaml.safe_load(Path(args.config).read_text(encoding="utf-8")))
+    raw = validate_training_config(yaml.safe_load(Path(args.config).read_text(encoding="utf-8")))
     paths = (args.asset_path, args.model_manifest_path, args.provenance_manifest_path)
     if args.formal_train_dev:
         if not all(paths):

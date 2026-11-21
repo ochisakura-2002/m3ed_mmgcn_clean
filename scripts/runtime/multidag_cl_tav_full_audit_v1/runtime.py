@@ -180,7 +180,13 @@ class SyntheticDialogues(Dataset):
 
 
 def synthetic_runtime(raw):
-    seed_everything("cpu", raw["training"]["seed"])
     datasets = {split: SyntheticDialogues(split) for split in ("train", "dev")}
+    if "fusion" in raw:
+        from scripts.runtime.multidag_cl_fusion.runtime import paired_runtime
+
+        runtime, _ = paired_runtime(raw, datasets, device="cpu", synthetic_only=True,
+                                    data_identity={"kind": "synthetic_train_dev_only"}, git_head="synthetic")
+        return runtime
+    seed_everything("cpu", raw["training"]["seed"])
     return AuditRuntime(TAVFullAudit(raw), datasets.__getitem__, synthetic_only=True,
                         data_identity={"kind": "synthetic_train_dev_only"}, git_head="synthetic")

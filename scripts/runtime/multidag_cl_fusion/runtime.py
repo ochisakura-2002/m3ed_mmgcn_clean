@@ -3,6 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
+from typing import Optional
 
 import torch
 
@@ -14,13 +15,14 @@ from models.multidag_cl.ta_v0 import LABEL_VOCAB
 from scripts.runtime.multidag_cl_ta_v0.formal import json_identity
 from scripts.runtime.multidag_cl_ta_v0.training import cpu_snapshot, seed_everything
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import AuditRuntime
-from .spec import ARMS, make_screen_config, validate_screen_config
+from .spec import ARMS, is_topology, make_screen_config, make_topology_config, validate_screen_config
 
 
 @dataclass(frozen=True)
 class F0Initialization:
     shared: dict
     rng: torch.Tensor
+    canonical_edges: Optional[dict] = None
 
 
 def shared_state(model):
@@ -36,33 +38,49 @@ def state_digest(state):
     return digest.hexdigest()
 
 
+def seeded_candidate(raw, seed):
+    # Construct CPU modules without advancing the F0 CPU or CUDA training RNG.
+    with torch.random.fork_rng(devices=[]):
+        torch.random.default_generator.manual_seed(seed)
+        return FusionTAV(raw)
+
+
+def edge_state(model):
+    return {EDGES[name][2]: matcher.state_dict() for name, matcher in model.fusion.matchers.items()}
+
+
 def paired_model(raw, *, device, reference=None):
     raw = validate_screen_config(raw)
     seed = raw["training"]["seed"]
+    topology = is_topology(raw)
+    direct = raw["fusion"]["type"] == DIRECT
     seed_everything(device, seed)
     f0 = None
-    if reference is None or raw["fusion"]["type"] == DIRECT:
-        f0 = FusionTAV(make_screen_config("F0"))
+    if reference is None or direct:
+        f0 = FusionTAV(make_topology_config("F0") if topology else make_screen_config("F0"))
     if reference is None:
-        reference = F0Initialization(cpu_snapshot(shared_state(f0)), torch.get_rng_state())
+        shared, rng = cpu_snapshot(shared_state(f0)), torch.get_rng_state()
+        canonical = edge_state(seeded_candidate(make_screen_config("Hybrid"), seed + 1)) if topology else None
+        reference = F0Initialization(shared, rng, canonical)
     else:
+        if topology != (reference.canonical_edges is not None):
+            raise ValueError("CT-MultiDAG initialization reference uses a different protocol")
         torch.set_rng_state(reference.rng)
 
-    if raw["fusion"]["type"] == DIRECT:
+    if direct:
         model, fusion_seed = f0, None
     else:
-        index = next(i for i, options in enumerate(ARMS.values()) if options == raw["fusion"])
+        index = 1 if topology else next(i for i, options in enumerate(ARMS.values()) if options == raw["fusion"])
         fusion_seed = seed + index
-        # Candidate initialization must leave the F0 training RNG stream intact.
-        with torch.random.fork_rng(devices=[]):
-            torch.random.default_generator.manual_seed(fusion_seed)
-            model = FusionTAV(raw)
+        model = seeded_candidate(raw, fusion_seed)
         state = model.state_dict()
         if shared_state(model).keys() != reference.shared.keys():
             raise ValueError("CT-MultiDAG shared state identity mismatch")
         state.update(reference.shared)
         model.load_state_dict(state)
 
+    if not torch.equal(torch.get_rng_state(), reference.rng):
+        raise ValueError("CT-MultiDAG training RNG differs from F0")
     actual = shared_state(model)
     difference = max(float((value - actual[name]).abs().max()) for name, value in reference.shared.items())
     digest = state_digest(actual)
@@ -70,6 +88,23 @@ def paired_model(raw, *, device, reference=None):
         raise ValueError("CT-MultiDAG shared initialization differs from F0")
     initialization = {"shared_parameter_max_abs_diff": difference, "shared_initial_state_sha256": digest,
                       "fusion_initialization_seed": fusion_seed}
+    if topology:
+        differences, edge_hashes = [], {}
+        if not direct:
+            for name, matcher in model.fusion.matchers.items():
+                label = EDGES[name][2]
+                expected = reference.canonical_edges[label]
+                matcher.load_state_dict(expected, strict=True)
+                actual_edge = matcher.state_dict()
+                differences.extend(float((value - actual_edge[key]).abs().max()) for key, value in expected.items())
+                edge_hashes[label] = state_digest(actual_edge)
+                if edge_hashes[label] != state_digest(expected):
+                    raise ValueError(f"CT-MultiDAG initial parameters differ for {label}")
+        edge_difference = max(differences, default=0.0)
+        if edge_difference != 0:
+            raise ValueError("CT-MultiDAG common edge initialization differs from canonical H4")
+        initialization.update(common_edge_init_max_abs_diff=edge_difference, edge_initial_state_sha256=edge_hashes,
+                              training_cpu_rng_sha256=state_digest({"rng": reference.rng}))
     return model, reference, initialization
 
 
@@ -81,12 +116,16 @@ def aggregate_dev(traces, labels, *, by_class):
         samples = torch.cat(traces[edge])
         row = {"active_count": len(samples)}
         if len(samples):
-            gate, message, receiver, ratio = samples.T
+            gate, message, receiver, ratio = samples[:, :4].T
             quantiles = gate.quantile(torch.tensor([0.05, 0.25, 0.50, 0.75, 0.95])).tolist()
             row.update(gate_mean=float(gate.mean()), gate_std=float(gate.std(unbiased=False)),
                        message_l2_mean=float(message.mean()), receiver_l2_mean=float(receiver.mean()),
                        message_receiver_ratio_mean=float(ratio.mean()))
             row.update(zip(("gate_q05", "gate_q25", "gate_q50", "gate_q75", "gate_q95"), quantiles))
+            if samples.shape[1] == 6:
+                applied_edge, applied_receiver = samples[:, 4:].T
+                row.update(applied_edge_residual_receiver_ratio_mean=float(applied_edge.mean()),
+                           applied_receiver_residual_receiver_ratio_mean=float(applied_receiver.mean()))
         result[edge] = row
     if "activity" in traces:
         ratio = torch.cat(traces["activity"])
@@ -189,6 +228,8 @@ class FusionAuditRuntime(AuditRuntime):
     def evaluate(self, *args, include_predictions=False, **kwargs):
         self._dev_trace = ({}, [])
         try:
+            if include_predictions and is_topology(self.model.audit_config):
+                kwargs["prediction_details"] = True
             report = super().evaluate(*args, include_predictions=include_predictions, **kwargs)
             report["fusion_mechanism"] = aggregate_dev(*self._dev_trace, by_class=include_predictions)
             return report

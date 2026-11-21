@@ -47,9 +47,15 @@ def completed_manifest(run_dir, raw, data_identity):
 
 
 def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, synthetic_epochs=None,
-            export_dev_evidence=False):
+            export_dev_evidence=False, progress=print):
     raw = validate_training_config(raw)
     fusion = "fusion" in raw
+    topology = False
+    if fusion:
+        from scripts.runtime.multidag_cl_fusion.spec import is_topology
+
+        topology = is_topology(raw)
+    export_dev_evidence = export_dev_evidence or topology
     if raw != runtime.model.audit_config:
         raise ValueError("runtime/config mismatch")
     if os.name == "nt" and not runtime.synthetic_only:
@@ -106,6 +112,15 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         if fusion:
             manifest.update(fusion=raw["fusion"], shared_initialization=runtime.initialization,
                             batch_pairing=deepcopy(runtime.pairing))
+        if topology:
+            matchers = getattr(runtime.model.fusion, "matchers", {})
+            from models.multidag_cl.fusion.matching import EDGES
+
+            manifest.update(active_edges=list(raw["fusion"].get("active_edges", [])),
+                            edge_parameter_count={EDGES[name][2]: sum(p.numel() for p in matcher.parameters())
+                                                  for name, matcher in matchers.items()},
+                            fusion_parameter_count=sum(p.numel() for p in runtime.model.fusion.parameters()),
+                            total_parameter_count=count, test_checkpoint_selection_count=0)
     if type(epochs) is not int or not 1 <= epochs <= 30 or runtime.epoch > epochs:
         raise ValueError("invalid training/resume epoch limit")
     # Exclusive lock protects a run from concurrent resumes as well as fresh fits.
@@ -150,8 +165,8 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                     if mechanism:
                         write_json_atomic(run_dir / "logs" / f"fusion_mechanism_epoch_{epoch:02d}.json", mechanism)
                         if mechanism["activity"]["FUSION_ACTIVITY_WARNING"]:
-                            print(f"{raw['experiment_id']} epoch {epoch}: FUSION_ACTIVITY_WARNING = NEAR_IDENTITY",
-                                  flush=True)
+                            progress(f"{raw['experiment_id']} epoch {epoch}: FUSION_ACTIVITY_WARNING = NEAR_IDENTITY",
+                                     flush=True)
                 improved = runtime.save_epoch(run_dir / "checkpoints", epoch=epoch, dev=dev)
                 metrics = dev["metrics"]
                 aliases = {"dev_acc": metrics["accuracy"], "dev_wf1": metrics["weighted_f1"]} if fusion else {}
@@ -165,8 +180,8 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                 manifest.update(last_completed_epoch=epoch, optimizer_steps=runtime.optimizer_steps,
                                 best_epoch=runtime.selector.best.epoch)
                 write_json_atomic(manifest_path, manifest)
-                print(json.dumps({"experiment_id": raw["experiment_id"], "epoch": epoch,
-                                  "dev_weighted_f1": metrics["weighted_f1"], "test_evaluation_count": 0}), flush=True)
+                progress(json.dumps({"experiment_id": raw["experiment_id"], "epoch": epoch,
+                                     "dev_weighted_f1": metrics["weighted_f1"], "test_evaluation_count": 0}), flush=True)
         best_path = run_dir / "checkpoints" / "best_model.pt"
         reload_model_checkpoint(runtime.model, best_path, validate=runtime.validate_checkpoint)
         steps_before = runtime.optimizer_steps
@@ -179,10 +194,11 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
             write_json_atomic(run_dir / "reports" / "fusion_best_dev.json",
                               {key: report[key] for key in ("metrics", "per_class", "fusion_mechanism")})
         if export_dev_evidence:
+            evidence_hold = {"test_checkpoint_selection_count": 0} if topology else {}
             write_json_atomic(run_dir / "reports" / "validation_best_dev_evidence.json",
                               {**report, "split": "dev", "checkpoint_sha256": checkpoint_sha,
                                "export_mode": "final_selected_checkpoint_reload", "optimizer_steps_performed": 0,
-                               "test_loader_built": 0, "test_evaluation_count": 0})
+                               "test_loader_built": 0, "test_evaluation_count": 0, **evidence_hold})
         write_json_atomic(run_dir / "reports" / "validation_best_metrics.json", report["metrics"])
         manifest.update(status="synthetic_completed" if runtime.synthetic_only else "completed",
                         training_finished=True, best_checkpoint_reloaded=True, best_dev_metrics=report["metrics"],

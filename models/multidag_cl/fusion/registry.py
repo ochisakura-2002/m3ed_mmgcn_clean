@@ -29,8 +29,11 @@ def build_fusion(config):
         ROUTER: {"router_hidden_dim", "expert_hidden_dim", "residual_scale"},
     }
     options = {key: value for key, value in config.items() if key != "type"}
-    if set(options) != fields[kind]:
+    optional = {"active_edges"} if kind == LOW_RANK else set()
+    if not fields[kind] <= options.keys() <= fields[kind] | optional:
         raise ValueError(f"unexpected/missing settings for {kind}")
+    if "active_edges" in options and options["active_edges"] is None:
+        raise ValueError("explicit active_edges must contain matching edge labels")
     if "residual_scale" in options and options["residual_scale"] != 0.1:
         raise ValueError("first-screen fusion residual_scale must be 0.1")
     if kind == LOW_RANK and (type(options["rank"]) is not int or not 1 <= options["rank"] <= 16):

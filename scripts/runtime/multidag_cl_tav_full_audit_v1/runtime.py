@@ -129,11 +129,13 @@ class AuditRuntime(TrainDevRuntime):
         return {"loss": float(loss.detach()), "valid_target_count": int(output.mask.sum()),
                 "gradient_norm": float(norm), "optimizer_steps": self.optimizer_steps}
 
-    def evaluate(self, batches=None, *, split="dev", active_modalities=None, include_predictions=False):
+    def evaluate(self, batches=None, *, split="dev", active_modalities=None, include_predictions=False,
+                 prediction_details=False):
         if split != "dev":
             raise ValueError("Dev evaluation only; Test forbidden")
         batches = self.loader("dev") if batches is None else batches
         labels, predictions, utterance_ids, numerator, count = [], [], [], 0.0, 0
+        details = []
         was_training = self.model.training
         try:
             with torch.no_grad():
@@ -144,6 +146,15 @@ class AuditRuntime(TrainDevRuntime):
                     predictions.extend(output.logits_ta[output.mask].argmax(-1).cpu().tolist())
                     if include_predictions:
                         utterance_ids.extend(uid for dialogue in batch["utterance_ids"] for uid in dialogue)
+                        if prediction_details:
+                            dialogue_ids = [did for did, ids in zip(batch["dialogue_ids"], batch["utterance_ids"])
+                                            for _ in ids]
+                            logits = output.logits_ta[output.mask].cpu().tolist()
+                            probabilities = output.prob_ta[output.mask].cpu().tolist()
+                            if len(dialogue_ids) != len(targets):
+                                raise ValueError("Dev prediction dialogue identity mismatch")
+                            details.extend(dict(dialogue_id=did, logits=row, probabilities=prob)
+                                           for did, row, prob in zip(dialogue_ids, logits, probabilities))
                     numerator += float(loss) * len(targets)
                     count += len(targets)
         finally:
@@ -156,6 +167,9 @@ class AuditRuntime(TrainDevRuntime):
                 raise ValueError("Dev prediction utterance identity mismatch")
             report["predictions"] = [dict(utterance_id=uid, true_label=label, predicted_label=prediction)
                                      for uid, label, prediction in zip(utterance_ids, labels, predictions)]
+            if prediction_details:
+                for row, extra in zip(report["predictions"], details):
+                    row.update(extra)
         return report
 
 

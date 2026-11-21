@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 import torch
+from torch import nn
 
 from models.common.causal_graph.graph_builders import build_causal_utterance_adjacency
 from models.multidag_cl.graph_core_variants.track import TrackCore
@@ -27,12 +28,14 @@ class FusionTAV(TAVFullAudit):
         self.fusion = build_fusion(raw["fusion"])
         projections = (self.paper_encoder.text_projection, self.paper_encoder.audio_projection,
                        self.paper_encoder.visual_projection)
+        classifier = tuple((layer.in_features, layer.out_features) for layer in self.classifier
+                           if isinstance(layer, nn.Linear))
         if (tuple((layer.in_features, layer.out_features) for layer in projections)
                 != ((1024, WIDTH), (1582, WIDTH), (342, WIDTH))
                 or self.paper_encoder.text_encoder.hidden_size != WIDTH
                 or self.paper_encoder.text_encoder.bidirectional or WIDTH != 100 or OUTPUT_WIDTH != 300
                 or not isinstance(self.graph_core, TrackCore) or self.graph_core.hidden_dim != 300
-                or len(self.graph_core.readouts) != 4 or self.classifier[0].in_features != 1500):
+                or len(self.graph_core.readouts) != 4 or classifier != ((1500, 300), (300, 300), (300, 6))):
             raise ValueError("FUSION_FORMAL_INTEGRATION = BLOCKED_ARCHITECTURE_DRIFT")
 
     def get_extra_state(self):

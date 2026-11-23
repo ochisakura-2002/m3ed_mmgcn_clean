@@ -1,0 +1,17 @@
+protocol: POST_FUSION_PARALLEL_FASTKILL_001
+arm: B1_CLASS_ANCHOR
+seed: 100
+baseline:
+  protocol: FUSION_FINAL_PAIRED_5SEED_CONFIRMATION
+  variant: F0
+class_anchor:
+  enabled: true
+  temperature: 0.1
+  lambda_anchor: 0.1
+prefix_wes:
+  enabled: false
+  k: 1.0
+  b: 0.4
+  strength: 0.1
+  uniform_from_epoch: 8
+test_policy: HOLD

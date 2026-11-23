@@ -47,7 +47,7 @@ def completed_manifest(run_dir, raw, data_identity):
 
 
 def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, synthetic_epochs=None,
-            export_dev_evidence=False, progress=print):
+            export_dev_evidence=False, progress=print, experiment=None):
     raw = validate_training_config(raw)
     fusion = "fusion" in raw
     topology = False
@@ -66,6 +66,9 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         raise ValueError("epoch override is synthetic-only")
     epochs = 30 if synthetic_epochs is None else synthetic_epochs
     run_dir = Path(run_dir)
+    run_id = run_dir.name if experiment is not None else raw["experiment_id"]
+    if experiment is not None and resume is not None:
+        raise ValueError("resuming an extended objective run is unsupported")
     if resume is None and run_dir.exists():
         raise FileExistsError(run_dir)
     if resume is not None:
@@ -90,12 +93,14 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         run_dir.mkdir(parents=True, exist_ok=False)
         for name in ("checkpoints", "logs", "manifests", "reports"):
             (run_dir / name).mkdir()
-        (run_dir / "resolved_config.yaml").write_text(yaml.safe_dump(
-            {"audit_config": raw, "data_paths": data_paths or {}, "data_identity": runtime.data_identity,
-             "run_dir": run_dir.as_posix()}, sort_keys=False), encoding="utf-8")
+        resolved = {"audit_config": raw, "data_paths": data_paths or {}, "data_identity": runtime.data_identity,
+                    "run_dir": run_dir.as_posix()}
+        if experiment is not None:
+            resolved["experiment"] = deepcopy(experiment)
+        (run_dir / "resolved_config.yaml").write_text(yaml.safe_dump(resolved, sort_keys=False), encoding="utf-8")
         runtime.curriculum.export_manifest(run_dir / "manifests" / "curriculum_bucket_manifest.tsv")
         count = sum(parameter.numel() for parameter in runtime.model.parameters())
-        manifest = {"schema": raw["schema"], "experiment_id": raw["experiment_id"], "run_id": raw["experiment_id"],
+        manifest = {"schema": raw["schema"], "experiment_id": run_id, "run_id": run_id,
                     "model_name": raw["model_name"], "architecture_lineage": raw["architecture_lineage"],
                     "architecture_identity": json_identity({k: v for k, v in raw.items()
                                                            if k in ("architecture_lineage", "frontend_source", "graph_core", "fusion")}),
@@ -114,6 +119,8 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
         if fusion:
             manifest.update(fusion=raw["fusion"], shared_initialization=runtime.initialization,
                             batch_pairing=deepcopy(runtime.pairing))
+        if experiment is not None:
+            manifest["experiment"] = deepcopy(experiment)
         if topology:
             matchers = getattr(runtime.model.fusion, "matchers", {})
             from models.multidag_cl.fusion.matching import EDGES
@@ -182,7 +189,7 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
                 manifest.update(last_completed_epoch=epoch, optimizer_steps=runtime.optimizer_steps,
                                 best_epoch=runtime.selector.best.epoch)
                 write_json_atomic(manifest_path, manifest)
-                progress(json.dumps({"experiment_id": raw["experiment_id"], "epoch": epoch,
+                progress(json.dumps({"experiment_id": run_id, "epoch": epoch,
                                      "dev_weighted_f1": metrics["weighted_f1"], "test_evaluation_count": 0}), flush=True)
         best_path = run_dir / "checkpoints" / "best_model.pt"
         reload_model_checkpoint(runtime.model, best_path, validate=runtime.validate_checkpoint)

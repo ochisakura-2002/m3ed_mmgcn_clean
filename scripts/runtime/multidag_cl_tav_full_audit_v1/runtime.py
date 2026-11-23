@@ -114,16 +114,20 @@ class AuditRuntime(TrainDevRuntime):
             raise ValueError("nonfinite TAV output")
         return output, loss
 
+    def training_parameters(self):
+        return self.model.parameters()
+
     def train_step(self, batch):
         self.optimizer.zero_grad(set_to_none=True)
         output, loss = self.forward_batch(batch, split="train")
         loss.backward()
-        gradients = [p.grad for p in self.model.parameters() if p.grad is not None]
+        parameters = list(self.training_parameters())
+        gradients = [p.grad for p in parameters if p.grad is not None]
         # w0 has no predecessor messages: its relation/attention parameters are
         # intentionally unused. Inactive modality branches have exact zero grads.
         if not gradients or any(not torch.isfinite(grad).all() for grad in gradients):
             raise ValueError("nonfinite/missing training gradients")
-        norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0, error_if_nonfinite=True)
+        norm = torch.nn.utils.clip_grad_norm_(parameters, 5.0, error_if_nonfinite=True)
         self.optimizer.step()
         self.optimizer_steps += 1
         return {"loss": float(loss.detach()), "valid_target_count": int(output.mask.sum()),

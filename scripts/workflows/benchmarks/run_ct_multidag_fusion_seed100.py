@@ -15,15 +15,18 @@ import torch
 
 from scripts.runtime.multidag_cl_fusion.runtime import paired_runtime
 from scripts.runtime.multidag_cl_fusion.spec import (
-    EDGE_PARAMETER_COUNT, F0_PARAMETER_COUNT, GROUP, TOPOLOGY_EDGES, TOPOLOGY_GROUP, TOPOLOGY_PROTOCOL,
-    load_screen_configs,
+    EDGE_PARAMETER_COUNT, F0_PARAMETER_COUNT, FINAL_ARMS, FINAL_GROUP, FINAL_PROTOCOL,
+    TOPOLOGY_EDGES, TOPOLOGY_GROUP, TOPOLOGY_PROTOCOL, load_final_configs, load_screen_configs,
 )
 from scripts.runtime.multidag_cl_ta_v0.formal import git_identity, json_identity, write_json_atomic
 from scripts.runtime.multidag_cl_tav_full_audit_v1.confirm import frozen_model_source, test_hold
 from scripts.runtime.multidag_cl_tav_full_audit_v1.formal import execute, run_path
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import load_train_dev
-from scripts.runtime.multidag_cl_tav_full_audit_v1.spec import write_csv
+from scripts.runtime.multidag_cl_tav_full_audit_v1.spec import CONFIRM_SEEDS, write_csv
 from utils.output_paths import resolve_experiment_date, resolve_output_paths
+
+
+FINAL_MANIFEST = "fusion_final_5seed_run_manifest.json"
 
 
 def plan(*, output_root, experiment_date, topology=False):
@@ -36,6 +39,19 @@ def plan(*, output_root, experiment_date, topology=False):
         for arm, (path, raw) in configs.items()
     ]
     return date, jobs, configs
+
+
+def plan_final(*, output_root, experiment_date):
+    date = resolve_experiment_date(experiment_date)
+    seed_source, configs = load_final_configs()
+    jobs = []
+    for seed in seed_source["seeds"]:
+        for arm in FINAL_ARMS:
+            path, raw = configs[(seed, arm)]
+            jobs.append({"variant": arm, "seed": seed, "experiment_id": raw["experiment_id"],
+                         "topology_source_config": path.as_posix(), "config_sha256": json_identity(raw),
+                         "run_dir": run_path(raw, output_root=output_root, experiment_date=date).as_posix()})
+    return date, jobs, configs, seed_source
 
 
 def write_reports(directory, jobs):
@@ -88,19 +104,35 @@ def check_topology_initialization(arm, runtime, state):
         raise ValueError(f"{arm} initialization differs from its topology pairing reference")
     if arm == "F0":
         state["training_cpu_rng_sha256"] = init["training_cpu_rng_sha256"]
+    if "training_rng_identity" in init:
+        if arm == "F0":
+            state["training_rng_identity"] = init["training_rng_identity"]
+        if init["training_rng_identity"] != state["training_rng_identity"]:
+            raise ValueError(f"{arm} training RNG differs from paired F0")
 
 
-def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthetic_epochs=None, archive=None):
+def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthetic_epochs=None, archive=None,
+                   seed_source=None):
     if synthetic_epochs is not None and device != "cpu":
         raise ValueError("synthetic screen must use CPU")
-    topology = paths.experiment_group == TOPOLOGY_GROUP
+    final = paths.experiment_group == FINAL_GROUP
+    topology = paths.experiment_group in (TOPOLOGY_GROUP, FINAL_GROUP)
+    if synthetic_epochs is None and not final:
+        raise ValueError("historical Fusion screening is closed; use the final paired launcher")
     if topology != (archive is not None):
         raise ValueError("topology screen requires a bundle destination")
-    if topology and tuple(job["variant"] for job in jobs) != tuple(TOPOLOGY_EDGES):
+    if final:
+        expected = [(seed, arm) for seed in CONFIRM_SEEDS for arm in FINAL_ARMS]
+        if (seed_source is None or seed_source["seeds"] != list(CONFIRM_SEEDS)
+                or [(job["seed"], job["variant"]) for job in jobs] != expected or set(configs) != set(expected)
+                or len({job["run_dir"] for job in jobs}) != len(expected)):
+            raise ValueError("invalid final Fusion paired run plan")
+    elif topology and tuple(job["variant"] for job in jobs) != tuple(TOPOLOGY_EDGES):
         raise ValueError("invalid topology run order")
     jobs = [dict(job, status="PENDING") for job in jobs]
     paths.manifest_root.mkdir(parents=True, exist_ok=False)
-    filename = "fusion_topology_run_manifest.json" if topology else "fusion_seed100_run_manifest.json"
+    filename = FINAL_MANIFEST if final else (
+        "fusion_topology_run_manifest.json" if topology else "fusion_seed100_run_manifest.json")
     manifest_path = paths.manifest_root / filename
     state = {"schema": "ct_multidag_fusion_seed100_batch_v1", "status": "RUNNING", "batch_id": paths.manifest_root.name,
              "experiment_date": date, "experiment_group": paths.experiment_group, "device": device, **git,
@@ -110,6 +142,9 @@ def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthe
     if topology:
         state.update(schema="ct_multidag_fusion_topology_batch_v1", protocol=TOPOLOGY_PROTOCOL,
                      test_checkpoint_selection_count=0)
+    if final:
+        state.update(schema="ct_multidag_fusion_final_paired_batch_v1", protocol=FINAL_PROTOCOL,
+                     seed_source=seed_source, pairing_by_seed={})
     current = None
     log_ready = False
     master = None
@@ -125,8 +160,11 @@ def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthe
         log_ready = True
         if topology:
             master = (paths.launcher_log_root / "master.log").open("x", encoding="utf-8")
-            progress(f"{TOPOLOGY_PROTOCOL} batch={state['batch_id']} git_head={git['git_head']} device={device}",
+            progress(f"{state['protocol']} batch={state['batch_id']} git_head={git['git_head']} device={device}",
                      flush=True)
+            if final:
+                progress(f"SEED_SOURCE = {seed_source['matrix']} [{seed_source['configuration']}]", flush=True)
+                progress(f"SEEDS = {', '.join(map(str, seed_source['seeds']))}", flush=True)
             for path in (paths.analysis_root, Path(archive)):
                 if os.path.lexists(path):
                     raise FileExistsError(path)
@@ -137,36 +175,58 @@ def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthe
         datasets, data_identity, data_paths = load_data()
         state.update(data_identity=data_identity, data_paths=data_paths)
         reference, f0_pairing = None, None
+        pair_state = state
         for job in jobs:
             current = job
             job["status"] = "RUNNING"
             write_json_atomic(manifest_path, state)
-            _, raw = configs[job["variant"]]
+            arm = job["variant"]
+            key, label = arm, arm
+            if final:
+                seed = job["seed"]
+                key, label = (seed, arm), f"seed={seed} {arm}"
+                if arm == "F0":
+                    reference, f0_pairing = None, None
+                    pair_state = state["pairing_by_seed"][str(seed)] = {}
+            _, raw = configs[key]
             runtime, reference = paired_runtime(
                 raw, datasets, device=device, reference=reference, f0_pairing=f0_pairing,
                 formal_train_dev=synthetic_epochs is None, synthetic_only=synthetic_epochs is not None,
                 data_identity=data_identity, git_head=git["git_head"])
             if topology:
-                check_topology_initialization(job["variant"], runtime, state)
-                progress(f"{job['variant']} RUNNING", flush=True)
+                check_topology_initialization(arm, runtime, pair_state)
+                progress(f"{label} RUNNING", flush=True)
             result = execute(runtime, raw, job["run_dir"], data_paths=data_paths, git=git,
                              synthetic_epochs=synthetic_epochs, progress=progress)
             test_hold(result)
             if f0_pairing is None:
                 f0_pairing = result["batch_pairing"]
-                state["shared_initial_state_sha256"] = result["shared_initialization"]["shared_initial_state_sha256"]
-                state["f0_batch_pairing"] = f0_pairing
+                pair_state["shared_initial_state_sha256"] = result["shared_initialization"]["shared_initial_state_sha256"]
+                pair_state["f0_batch_pairing"] = f0_pairing
             if (result["shared_initialization"]["shared_parameter_max_abs_diff"] != 0
-                    or result["shared_initialization"]["shared_initial_state_sha256"] != state["shared_initial_state_sha256"]
+                    or result["shared_initialization"]["shared_initial_state_sha256"] != pair_state["shared_initial_state_sha256"]
                     or result["batch_pairing"] != f0_pairing):
-                raise ValueError(f"{job['variant']} initialization or batch pairing differs from F0")
+                raise ValueError(f"{label} initialization or batch pairing differs from F0")
             job.update(status="PASS", result=result)
             if topology:
-                progress(f"{job['variant']} PASS best_epoch={result['best_epoch']}", flush=True)
+                progress(f"{label} PASS best_epoch={result['best_epoch']}", flush=True)
+            if final:
+                pair_state.setdefault("initializations", {})[arm] = result["shared_initialization"]
+                if arm == FINAL_ARMS[-1]:
+                    pair_state.update(shared_backbone_init_max_abs_diff=0, common_edge_init_max_abs_diff=0)
+                    progress(f"seed={seed} SHARED_BACKBONE_INIT_MAX_ABS_DIFF = 0 "
+                             "COMMON_EDGE_INIT_MAX_ABS_DIFF = 0", flush=True)
             current = None
             del runtime
             write_json_atomic(manifest_path, state)
-        if topology:
+        if final:
+            from scripts.analysis.models.multidag_cl.export_fusion_final_5seed_bundle import export_final_bundle
+
+            progress("SHARED_BACKBONE_INIT_CHECK = PASS", flush=True)
+            progress("COMMON_EDGE_INIT_CHECK = PASS", flush=True)
+            state.update(export_final_bundle(paths.analysis_root, Path(archive), master, state))
+            report_dir = paths.analysis_root
+        elif topology:
             from scripts.analysis.models.multidag_cl.export_fusion_topology_bundle import export_bundle
 
             state.update(common_edge_init_max_abs_diff=0, shared_backbone_init_max_abs_diff=0)
@@ -196,8 +256,9 @@ def execute_screen(*, date, jobs, configs, paths, load_data, git, device, synthe
     return state
 
 
-def main(argv=None, *, topology=False):
-    description = "Run the four-arm CT-MultiDAG topology retraining screen." if topology else __doc__
+def main(argv=None, *, topology=False, final=False):
+    description = FINAL_PROTOCOL if final else (
+        "Validate the four-arm CT-MultiDAG topology retraining screen." if topology else __doc__)
     parser = argparse.ArgumentParser(description=description)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--execute", action="store_true", help="launch formal remote CUDA training")
@@ -206,8 +267,15 @@ def main(argv=None, *, topology=False):
         parser.add_argument("--" + name)
     parser.add_argument("--output-root", default="outputs")
     args = parser.parse_args(argv)
-    date, jobs, configs = plan(output_root=args.output_root, experiment_date=args.experiment_date, topology=topology)
+    plan_options = dict(output_root=args.output_root, experiment_date=args.experiment_date)
+    seed_source = None
+    if final:
+        date, jobs, configs, seed_source = plan_final(**plan_options)
+    else:
+        date, jobs, configs = plan(topology=topology, **plan_options)
     if args.execute:
+        if not final:
+            parser.error("historical Fusion screening is closed; use run_ct_multidag_fusion_final_5seed.py")
         if not all((args.asset_path, args.model_manifest_path, args.provenance_manifest_path, args.batch_id)):
             parser.error("--execute requires the three asset/manifest paths and --batch-id")
         if os.name == "nt" or not torch.cuda.is_available():
@@ -215,29 +283,24 @@ def main(argv=None, *, topology=False):
         if not frozen_model_source():
             raise ValueError("frozen TAV source lineage cannot be verified")
         paths = resolve_output_paths(output_base=args.output_root, experiment_date=date,
-                                     experiment_group=TOPOLOGY_GROUP if topology else GROUP,
-                                     batch_id=args.batch_id)
+                                     experiment_group=FINAL_GROUP, batch_id=args.batch_id)
         load_data = partial(load_train_dev, args.asset_path, args.model_manifest_path, args.provenance_manifest_path)
-        archive = None
-        filename = "fusion_seed100_run_manifest.json"
-        if topology:
-            from scripts.analysis.models.multidag_cl.export_fusion_topology_bundle import ARCHIVE_NAME
+        from scripts.analysis.models.multidag_cl.export_fusion_final_5seed_bundle import archive_path
 
-            archive = Path("tmp") / ARCHIVE_NAME
-            filename = "fusion_topology_run_manifest.json"
         state = execute_screen(date=date, jobs=jobs, configs=configs, paths=paths,
-                               load_data=load_data, git=git_identity(), device="cuda", archive=archive)
+                               load_data=load_data, git=git_identity(), device="cuda", archive=archive_path(date),
+                               seed_source=seed_source)
         result = {"status": state["status"], "reports": state["reports"],
-                  "manifest": (paths.manifest_root / filename).as_posix(),
-                  "test_loader_built": 0, "test_evaluation_count": 0}
-        if topology:
-            print("ANALYSIS_BUNDLE = PASS")
-            print("PLOT_READY = YES")
-            result.update(archive=state["archive"], archive_sha256=state["archive_sha256"],
-                          test_checkpoint_selection_count=0)
+                  "manifest": (paths.manifest_root / FINAL_MANIFEST).as_posix(),
+                  "test_loader_built": 0, "test_evaluation_count": 0, "test_checkpoint_selection_count": 0,
+                  "archive": state["archive"], "archive_sha256": state["archive_sha256"], "decision": state["decision"]}
+        print("ANALYSIS_BUNDLE = PASS")
+        print("PLOT_READY = YES")
     else:
         result = {"status": "PLAN_ONLY", "experiment_date": date, "jobs": jobs,
                   "test_loader_built": 0, "test_evaluation_count": 0}
+    if final:
+        result.update(protocol=FINAL_PROTOCOL, seed_source=seed_source, test_policy="HOLD")
     print(json.dumps(result, indent=2))
     return 0
 

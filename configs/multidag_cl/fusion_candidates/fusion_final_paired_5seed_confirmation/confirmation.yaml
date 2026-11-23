@@ -1,0 +1,7 @@
+protocol: FUSION_FINAL_PAIRED_5SEED_CONFIRMATION
+experiment_group: fusion_final_paired_5seed_confirmation
+variants: [F0, H4_FULL_HYBRID, H2_AUDIO_TEXT]
+seed_source:
+  matrix: configs/multidag_cl/tav_multiseed_confirm_v1/TAV_MULTISEED_CONFIRM_MATRIX.csv
+  configuration: track_tav_cloff
+test_policy: HOLD

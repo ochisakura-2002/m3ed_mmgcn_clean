@@ -52,8 +52,10 @@ def execute(runtime, raw, run_dir, *, data_paths=None, git=None, resume=None, sy
     fusion = "fusion" in raw
     topology = False
     if fusion:
-        from scripts.runtime.multidag_cl_fusion.spec import is_topology
+        from scripts.runtime.multidag_cl_fusion.spec import FINAL_SCHEMA, is_topology
 
+        if not runtime.synthetic_only and raw["schema"] != FINAL_SCHEMA:
+            raise ValueError("historical Fusion screening is closed")
         topology = is_topology(raw)
     export_dev_evidence = export_dev_evidence or topology
     if raw != runtime.model.audit_config:
@@ -234,6 +236,8 @@ def run_formal(*, formal_train_dev=False, config_path, asset_path, model_manifes
     if os.name == "nt":
         raise ValueError("formal TAV training is remote-only; use --synthetic-smoke on Windows")
     raw = validate_training_config(yaml.safe_load(Path(config_path).read_text(encoding="utf-8")))
+    if "fusion" in raw:
+        raise ValueError("formal Fusion training requires the final paired launcher")
     if device != "cuda" or not torch.cuda.is_available():
         raise ValueError("formal audit requires explicit available CUDA")
     directory = Path(resume).resolve().parents[1] if resume else run_path(raw, output_root=output_root, experiment_date=experiment_date)

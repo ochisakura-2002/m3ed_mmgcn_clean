@@ -3,8 +3,10 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
+import random
 from typing import Optional
 
+import numpy as np
 import torch
 
 from models.multidag_cl.fusion.base import MODALITIES
@@ -15,11 +17,12 @@ from models.multidag_cl.ta_v0 import LABEL_VOCAB
 from scripts.runtime.multidag_cl_ta_v0.formal import json_identity
 from scripts.runtime.multidag_cl_ta_v0.training import cpu_snapshot, seed_everything
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import AuditRuntime
-from .spec import ARMS, is_topology, make_screen_config, make_topology_config, validate_screen_config
+from .spec import ARMS, FINAL_SCHEMA, is_topology, make_screen_config, make_topology_config, validate_screen_config
 
 
 @dataclass(frozen=True)
 class F0Initialization:
+    seed: int
     shared: dict
     rng: torch.Tensor
     canonical_edges: Optional[dict] = None
@@ -38,6 +41,16 @@ def state_digest(state):
     return digest.hexdigest()
 
 
+def training_rng_identity(device):
+    name, words, position, has_gauss, cached = np.random.get_state()
+    identity = {"python": json_identity(random.getstate()),
+                "numpy": json_identity([name, words.tolist(), position, has_gauss, cached]),
+                "torch_cpu": state_digest({"rng": torch.get_rng_state()})}
+    if torch.device(device).type == "cuda":
+        identity["torch_cuda"] = state_digest(dict(enumerate(torch.cuda.get_rng_state_all())))
+    return identity
+
+
 def seeded_candidate(raw, seed):
     # Construct CPU modules without advancing the F0 CPU or CUDA training RNG.
     with torch.random.fork_rng(devices=[]):
@@ -54,17 +67,18 @@ def paired_model(raw, *, device, reference=None):
     seed = raw["training"]["seed"]
     topology = is_topology(raw)
     direct = raw["fusion"]["type"] == DIRECT
+    if reference is not None and (reference.seed != seed or topology != (reference.canonical_edges is not None)):
+        raise ValueError("CT-MultiDAG initialization reference uses a different seed or protocol")
     seed_everything(device, seed)
-    f0 = None
-    if reference is None or direct:
-        f0 = FusionTAV(make_topology_config("F0") if topology else make_screen_config("F0"))
+    f0 = FusionTAV(raw) if direct else None
     if reference is None:
+        if f0 is None:
+            f0_config = make_topology_config("F0") if topology else make_screen_config("F0")
+            f0 = FusionTAV(f0_config)
         shared, rng = cpu_snapshot(shared_state(f0)), torch.get_rng_state()
         canonical = edge_state(seeded_candidate(make_screen_config("Hybrid"), seed + 1)) if topology else None
-        reference = F0Initialization(shared, rng, canonical)
+        reference = F0Initialization(seed, shared, rng, canonical)
     else:
-        if topology != (reference.canonical_edges is not None):
-            raise ValueError("CT-MultiDAG initialization reference uses a different protocol")
         torch.set_rng_state(reference.rng)
 
     if direct:
@@ -184,6 +198,11 @@ class FusionAuditRuntime(AuditRuntime):
         previous = self.pairing["dev"] if split == "dev" else self.pairing["train"].get(epoch_key)
         if self.f0_pairing is not None:
             previous = self.f0_pairing["dev"] if split == "dev" else self.f0_pairing["train"][epoch_key]
+        audit_rng = split == "train" and self.model.audit_config["schema"] == FINAL_SCHEMA
+        if audit_rng:
+            rng_start = json_identity(training_rng_identity(self.device))
+            if previous is not None and rng_start != previous["training_rng_start_sha256"]:
+                raise ValueError(f"Train epoch {epoch} starts with different training RNG from F0")
         batch_hashes, observed = [], []
         for index, batch in enumerate(loader):
             identities = list(zip(batch["dialogue_ids"], batch["utterance_ids"]))
@@ -199,6 +218,9 @@ class FusionAuditRuntime(AuditRuntime):
             raise ValueError(f"{split} batch population differs from the canonical view")
         actual = {"dialogue_order_sha256": json_identity(observed), "batch_sha256": batch_hashes,
                   "batch_sequence_sha256": json_identity(batch_hashes)}
+        if audit_rng:
+            actual.update(training_rng_start_sha256=rng_start,
+                          training_rng_end_sha256=json_identity(training_rng_identity(self.device)))
         if previous is not None and actual != previous:
             raise ValueError(f"{split} epoch {epoch} batch digest mismatch")
         if split == "dev":
@@ -241,4 +263,6 @@ def paired_runtime(raw, datasets, *, device, reference=None, f0_pairing=None, **
     model, reference, initialization = paired_model(raw, device=device, reference=reference)
     runtime = FusionAuditRuntime(model, datasets.__getitem__, device=device, initialization=initialization,
                                  f0_pairing=f0_pairing, **options)
+    if raw["schema"] == FINAL_SCHEMA:
+        initialization["training_rng_identity"] = training_rng_identity(device)
     return runtime, reference

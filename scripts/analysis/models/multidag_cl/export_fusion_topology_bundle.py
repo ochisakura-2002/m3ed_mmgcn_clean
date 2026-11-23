@@ -43,9 +43,9 @@ def check_hold(record):
         raise ValueError("Test HOLD checkpoint selection counter mismatch")
 
 
-def read_run(job, state):
+def read_run(job, state, *, raw=None):
     arm, run_dir, result = job["variant"], Path(job["run_dir"]), job["result"]
-    raw = make_topology_config(arm)
+    raw = make_topology_config(arm) if raw is None else raw
     synthetic = state["synthetic_only"]
     expected_epochs = result["last_completed_epoch"] if synthetic else raw["training"]["max_epochs"]
     edges = TOPOLOGY_EDGES[arm]
@@ -179,6 +179,20 @@ def confusion_rows(matrix, *, normalized):
     return rows
 
 
+def write_run_tables(directory, summary, history, predictions, evidence):
+    files = []
+    suffix = f"{summary['variant']}_seed{summary['seed']}.csv"
+    for prefix, rows in (
+        ("epoch_history", history), ("dev_predictions", predictions),
+        ("confusion_counts", confusion_rows(evidence["confusion_matrix"], normalized=False)),
+        ("confusion_normalized", confusion_rows(evidence["confusion_matrix"], normalized=True)),
+    ):
+        name = f"{prefix}_{suffix}"
+        write_csv(directory / name, rows)
+        files.append(name)
+    return files
+
+
 def compare(summary):
     variants = {row["variant"]: row for row in summary}
     h4, h3, h2 = tuple(TOPOLOGY_EDGES)[1:]
@@ -277,15 +291,7 @@ def export_bundle(directory, archive, master, state):
         classes.extend({"variant": row["variant"], "seed": row["seed"], "split": "dev", **item}
                        for item in evidence["per_class"])
         mechanisms.extend(stats)
-        suffix = f"{row['variant']}_seed{row['seed']}.csv"
-        for prefix, rows in (
-            ("epoch_history", history), ("dev_predictions", predictions),
-            ("confusion_counts", confusion_rows(evidence["confusion_matrix"], normalized=False)),
-            ("confusion_normalized", confusion_rows(evidence["confusion_matrix"], normalized=True)),
-        ):
-            name = f"{prefix}_{suffix}"
-            write_csv(directory / name, rows)
-            files.append(name)
+        files.extend(write_run_tables(directory, row, history, predictions, evidence))
     comparisons = compare(summary)
     for name, rows in (("run_summary", summary), ("paired_comparison", comparisons),
                        ("per_class_metrics", classes), ("fusion_mechanism_stats", mechanisms)):

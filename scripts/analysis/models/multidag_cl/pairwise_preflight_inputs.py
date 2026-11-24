@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import pickle
 import re
+from typing import Optional
 
 import numpy as np
 import torch
@@ -148,6 +149,7 @@ def validate_population(datasets, source):
 class FrozenSplit:
     logits: np.ndarray
     population: tuple
+    layer_states: Optional[tuple] = None
 
     @property
     def labels(self):
@@ -155,11 +157,12 @@ class FrozenSplit:
 
 
 @torch.inference_mode()
-def frozen_forward(model, dataset, split, *, device, batch_size, expected_batches=None):
+def frozen_forward(model, dataset, split, *, device, batch_size, expected_batches=None, capture_states=False):
     require_split(split)
     if dataset.split != split or model.training or any(p.requires_grad for p in model.parameters()):
         raise ValueError("frozen Train/Dev forward requires the exact split and eval-only weights")
     logits, population, batch_hashes = [], [], []
+    h0, h4 = [], []
     for batch in DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=collate):
         if batch["split"] != split:
             raise ValueError("frozen forward received a different split")
@@ -174,6 +177,14 @@ def frozen_forward(model, dataset, split, *, device, batch_size, expected_batche
         if not torch.equal(output.mask.cpu(), valid) or torch.any(batch["labels"][~valid] != -100):
             raise ValueError("frozen forward changed the valid mask or padding contract")
         logits.append(output.logits_ta[output.mask].cpu().numpy())
+        if capture_states:
+            if len(output.layer_states) != 5:
+                raise ValueError("frozen F0 must expose h0 through h4")
+            for cache, index in ((h0, 0), (h4, 4)):
+                state = output.layer_states[index]
+                if state.shape != (*valid.shape, 300) or state.dtype != torch.float32:
+                    raise ValueError("invalid frozen F0 state shape or dtype")
+                cache.append(state[output.mask].cpu().numpy())
         uids = [(uid, did) for did, utterances in examples for uid in utterances]
         targets = batch["labels"][valid].tolist()
         if len(uids) != len(targets):
@@ -183,10 +194,11 @@ def frozen_forward(model, dataset, split, *, device, batch_size, expected_batche
         raise ValueError("incomplete Dev batch tape")
     if not logits or len(population) != len({uid for uid, _, _ in population}):
         raise ValueError("empty or duplicated frozen population")
-    return FrozenSplit(np.concatenate(logits), tuple(population))
+    states = (np.concatenate(h0), np.concatenate(h4)) if capture_states else None
+    return FrozenSplit(np.concatenate(logits), tuple(population), states)
 
 
-def forward_f0(source, datasets, device):
+def forward_f0(source, datasets, device, *, capture_states=False, inspect_model=None):
     curriculum_sha = membership(datasets["train"])
     if curriculum_sha != source.manifest["curriculum_membership_sha256"]:
         raise ValueError("Train curriculum membership differs from the frozen checkpoint")
@@ -196,11 +208,15 @@ def forward_f0(source, datasets, device):
         raise ValueError("frozen F0 requires DirectConcat")
     batch_size = source.config["training"]["batch_size"]
     dev = frozen_forward(model, datasets["dev"], "dev", device=device, batch_size=batch_size,
-                         expected_batches=source.manifest["batch_pairing"]["dev"]["batch_sha256"])
+                         expected_batches=source.manifest["batch_pairing"]["dev"]["batch_sha256"],
+                         capture_states=capture_states)
     if (dev.population != source.population or not np.allclose(dev.logits, source.logits, rtol=1e-4, atol=5e-4)
             or not np.array_equal(dev.logits.argmax(axis=1), source.logits.argmax(axis=1))):
         raise ValueError("live seed100 F0 does not reproduce archived Dev identity/logits/predictions")
-    train = frozen_forward(model, datasets["train"], "train", device=device, batch_size=batch_size)
+    train = frozen_forward(model, datasets["train"], "train", device=device, batch_size=batch_size,
+                           capture_states=capture_states)
+    if inspect_model is not None:
+        inspect_model(model, device)
     if sha256_file(source.checkpoint) != source.identity["checkpoint_sha256"]:
         raise ValueError("F0 checkpoint changed during forward")
     return train, dev

@@ -38,12 +38,23 @@ def metadata(population, speakers=None):
     return result
 
 
-def details(logits, labels):
+def logit_probabilities(logits):
     logits = np.asarray(logits, dtype=np.float64)
-    if logits.shape != (len(labels), C) or not np.isfinite(logits).all():
+    if logits.ndim != 2 or logits.shape[1] != C or not np.isfinite(logits).all():
         raise ValueError("invalid or nonfinite frozen logits")
     exp = np.exp(logits - logits.max(axis=1, keepdims=True))
-    prob = exp / exp.sum(axis=1, keepdims=True)
+    return exp / exp.sum(axis=1, keepdims=True)
+
+
+def prediction_mad(probabilities):
+    return np.clip(1 - np.abs(probabilities - 1 / C).sum(axis=1) / (2 * (1 - 1 / C)), 0, 1)
+
+
+def details(logits, labels):
+    logits = np.asarray(logits, dtype=np.float64)
+    if logits.shape != (len(labels), C):
+        raise ValueError("invalid or nonfinite frozen logits")
+    prob = logit_probabilities(logits)
     idx = np.arange(len(labels))
     pred = logits.argmax(axis=1)
     true_mask = np.arange(C)[None, :] == labels[:, None]
@@ -53,7 +64,7 @@ def details(logits, labels):
     return {"prediction": pred, "correct": pred == labels, "probability": prob,
             "confidence": top[:, 1], "true_class_probability_margin": prob_margin,
             "true_class_logit_margin": logit_margin,
-            "mad": np.clip(1 - np.abs(prob - 1 / C).sum(axis=1) / (2 * (1 - 1 / C)), 0, 1),
+            "mad": prediction_mad(prob),
             "normalized_entropy": entropy(prob) / np.log(C), "top2_margin": top[:, 1] - top[:, 0]}
 
 

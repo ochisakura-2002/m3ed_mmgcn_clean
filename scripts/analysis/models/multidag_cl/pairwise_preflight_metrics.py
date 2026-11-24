@@ -8,7 +8,7 @@ import numpy as np
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
 from scripts.runtime.multidag_cl_ta_v0.training import classification_report
 
-from .failure_audit_metrics import details
+from .failure_audit_metrics import logit_probabilities, prediction_mad
 
 
 MIN_RECOVERABLE = 8
@@ -32,17 +32,25 @@ class Scores:
         return self.labels != self.top1
 
 
-def scores(logits, labels):
+def ranked_candidates(logits):
+    """Frozen, label-free ranking and MAD arithmetic shared with Fast-Kill."""
     z = np.asarray(logits, dtype=np.float64)
+    mad = prediction_mad(logit_probabilities(z))
+    ranked = np.argsort(-z, axis=1, kind="stable")
+    row = np.arange(len(z))
+    margin = z[row, ranked[:, 0]] - z[row, ranked[:, 1]]
+    return ranked, mad, margin
+
+
+def scores(logits, labels):
     labels = np.asarray(labels)
     if (labels.ndim != 1 or not labels.size or labels.dtype.kind not in "iu"
             or np.any((labels < 0) | (labels >= len(LABEL_VOCAB)))):
         raise ValueError("expected nonempty valid six-class targets")
-    data = details(z, labels)
-    ranked = np.argsort(-z, axis=1, kind="stable")
-    top1, top2 = ranked[:, 0], ranked[:, 1]
-    row = np.arange(len(labels))
-    return Scores(labels, top1, top2, data["mad"], z[row, top1] - z[row, top2],
+    ranked, mad, margin = ranked_candidates(logits)
+    if len(ranked) != len(labels):
+        raise ValueError("frozen logits and targets have different populations")
+    return Scores(labels, ranked[:, 0], ranked[:, 1], mad, margin,
                   (ranked == labels[:, None]).argmax(axis=1) + 1)
 
 

@@ -1,3 +1,4 @@
+import inspect
 from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,12 +13,14 @@ from models.multidag_cl.pairwise_refinement import PairwiseRefinementHead, bound
 from scripts.analysis.models.multidag_cl import pairwise_fastkill_metrics as metrics
 from scripts.analysis.models.multidag_cl import pairwise_fastkill_runtime as runtime
 from scripts.analysis.models.multidag_cl import run_pairwise_fastkill as runner
+from scripts.analysis.models.multidag_cl.failure_audit_inference import Source, membership
+from scripts.analysis.models.multidag_cl.failure_audit_metrics import logit_probabilities
 from scripts.analysis.models.multidag_cl.pairwise_preflight_inputs import (
-    HOLD, F0_IDENTITY, FrozenSplit, TestHoldViolation as HoldViolation, frozen_forward, read_json,
+    HOLD, F0_IDENTITY, FrozenSplit, TestHoldViolation as HoldViolation, forward_f0, frozen_forward, read_json,
 )
-from scripts.analysis.models.multidag_cl.pairwise_preflight_metrics import gate, scores, train_threshold
+from scripts.analysis.models.multidag_cl.pairwise_preflight_metrics import gate, ranked_candidates, scores, train_threshold
 from scripts.runtime.multidag_cl_fusion.spec import make_final_config
-from scripts.runtime.multidag_cl_ta_v0.formal import sha256_file
+from scripts.runtime.multidag_cl_ta_v0.formal import json_identity, sha256_file
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import SyntheticDialogues
 from scripts.runtime.multidag_cl_tav_full_audit_v1.spec import read_csv
 
@@ -32,6 +35,17 @@ def sample_split(logits, labels):
     return FrozenSplit(np.asarray(logits, dtype=np.float32),
                        tuple((f"utt{i}", f"dialogue{i // 3}", y) for i, y in enumerate(labels)),
                        tuple(t.numpy() for t in tensors(n)))
+
+
+def test_fastkill_dependency_contract():
+    assert callable(runner.main)
+    assert metrics.logit_probabilities is logit_probabilities
+    assert runtime.ranked_candidates is ranked_candidates
+    assert runner.forward_f0 is forward_f0
+    assert "capture_states" in inspect.signature(forward_f0).parameters
+    assert "capture_states" in inspect.signature(frozen_forward).parameters
+    assert "inspect_model" in inspect.signature(forward_f0).parameters
+    assert "layer_states" in FrozenSplit.__dataclass_fields__
 
 
 def test_parameters_and_fixed_pair_order():
@@ -156,17 +170,79 @@ def test_gradient_scope_and_tiny_synthetic_optimization():
     assert all(p.grad is not None and p.grad.count_nonzero() for p in head.parameters())
 
 
-def test_frozen_forward_cache_and_real_f0_causal_interface():
+def test_f0_replay_state_capture_identity(tmp_path):
+    config = make_final_config("F0", 100)
+    torch.manual_seed(100)
+    f0 = FusionTAV(config).eval().requires_grad_(False)
+    datasets = {split: SyntheticDialogues(split) for split in ("train", "dev")}
+    dev_items = datasets["dev"].items
+    batch_size = config["training"]["batch_size"]
+    dev_examples = [(item["dialogue_id"], item["utterance_ids"]) for item in dev_items]
+    dev_batches = [json_identity(dev_examples[start:start + batch_size])
+                   for start in range(0, len(dev_examples), batch_size)]
+    curriculum_sha = membership(datasets["train"])
+    checkpoint = tmp_path / "synthetic_f0.pt"
+    git_head = "synthetic"
+    data_identity = {"kind": "synthetic_train_dev_only"}
+    torch.save({
+        **HOLD, "schema": "tav_full_audit_checkpoint_v1", "audit_config": config,
+        "training_config": config["training"], "data_identity": data_identity,
+        "curriculum_membership_sha256": curriculum_sha, "seed": 100, "epoch": 21,
+        "git_head": git_head, "epoch_complete": True, "model_state_dict": f0.state_dict(),
+    }, checkpoint)
+    digest = sha256_file(checkpoint)
+
+    # Record the states directly from the real model output, before any cache is built.
+    def reference_forward(split, dataset):
+        emitted = []
+
+        def record_states(_model, _args, output):
+            emitted.append(tuple(output.layer_states[i][output.mask].cpu().numpy() for i in (0, 4)))
+
+        with f0.register_forward_hook(record_states):
+            reference = frozen_forward(f0, dataset, split, device="cpu", batch_size=batch_size)
+        return reference.logits, tuple(np.concatenate(batches) for batches in zip(*emitted))
+
+    references = {split: reference_forward(split, dataset) for split, dataset in datasets.items()}
+    populations = {split: tuple((uid, item["dialogue_id"], label) for item in dataset.items
+                                for uid, label in zip(item["utterance_ids"], item["labels"].tolist()))
+                   for split, dataset in datasets.items()}
+    manifest = {
+        "seed": 100, "best_epoch": 21, "git_head": git_head, "best_checkpoint_sha256": digest,
+        "data_identity": data_identity, "curriculum_membership_sha256": curriculum_sha,
+        "batch_pairing": {"dev": {"batch_sha256": dev_batches}},
+    }
+    source = Source(config, manifest, references["dev"][0], populations["dev"], checkpoint)
+    inspected = []
+
+    def inspect_model(model, device):
+        assert device == "cpu" and not model.training
+        assert all(not p.requires_grad and p.grad is None for p in model.parameters())
+        torch.testing.assert_close(dict(model.named_parameters()), dict(f0.named_parameters()), rtol=0, atol=0)
+        inspected.append(device)
+
+    ordinary = runner.forward_f0(source, datasets, "cpu", capture_states=False)
+    captured = runner.forward_f0(source, datasets, "cpu", capture_states=True, inspect_model=inspect_model)
+    assert inspected == ["cpu"]
+    assert sha256_file(checkpoint) == digest
+    for split, plain, cached in zip(("train", "dev"), ordinary, captured):
+        expected_logits, expected_states = references[split]
+        assert plain.layer_states is None
+        assert cached.population == plain.population == populations[split]
+        np.testing.assert_array_equal(plain.logits, expected_logits)
+        np.testing.assert_array_equal(cached.logits, plain.logits)
+        np.testing.assert_array_equal(cached.logits.argmax(axis=1), plain.logits.argmax(axis=1))
+        tensors = runtime.cache_identity(cached)["tensors"]
+        for state, expected, name in zip(cached.layer_states, expected_states, ("h0", "h4")):
+            assert tensors[name]["shape"] == (len(cached.population), 300)
+            assert state.dtype == np.float32 and np.isfinite(state).all()
+            np.testing.assert_array_equal(state, expected)
+
+
+def test_real_f0_causal_interface():
     torch.manual_seed(100)
     f0 = FusionTAV(make_final_config("F0", 100)).eval().requires_grad_(False)
     assert sum(p.numel() for p in f0.parameters()) == 1638306
-    data = SyntheticDialogues("dev")
-    ordinary = frozen_forward(f0, data, "dev", device="cpu", batch_size=16)
-    cached = frozen_forward(f0, data, "dev", device="cpu", batch_size=16, capture_states=True)
-    assert cached.population == ordinary.population
-    np.testing.assert_array_equal(cached.logits, ordinary.logits)
-    assert ordinary.layer_states is None
-    assert runtime.cache_identity(cached)["tensors"]["h4"]["shape"] == (len(cached.population), 300)
     head = PairwiseRefinementHead().eval()
     with torch.no_grad():
         head.pair_embeddings.normal_(std=.1)

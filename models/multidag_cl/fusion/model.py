@@ -42,7 +42,8 @@ class FusionTAV(TAVFullAudit):
         return {"schema": "ct_multidag_fusion_model_v1", "audit_config": deepcopy(self.audit_config)}
 
     def forward(self, *, text_features, audio_features, visual_features, lengths,
-                speaker_ids_int, attention_mask, active_modalities=None, availability=None):
+                speaker_ids_int, attention_mask, active_modalities=None, availability=None,
+                history_attenuation=None):
         active = self.audit_config["active_modalities"] if active_modalities is None else active_modalities
         if active not in MODALITIES:
             raise ValueError("invalid encoded modality mask")
@@ -68,7 +69,8 @@ class FusionTAV(TAVFullAudit):
                                                                  (encoded.audio, encoded.visual, encoded.text)))}
         adjacency = build_causal_utterance_adjacency(attention_mask, lengths, window_past=None, self_loop=False)
         relations = self.relation_builder.build(speaker_ids_int, attention_mask)
-        states = (h0, *self.graph_core(h0, adjacency, relations, attention_mask))
+        graph_options = {} if history_attenuation is None else {"history_attenuation": history_attenuation}
+        states = (h0, *self.graph_core(h0, adjacency, relations, attention_mask, **graph_options))
         representation = torch.cat(states, -1)
         logits = self.classifier(representation) * mask[..., None]
         return FusionTAVOutput(representation, logits, torch.softmax(logits, -1), mask,

@@ -13,7 +13,7 @@ class TrackCore(GraphCore):
         self.readouts = nn.ModuleList(nn.Linear(2 * hidden_dim, hidden_dim, bias=False)
                                       for _ in range(4))
 
-    def forward(self, h0, adjacency, relations, attention_mask):
+    def forward(self, h0, adjacency, relations, attention_mask, *, history_attenuation=None):
         mask = self.validate(h0, adjacency, relations, attention_mask)
         # Anchoring to the first observed speaker avoids numeric speaker-ID assumptions.
         first = relations.same_speaker[:, 0, :] & mask
@@ -25,6 +25,8 @@ class TrackCore(GraphCore):
         initial = h0[:, None] * affiliation[..., None]
         messages = initial
         operator = row_operator(adjacency, mask, self_terms=True)
+        if history_attenuation is not None:
+            operator = history_attenuation(operator, h0, adjacency, relations)
         states = []
         for readout in self.readouts:
             messages = (torch.einsum("bij,bkjh->bkih", operator, messages)

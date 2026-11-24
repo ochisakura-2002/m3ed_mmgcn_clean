@@ -47,9 +47,11 @@ class Source:
                 "git_head": self.manifest["git_head"], "checkpoint_sha256": self.manifest["best_checkpoint_sha256"]}
 
 
-def sources_from_runs(runs, data_identity=None):
+def sources_from_runs(runs, data_identity=None, *, seeds=CONFIRM_SEEDS):
+    if not seeds or len(set(seeds)) != len(seeds) or any(seed not in CONFIRM_SEEDS for seed in seeds):
+        raise ValueError("frozen sources must use a nonempty subset of the confirmation seeds")
     sources = {}
-    for seed in CONFIRM_SEEDS:
+    for seed in seeds:
         config = make_final_config("F0", seed)
         run = Path(runs) / config["experiment_id"]
         manifest = read_json(run / "manifests/run_manifest.json")

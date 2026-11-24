@@ -89,13 +89,15 @@ def sources_from_runs(runs, data_identity=None, *, seeds=CONFIRM_SEEDS):
     return sources
 
 
-def frozen_model(source, membership_sha, device):
+def frozen_model(source, membership_sha, device, *, check_test_hold=None):
     expected = source.identity
     if sha256_file(source.checkpoint) != expected["checkpoint_sha256"]:
         raise ValueError("frozen best_model.pt SHA256 mismatch")
     model = FusionTAV(source.config)
 
     def validate(payload):
+        if check_test_hold is not None:
+            check_test_hold(payload)
         test_hold(payload)
         identity = {"schema": "tav_full_audit_checkpoint_v1", "audit_config": source.config,
                     "data_identity": source.manifest["data_identity"], "training_config": source.config["training"],
@@ -225,10 +227,10 @@ def context_logits(model, dev, plans, *, device, chunk_size):
 
 
 @torch.inference_mode()
-def evaluate(model, samples, split, *, device, chunk_size):
+def evaluate(model, samples, split, *, device, chunk_size, history_only=False, batch_size=16):
     require_split(split)
     collected = defaultdict(list)
-    for batch in DataLoader(samples, batch_size=16, shuffle=False, collate_fn=collate):
+    for batch in DataLoader(samples, batch_size=batch_size, shuffle=False, collate_fn=collate):
         if batch["split"] != split:
             raise ValueError("invalid frozen forward split")
         inputs = {name: batch[name].to(device) for name in MODEL_INPUTS}
@@ -237,7 +239,7 @@ def evaluate(model, samples, split, *, device, chunk_size):
                    else isolated_history(model, inputs, full))
         for name, values in history.items():
             collected[name].append(values)
-        if modality_available(model):
+        if not history_only and modality_available(model):
             for name, values in modality_logits(model, inputs, full.logits_ta, dev=split == "dev").items():
                 collected[name].append(values[full.mask].cpu().numpy())
     return {name: np.concatenate(chunks) for name, chunks in collected.items()}

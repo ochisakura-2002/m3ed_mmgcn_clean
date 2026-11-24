@@ -9,7 +9,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from datasets.iemocap.tav_full_audit_dataset import COUNTS, SCHEMA, TAVAuditDataset, collate, identity_sha, require_split
+from datasets.iemocap.tav_full_audit_dataset import (
+    COUNTS, SCHEMA, TAVAuditDataset, collate, identity_sha, read_manifest, require_split,
+)
 from models.multidag_cl.fusion.base import DirectConcatFusion
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
 from scripts.runtime.multidag_cl_fusion.spec import make_final_config
@@ -87,8 +89,10 @@ def read_f0(frozen_runs):
     return source
 
 
-def load_projected_train_dev(directory, source):
+def load_projected_train_dev(directory, source, *, splits=SPLITS):
     """Verify the Train/Dev-only package before invoking any dataset factory."""
+    if splits not in (SPLITS, ("dev",)):
+        raise ValueError("projection views must be Train/Dev or Dev only")
     projection = read_json(directory / PROJECTION_MANIFEST)
     validate_hold(projection)
     data_identity = source.manifest["data_identity"]
@@ -104,7 +108,7 @@ def load_projected_train_dev(directory, source):
         raise ValueError("expected a certified, distinct Train/Dev-only projection of the historical F0 inputs")
     if any(sha256_file(directory / name) != digest for name, digest in hashes.items()):
         raise ValueError("Train/Dev-only input SHA-256 mismatch")
-    rows = read_csv(directory / MODEL_MANIFEST)
+    rows = read_manifest(directory / MODEL_MANIFEST)
     if (any(row["split"] not in SPLITS for row in rows)
             or identity_sha(rows) != projection["row_order_identity_sha256"]):
         raise ValueError("Train/Dev manifest scope or row-order identity mismatch")
@@ -120,16 +124,16 @@ def load_projected_train_dev(directory, source):
     # Supply a structural empty slot in memory. No Test row or dataset exists.
     view = {**asset, "splits": {**asset["splits"], "test": []}}
     counts = {**TRAIN_DEV_COUNTS, "test": {"dialogues": 0, "utterances": 0}}
-    datasets = {split: TAVAuditDataset(view, rows, split=split, expected_counts=counts) for split in SPLITS}
+    datasets = {split: TAVAuditDataset(view, rows, split=split, expected_counts=counts) for split in splits}
     if any(sha256_file(directory / name) != digest for name, digest in hashes.items()):
         raise ValueError("Train/Dev-only input changed during validation")
     fields = ("schema", "splits", "split_counts", "source_data_identity", "sha256", "row_order_identity_sha256", *HOLD)
     return datasets, {key: projection[key] for key in fields}
 
 
-def validate_population(datasets, source):
+def validate_population(datasets, source, *, splits=SPLITS):
     identities = {}
-    for split in SPLITS:
+    for split in splits:
         dataset = datasets[split]
         order = [dataset.ordered[did] for did in dataset.dialogue_ids]
         population = [(uid, dataset.rows[uid]["dialogue_id"], int(dataset.rows[uid]["benchmark_label_id"]))
@@ -198,6 +202,13 @@ def frozen_forward(model, dataset, split, *, device, batch_size, expected_batche
     return FrozenSplit(np.concatenate(logits), tuple(population), states)
 
 
+def validate_f0_dev(source, dev):
+    if (dev.population != source.population or dev.logits.shape != source.logits.shape
+            or not np.allclose(dev.logits, source.logits, rtol=1e-4, atol=5e-4)
+            or not np.array_equal(dev.logits.argmax(axis=1), source.logits.argmax(axis=1))):
+        raise ValueError("live seed100 F0 does not reproduce archived Dev identity/logits/predictions")
+
+
 def forward_f0(source, datasets, device, *, capture_states=False, inspect_model=None):
     curriculum_sha = membership(datasets["train"])
     if curriculum_sha != source.manifest["curriculum_membership_sha256"]:
@@ -210,9 +221,7 @@ def forward_f0(source, datasets, device, *, capture_states=False, inspect_model=
     dev = frozen_forward(model, datasets["dev"], "dev", device=device, batch_size=batch_size,
                          expected_batches=source.manifest["batch_pairing"]["dev"]["batch_sha256"],
                          capture_states=capture_states)
-    if (dev.population != source.population or not np.allclose(dev.logits, source.logits, rtol=1e-4, atol=5e-4)
-            or not np.array_equal(dev.logits.argmax(axis=1), source.logits.argmax(axis=1))):
-        raise ValueError("live seed100 F0 does not reproduce archived Dev identity/logits/predictions")
+    validate_f0_dev(source, dev)
     train = frozen_forward(model, datasets["train"], "train", device=device, batch_size=batch_size,
                            capture_states=capture_states)
     if inspect_model is not None:
@@ -238,29 +247,63 @@ def align_trace(rows, meta):
     if len(indexed) != len(rows) or set(indexed) != {key(row) for row in meta}:
         raise ValueError("Round 1 trace IDs are incomplete or duplicated")
     aligned = [indexed[key(row)] for row in meta]
-    if any(left[field] != str(right[field]) for left, right in zip(aligned, meta)
+    if any(str(left[field]) != str(right[field]) for left, right in zip(aligned, meta)
            for field in ("speaker", "true_label", "shift_group", "target_index")):
         raise ValueError("Round 1 trace metadata differs from frozen Dev")
     return aligned
 
 
-def history_groups(directory, manifest, meta, archived, mad):
-    rows = checked_trace_rows(directory, manifest, "HISTORY_UTILITY_AUDIT.csv")
-    samples = [row for row in rows if row["row_type"] == "sample"]
+def history_predictions(samples, meta):
     if len(samples) != len(meta) * len(HISTORY) or {row["condition"] for row in samples} != set(HISTORY):
         raise ValueError("Round 1 history variants are incomplete")
-    predictions = np.array([[CLASS_ORDER.index(row["predicted_label"]) for row in
-                             align_trace([row for row in samples if row["condition"] == condition], meta)]
-                            for condition in HISTORY])
+    return np.array([[CLASS_ORDER.index(row["predicted_label"]) for row in
+                      align_trace([row for row in samples if row["condition"] == condition], meta)]
+                     for condition in HISTORY])
+
+
+def stable_top25(values):
+    return np.argsort(-values, kind="stable")[:Q4_SUPPORT]
+
+
+def uh_partitions(u, h):
+    return dict(zip(H_GROUPS, (u & ~h, h & ~u, u & h, ~(u | h))))
+
+
+def history_groups(directory, manifest, meta, archived, mad):
+    rows = checked_trace_rows(directory, manifest, "HISTORY_UTILITY_AUDIT.csv")
+    predictions = history_predictions([row for row in rows if row["row_type"] == "sample"], meta)
     if not np.array_equal(predictions[0], archived.top1):
         raise ValueError("Round 1 FULL_HISTORY differs from historical seed100 F0")
     h_instability = (predictions[1:] != predictions[0]).sum(axis=0)
-    u, h = (np.isin(np.arange(len(meta)), np.argsort(-values, kind="stable")[:Q4_SUPPORT])
-            for values in (mad, h_instability))
+    u, h = (np.isin(np.arange(len(meta)), stable_top25(values)) for values in (mad, h_instability))
     # Round 2's published seed100 captures are 35.54% (102/287) and 36.24% (104/287).
     if (int((u & archived.wrong).sum()), int((h & archived.wrong).sum())) != (102, 104):
         raise ValueError("reconstructed risk lists do not reproduce the Round 2 seed100 capture counts")
-    return dict(zip(H_GROUPS, (u & ~h, h & ~u, u & h, ~(u | h))))
+    return uh_partitions(u, h)
+
+
+def read_round1_manifest(source, directory):
+    path = directory / "failure_audit_manifest.json"
+    digest = sha256_file(path)
+    manifest = read_json(path)
+    validate_hold(manifest, legacy=True)
+    if (manifest["data_identity"] != source.manifest["data_identity"]
+            or [item for item in manifest["sources"] if item["seed"] == SEED] != [source.identity]
+            or sha256_file(path) != digest):
+        raise ValueError("Round 1 source is not the historical seed100 F0")
+    return manifest, digest
+
+
+def checked_round1_mad(directory, manifest, meta, archived):
+    rows = align_trace(checked_trace_rows(directory, manifest, "AMBIGUITY_AUDIT.csv"), meta)
+    if [row["predicted_label"] for row in rows] != [CLASS_ORDER[index] for index in archived.top1]:
+        raise ValueError("Round 1 predictions differ from the historical seed100 F0")
+    mad = np.array([float(row["mad"]) for row in rows])
+    quartile = quartiles(mad)
+    if (not np.all((mad >= 0) & (mad <= 1)) or not np.array_equal(quartile, [int(row["mad_quartile"]) for row in rows])
+            or not np.allclose(mad, archived.mad, rtol=0, atol=5e-4)):
+        raise ValueError("Round 1 MAD or frozen quartile assignments do not reproduce")
+    return mad, quartile
 
 
 def audit_subgroups(source, directory):
@@ -272,25 +315,14 @@ def audit_subgroups(source, directory):
     if directory is None:
         return q4, groups, {**status, "subgroup_reason": "Round 1 trace was not supplied"}
     try:
-        manifest = read_json(directory / "failure_audit_manifest.json")
-        validate_hold(manifest, legacy=True)
-        if (manifest["data_identity"] != source.manifest["data_identity"]
-                or [item for item in manifest["sources"] if item["seed"] == SEED] != [source.identity]):
-            raise ValueError("Round 1 source is not the historical seed100 F0")
+        manifest, digest = read_round1_manifest(source, directory)
         meta = metadata(source.population)
-        rows = align_trace(checked_trace_rows(directory, manifest, "AMBIGUITY_AUDIT.csv"), meta)
-        if [row["predicted_label"] for row in rows] != [CLASS_ORDER[index] for index in archived.top1]:
-            raise ValueError("Round 1 predictions differ from the historical seed100 F0")
-        mad = np.array([float(row["mad"]) for row in rows])
-        quartile = quartiles(mad)
-        if (not np.all((mad >= 0) & (mad <= 1)) or not np.array_equal(quartile, [int(row["mad_quartile"]) for row in rows])
-                or not np.allclose(mad, archived.mad, rtol=0, atol=5e-4)):
-            raise ValueError("Round 1 MAD or frozen quartile assignments do not reproduce")
+        mad, quartile = checked_round1_mad(directory, manifest, meta, archived)
         q4 = quartile == 4
         shifts = selection_groups(meta)
         groups.update({name: shifts[name] for name in GROUPS})
         status.update(Q4_SOURCE="VERIFIED_ROUND1_TRACE", SHIFT_SUBGROUP_STATUS="AVAILABLE",
-                      round1_manifest_sha256=sha256_file(directory / "failure_audit_manifest.json"))
+                      round1_manifest_sha256=digest)
         groups.update(history_groups(directory, manifest, meta, archived, mad))
         status["H_SUBGROUP_STATUS"] = "AVAILABLE"
     except TestHoldViolation:

@@ -1,0 +1,94 @@
+ M .gitignore
+ M docs/research/post_fusion/PARALLEL_FASTKILL_HANDOFF.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_IMPLEMENTATION_REPORT.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_RUNBOOK.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_TEST_REPORT.md
+ M docs/research/post_fusion/POST_FUSION_PARALLEL_FASTKILL_001_DESIGN.md
+ M scripts/analysis/models/multidag_cl/export_fastkill_bundle.py
+ M scripts/runtime/multidag_cl_fastkill/runtime.py
+ M tests/models/multidag_cl/tav_full_audit_v1/test_post_fusion_fastkill.py
+?? configs/multidag_cl/fusion_candidates/prototype_smoke.yaml
+?? datasets/asymmetric_iemocap.py
+?? docs/IEMOCAP_ASYMMETRIC_MERC_PROJECT_SOURCE_20261021_v1.2.md
+?? docs/MERC_PATHS_PROJECT_SOURCE_20261022.md
+?? docs/analysis/fusion/CT_MULTIDAG_FUSION_FINAL_SUMMARY_20261123.md
+?? docs/analysis/fusion/FUSION_ARCHIVE_AUDIT_20261123.md
+?? docs/fusion/CURRENT_FUSION_ARCHITECTURE_AUDIT_20261119.md
+?? docs/fusion/FUSION_HYPOTHESIS_AND_EXPERIMENT_DESIGN_V1_20261119.md
+?? docs/reproduction/MULTIDAG_CL_FEATURE_REPRODUCTION_STAGE_C1.md
+?? docs/research/fusion/CT_MULTIDAG_FUSION_DESIGN_STUDY_20261121.md
+?? docs/research/post_failure_method_design_001/01_FAILURE_MECHANISM_INTERPRETATION.md
+?? docs/research/post_failure_method_design_001/02_RECENT_2024_2026_LITERATURE_MATRIX.csv
+?? docs/research/post_failure_method_design_001/03_CORE_PAPER_DEEP_REVIEW.md
+?? docs/research/post_failure_method_design_001/04_CANDIDATE_METHODS.md
+?? docs/research/post_failure_method_design_001/05_METHOD_COMPARISON_MATRIX.csv
+?? docs/research/post_failure_method_design_001/06_PRIMARY_METHOD_DESIGN.md
+?? docs/research/post_failure_method_design_001/07_PRIMARY_METHOD_ARCHITECTURE.md
+?? docs/research/post_failure_method_design_001/08_FASTKILL_EXPERIMENT_PLAN.md
+?? docs/research/post_failure_method_design_001/09_RISKS_AND_FAILURE_MODES.md
+?? docs/research/post_failure_method_design_001/10_FINAL_RECOMMENDATION.md
+?? docs/research/post_failure_method_design_001/papers/L01_UAF.pdf
+?? docs/research/post_failure_method_design_001/papers/L02_SRERC.pdf
+?? docs/research/post_failure_method_design_001/papers/L03_ERCThinker.pdf
+?? docs/research/post_failure_method_design_001/papers/L04_DCLF.pdf
+?? docs/research/post_failure_method_design_001/papers/L05_HiRoC.pdf
+?? docs/research/post_failure_method_design_001/papers/L06_ECERC.pdf
+?? docs/research/post_failure_method_design_001/papers/L07_EmoTrans.pdf
+?? docs/research/post_failure_method_design_001/papers/L08_Handling_Ambiguity.pdf
+?? docs/research/post_failure_method_design_001/papers/L09_Decoupled_Neutral.pdf
+?? docs/research/post_failure_method_design_001/papers/L10_SER_Uncertainty.pdf
+?? docs/research/post_fusion/NEXT_ROUTE_CANDIDATE_MATRIX.csv
+?? docs/research/post_fusion/ORIGINAL_MULTIDAG_FUTURE_WORK_TRACE.md
+?? docs/research/post_fusion/POST_FUSION_ROUTE_AUDIT_001.md
+?? docs/research/post_fusion/TOP2_ROUTE_RECOMMENDATION.md
+?? docs/research/post_fusion/b1_signal_review_001/B1_NEW_ERRORS.csv
+?? docs/research/post_fusion/b1_signal_review_001/B1_PAIRWISE_ERROR_MIGRATION.csv
+?? docs/research/post_fusion/b1_signal_review_001/B1_PER_CLASS_EFFECT.csv
+?? docs/research/post_fusion/b1_signal_review_001/B1_PROTOTYPE_GEOMETRY_REVIEW.csv
+?? docs/research/post_fusion/b1_signal_review_001/B1_RECOVERED_ERRORS.csv
+?? docs/research/post_fusion/b1_signal_review_001/B1_R_4SEED_RUNBOOK.md
+?? docs/research/post_fusion/b1_signal_review_001/B1_R_CONFIRMATION_PROTOCOL.md
+?? docs/research/post_fusion/b1_signal_review_001/B1_TRAINING_TRAJECTORY_REVIEW.csv
+?? docs/research/post_fusion/b1_signal_review_001/FASTKILL_ROUTE_DECISION_FIX_REPORT.md
+?? docs/research/post_fusion/b1_signal_review_001/HISTORICAL_F0_CONTROL_IDENTITY_AUDIT.md
+?? docs/research/post_fusion/b1_signal_review_001/POST_FUSION_B1_SIGNAL_REVIEW_001.md
+?? docs/research/post_ph_joint_audit_001.zip
+?? docs/research/post_ph_joint_audit_001/00_EXECUTIVE_SUMMARY.md
+?? docs/research/post_ph_joint_audit_001/01_REPO_ARCHITECTURE_MAP.md
+?? docs/research/post_ph_joint_audit_001/02_CT_MULTIDAG_MAIN_MODEL_IDENTITY.md
+?? docs/research/post_ph_joint_audit_001/03_CT_MULTIDAG_CALL_GRAPH.md
+?? docs/research/post_ph_joint_audit_001/04_F0_FREEZE_BOUNDARY.md
+?? docs/research/post_ph_joint_audit_001/05_ARTIFACT_INVENTORY.md
+?? docs/research/post_ph_joint_audit_001/06_RELIABILITY_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/07_SELECTIVE_PREDICTION_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/08_SUBGROUP_ROBUSTNESS_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/09_SEED_STABILITY_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/10_FAILURE_TOPOLOGY_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/11_CORRECTION_DIRECTION_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/12_HISTORY_RELEVANCE_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/13_INTERNAL_DEV_PROTOCOL.md
+?? docs/research/post_ph_joint_audit_001/14_2024_2026_LITERATURE_MAP.md
+?? docs/research/post_ph_joint_audit_001/15_LITERATURE_COMPARISON_MATRIX.csv
+?? docs/research/post_ph_joint_audit_001/16_CANDIDATE_ROUTES.md
+?? docs/research/post_ph_joint_audit_001/17_ROUTE_COMPARISON_MATRIX.csv
+?? docs/research/post_ph_joint_audit_001/18_PRIMARY_ROUTE_DESIGN.md
+?? docs/research/post_ph_joint_audit_001/19_BACKUP_ROUTE_DESIGN.md
+?? docs/research/post_ph_joint_audit_001/21_MASTER_THESIS_AND_PAPER_POSITIONING.md
+?? docs/research/post_ph_joint_audit_001/22_REVIEWER_RISK_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/23_FINAL_RECOMMENDATION.md
+?? docs/research/post_ph_joint_audit_001/INTERNAL_DEV_PROTOCOL_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/REMOTE_DIAGNOSTICS_REQUIRED.md
+?? docs/research/post_ph_joint_audit_001/REPRODUCE_LOCAL_AUDIT.md
+?? docs/research/post_ph_joint_audit_001/post_ph_joint_audit_001.zip
+?? docs/research/visual_representation_audit/VA0_V342_S2D_PROVENANCE_AUDIT_20261120.md
+?? docs/research/visual_representation_audit/VA1D_COMMON_POPULATION_VISUAL_PROBE_20261120.md
+?? docs/research/visual_representation_audit/VA2D_COMMON_POPULATION_CT_MULTIDAG_VISUAL_REPLACEMENT_20261120.md
+?? models/experimental/ct_multidag_fusion.py
+?? scripts/analysis/models/multidag_cl/plot_overfitting_diagnostics.py
+?? scripts/diagnostics/experiments/run_va1d_visual_representation_probe.py
+?? scripts/diagnostics/experiments/run_va2d_visual_replacement.py
+?? scripts/diagnostics/experiments/va2d_inputs.py
+?? scripts/diagnostics/models/multidag_cl/smoke_ct_multidag_fusion.py
+?? tests/analysis/models/multidag_cl/test_plot_overfitting_diagnostics.py
+?? tests/data/build/multidag_cl/test_official_feature_pipeline.py
+?? tests/test_iemocap_canonical_manifest.py

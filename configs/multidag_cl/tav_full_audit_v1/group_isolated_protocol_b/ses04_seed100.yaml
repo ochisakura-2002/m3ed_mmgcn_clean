@@ -1,0 +1,9 @@
+schema: ct_multidag_g0_protocol_b_v1
+held_out_session: Ses04
+seed: 100
+checkpoint_epoch: 30
+calibration: null
+run_id: ct_multidag_g0_ses04_s100
+output:
+  root: outputs
+  experiment_group: g0_group_isolated_ct_multidag

@@ -25,6 +25,10 @@ PARAMETERS = 1_638_306
 GROUP = "g0_group_isolated_ct_multidag"
 SCHEMA = "ct_multidag_g0_protocol_b_v1"
 CONFIG_DIR = Path("configs/multidag_cl/tav_full_audit_v1/group_isolated_protocol_b")
+G1_SCHEMA = "ct_multidag_g1_ls_protocol_b_v1"
+G1_GROUP = "g1_label_smoothing_ct_multidag"
+G1_CONFIG_DIR = CONFIG_DIR.with_name("group_isolated_label_smoothing")
+G1_EPSILON = 0.1
 PROJECTION_FIELDS = ("schema", "splits", "split_counts", "source_data_identity",
                      "sha256", "row_order_identity_sha256", *HOLD)
 
@@ -33,10 +37,10 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def fold_config(session):
+def fold_config(session, *, g1=False):
     if session not in SESSIONS:
         raise ValueError("expected a Protocol B session from Ses01 through Ses04")
-    return {
+    config = {
         "schema": SCHEMA,
         "held_out_session": session,
         "seed": SEED,
@@ -45,12 +49,21 @@ def fold_config(session):
         "run_id": f"ct_multidag_g0_{session.lower()}_s{SEED}",
         "output": {"root": "outputs", "experiment_group": GROUP},
     }
+    if g1:
+        config.update(
+            schema=G1_SCHEMA,
+            run_id=f"ct_multidag_g1_ls_{session.lower()}_s{SEED}",
+            output={"root": "outputs", "experiment_group": G1_GROUP},
+            label_smoothing=G1_EPSILON,
+        )
+    return config
 
 
 def load_config(path):
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(config, dict) or json_identity(config) != json_identity(fold_config(config.get("held_out_session"))):
-        raise ValueError("G0 fold config differs from the frozen protocol")
+    if (not isinstance(config, dict) or json_identity(config) != json_identity(
+            fold_config(config.get("held_out_session"), g1=config.get("schema") == G1_SCHEMA))):
+        raise ValueError("fold config differs from the frozen Protocol B arm")
     return config
 
 

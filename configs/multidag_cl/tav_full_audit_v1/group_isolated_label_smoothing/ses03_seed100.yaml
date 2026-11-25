@@ -1,0 +1,10 @@
+schema: ct_multidag_g1_ls_protocol_b_v1
+held_out_session: Ses03
+seed: 100
+checkpoint_epoch: 30
+calibration: null
+label_smoothing: 0.1
+run_id: ct_multidag_g1_ls_ses03_s100
+output:
+  root: outputs
+  experiment_group: g1_label_smoothing_ct_multidag

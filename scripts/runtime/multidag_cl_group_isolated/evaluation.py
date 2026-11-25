@@ -19,7 +19,7 @@ from scripts.analysis.models.multidag_cl.post_ph.metrics import (
 )
 from scripts.runtime.multidag_cl_ta_v0.formal import sha256_file, write_json_atomic
 from scripts.runtime.multidag_cl_ta_v0.training import classification_report
-from .protocol import ENDPOINT, FoldView, HOLD
+from .protocol import ENDPOINT, FoldView, G1_SCHEMA, HOLD
 
 
 HIGH_CONFIDENCE = 0.90
@@ -41,17 +41,22 @@ def validate_predictions(predictions, expected):
     return actual
 
 
+def hard_label_scores(logits, labels):
+    probabilities = logit_probabilities(logits)
+    scores = probability_details(probabilities, labels)
+    # Stable log-sum-exp yields exact NLL even when a softmax entry underflows.
+    scores["nll"] = np.logaddexp.reduce(logits, axis=1) - logits[np.arange(len(labels)), labels]
+    return probabilities, scores
+
+
 def summarize(predictions, expected):
     actual = validate_predictions(predictions, expected)
     labels = np.asarray([row[2] for row in actual])
     logits = np.asarray([row["logits"] for row in predictions], dtype=np.float64)
-    probabilities = logit_probabilities(logits)
+    probabilities, scores = hard_label_scores(logits, labels)
     top1 = logits.argmax(axis=1)
     if not np.array_equal(top1, [row["predicted_label"] for row in predictions]):
         raise ValueError("exported predictions differ from the logits")
-    scores = probability_details(probabilities, labels)
-    # Stable log-sum-exp yields exact NLL even when a softmax entry underflows.
-    scores["nll"] = np.logaddexp.reduce(logits, axis=1) - logits[np.arange(len(labels)), labels]
     confidence = scores["confidence"]
     wrong = top1 != labels
     ece, bins = reliability(confidence, ~wrong, 10)
@@ -109,6 +114,7 @@ def replay(run_dir, runtime, views, entries, manifest):
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(destination)
     destination.parent.mkdir(exist_ok=True)
+    is_g1 = manifest["run_identity"]["schema"] == G1_SCHEMA
     fit_batches = torch.utils.data.DataLoader(
         FoldView(views["fit"].items, "dev"), batch_size=manifest["f0_recipe"]["training"]["batch_size"],
         shuffle=False, num_workers=0, collate_fn=collate, generator=torch.Generator().manual_seed(manifest["seed"]),
@@ -131,7 +137,16 @@ def replay(run_dir, runtime, views, entries, manifest):
                 for role in ROLES:
                     batches = runtime.loader("dev") if role == "held_out" else fit_batches
                     report = runtime.evaluate(batches, include_predictions=True, prediction_details=True)
-                    trends.append({"epoch": epoch, "population": role, **report["metrics"]})
+                    trend = {"epoch": epoch, "population": role, **report["metrics"]}
+                    if is_g1:
+                        targets = np.array([row["true_label"] for row in report["predictions"]])
+                        logits = np.array([row["logits"] for row in report["predictions"]], dtype=np.float64)
+                        _, scores = hard_label_scores(logits, targets)
+                        ece, _ = reliability(scores["confidence"], logits.argmax(1) == targets, 10)
+                        trend.pop("loss")
+                        trend.update(hard_label_nll=float(scores["nll"].mean()), brier=float(scores["brier"].mean()),
+                                     ece10=ece)
+                    trends.append(trend)
                     if epoch == ENDPOINT:
                         export_role(stage, role, report["predictions"], entries[role])
                     else:

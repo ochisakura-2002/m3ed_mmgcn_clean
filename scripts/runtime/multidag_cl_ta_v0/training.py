@@ -57,7 +57,7 @@ def seed_everything(device, seed=100):
         torch.backends.cudnn.benchmark = False
 
 
-def masked_cross_entropy(logits, targets, mask):
+def masked_cross_entropy(logits, targets, mask, *, label_smoothing=0.0):
     """Padding is never indexed into CE, even if it contains invalid targets."""
     if (mask.dtype != torch.bool or targets.dtype != torch.int64
             or targets.shape != mask.shape or logits.shape != (*mask.shape, 6)):
@@ -65,7 +65,11 @@ def masked_cross_entropy(logits, targets, mask):
     count = int(mask.sum().item())
     if count == 0 or torch.any((targets[mask] < 0) | (targets[mask] >= 6)):
         raise ValueError("invalid valid target count/labels")
-    loss = F.cross_entropy(logits[mask], targets[mask])
+    valid_logits, valid_targets = logits[mask], targets[mask]
+    if label_smoothing == 0.0:
+        loss = F.cross_entropy(valid_logits, valid_targets)
+    else:
+        loss = F.cross_entropy(valid_logits, valid_targets, label_smoothing=label_smoothing)
     if not torch.isfinite(loss):
         raise ValueError("nonfinite cross entropy")
     return loss, count

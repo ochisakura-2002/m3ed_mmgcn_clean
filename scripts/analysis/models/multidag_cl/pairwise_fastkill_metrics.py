@@ -94,11 +94,20 @@ def calibration(logits, labels):
     return {"nll": float(nll), "brier": float(brier), "ece": float(ece)}
 
 
-def bootstrap(labels, ctrl, primary, dialogue_ids):
+def bootstrap(labels, ctrl, primary, dialogue_ids, *, strata=None):
     classes = len(CLASS_ORDER)
-    _, dialogue = np.unique(dialogue_ids, return_inverse=True)
-    size = int(dialogue.max()) + 1
-    draws = np.random.default_rng(BOOTSTRAP_SEED).integers(size, size=(BOOTSTRAP_RESAMPLES, size))
+    unique, first, dialogue = np.unique(dialogue_ids, return_index=True, return_inverse=True)
+    size = len(unique)
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    if strata is None:
+        draws = rng.integers(size, size=(BOOTSTRAP_RESAMPLES, size))
+    else:
+        strata = np.asarray(strata)
+        if strata.shape != dialogue.shape or not np.array_equal(strata, strata[first][dialogue]):
+            raise ValueError("each bootstrap dialogue must belong to exactly one stratum")
+        dialogue_strata = strata[first]
+        groups = [np.flatnonzero(dialogue_strata == group) for group in np.unique(dialogue_strata)]
+        draws = np.concatenate([rng.choice(group, size=(BOOTSTRAP_RESAMPLES, len(group))) for group in groups], axis=1)
     scores = []
     for predictions in (ctrl, primary):
         flat = dialogue * classes**2 + labels * classes + predictions

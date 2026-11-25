@@ -53,7 +53,7 @@ class AuditRuntime(TrainDevRuntime):
     """Parent selector/save/resume are reused; TAV batches and CL visibility adapt."""
 
     def __init__(self, model, dataset_factory, *, device="cpu", formal_train_dev=False,
-                 synthetic_only=False, data_identity=None, git_head=None):
+                 synthetic_only=False, data_identity=None, git_head=None, train_label_smoothing=0.0):
         if not isinstance(model, TAVFullAudit) or not (formal_train_dev is True or synthetic_only is True):
             raise ValueError("explicit TAV Train/Dev or synthetic mode required")
         self.device = torch.device(device)
@@ -62,6 +62,7 @@ class AuditRuntime(TrainDevRuntime):
         self.model, self.dataset_factory = model.to(self.device), dataset_factory
         self.formal_train_dev, self.synthetic_only = formal_train_dev is True, synthetic_only is True
         self.data_identity, self.git_head = deepcopy(data_identity or {}), git_head
+        self.train_label_smoothing = train_label_smoothing
         protocol = PROTOCOL["optimizer"]
         self.optimizer = torch.optim.AdamW(model.parameters(), lr=protocol["learning_rate"],
                                           betas=tuple(protocol["betas"]), eps=protocol["eps"],
@@ -109,7 +110,9 @@ class AuditRuntime(TrainDevRuntime):
         output = self.model(**{key: tensors[key] for key in MODEL_INPUTS}, active_modalities=active_modalities)
         if not torch.all(tensors["labels"][~output.mask] == -100):
             raise ValueError("invalid padding targets")
-        loss, _ = masked_cross_entropy(output.logits_ta, tensors["labels"], output.mask)
+        smoothing = self.train_label_smoothing if split == "train" else 0.0
+        loss, _ = masked_cross_entropy(output.logits_ta, tensors["labels"], output.mask,
+                                       label_smoothing=smoothing)
         if any(not torch.isfinite(value).all() for value in (output.h_ta, output.logits_ta, output.prob_ta)):
             raise ValueError("nonfinite TAV output")
         return output, loss

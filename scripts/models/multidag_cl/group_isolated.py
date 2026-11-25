@@ -5,16 +5,18 @@ import csv
 import json
 import os
 from pathlib import Path
+from time import perf_counter
 
 import torch
 import yaml
 
-from scripts.runtime.multidag_cl_fusion.runtime import paired_model
+from scripts.runtime.multidag_cl_fusion.runtime import paired_model, training_rng_identity
 from scripts.runtime.multidag_cl_group_isolated.evaluation import checkpoint_path, replay
 from scripts.runtime.multidag_cl_group_isolated.protocol import (
-    ENDPOINT, FIRST_FOLD, HOLD, PARAMETERS, SCHEMA, SESSIONS, describe, load_config,
+    CONFIG_DIR, ENDPOINT, FIRST_FOLD, G1_CONFIG_DIR, G1_SCHEMA, HOLD, PARAMETERS, SESSIONS, describe, load_config,
     load_fold, read_frozen, read_json, validate_hold,
 )
+from scripts.runtime.multidag_cl_group_isolated.provenance import runtime_provenance, source_hashes
 from scripts.runtime.multidag_cl_paper_reimplementation.checkpoint import save_checkpoint_atomic
 from scripts.runtime.multidag_cl_ta_v0.formal import git_identity, json_identity, sha256_file, write_json_atomic
 from scripts.runtime.multidag_cl_ta_v0.training import cpu_snapshot
@@ -28,19 +30,20 @@ TRAIN_LOG_FIELDS = ("epoch", "train_update_loss", "max_gradient_norm", "optimize
 
 def run_identity(config, raw, data):
     return {
-        "schema": SCHEMA, "run_id": config["run_id"], "config_sha256": json_identity(config),
+        "schema": config["schema"], "run_id": config["run_id"], "config_sha256": json_identity(config),
         "f0_recipe_sha256": json_identity(raw), "data_identity_sha256": json_identity(data),
     }
 
 
-def build_runtime(raw, datasets, device, *, synthetic=False):
+def build_runtime(raw, datasets, device, *, synthetic=False, train_label_smoothing=0.0):
     if synthetic and device != "cpu":
         raise ValueError("synthetic runtime is CPU-only")
     model, _, initialization = paired_model(raw, device=device)
     if sum(p.numel() for p in model.parameters()) != PARAMETERS:
         raise ValueError("formal F0 parameter count changed")
     runtime = AuditRuntime(model, datasets.__getitem__, device=device,
-                           formal_train_dev=not synthetic, synthetic_only=synthetic)
+                           formal_train_dev=not synthetic, synthetic_only=synthetic,
+                           train_label_smoothing=train_label_smoothing)
     return runtime, initialization
 
 
@@ -49,9 +52,13 @@ def steps_per_epoch(fit, raw):
     return (fit["dialogues"] + batch_size - 1) // batch_size
 
 
-def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, synthetic=False):
+def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, synthetic=False, source_configs=()):
     # This function receives only fit feature tensors. AuditRuntime owns the
     # optimizer, masked loss, gradient clipping and seeded CL_OFF batch loader.
+    is_g1 = config["schema"] == G1_SCHEMA
+    smoothing = config.get("label_smoothing", 0.0)
+    if is_g1 and not (source_configs or synthetic):
+        raise ValueError("G1 requires a runtime source inventory")
     run_dir.mkdir(parents=True, exist_ok=False)
     manifest_path = run_dir / "manifests" / "run_manifest.json"
     manifest_path.parent.mkdir()
@@ -69,9 +76,18 @@ def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, syntheti
     }
     write_json_atomic(manifest_path, manifest)
     try:
-        runtime, initialization = build_runtime(raw, {"train": fit}, device, synthetic=synthetic)
+        runtime, initialization = build_runtime(raw, {"train": fit}, device, synthetic=synthetic,
+                                                train_label_smoothing=smoothing)
         manifest["initialization"] = initialization
+        if is_g1:
+            manifest.update(fit_objective={"name": "uniform_label_smoothed_ce", "label_smoothing": smoothing},
+                            evaluation_objective="hard_label_nll",
+                            training_initial_rng=training_rng_identity(device))
+        if source_configs:
+            manifest["runtime_provenance"] = runtime_provenance(ROOT, device, source_configs)
         runtime.curriculum.export_manifest(run_dir / "manifests" / "fit_curriculum_bucket_manifest.tsv")
+        if is_g1:
+            write_json_atomic(manifest_path, manifest)
         (run_dir / "resolved_config.yaml").write_text(
             yaml.safe_dump({"protocol_b": config, "f0_recipe": raw, "data_identity": data}, sort_keys=False),
             encoding="utf-8",
@@ -81,9 +97,12 @@ def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, syntheti
             expected.setdefault(did, []).append(uid)
         expected = {did: tuple(ids) for did, ids in expected.items()}
         with (run_dir / "logs" / "fit_updates.csv").open("x", encoding="utf-8", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=TRAIN_LOG_FIELDS)
+            fields = (*TRAIN_LOG_FIELDS, "fit_epoch_wall_seconds") if is_g1 else TRAIN_LOG_FIELDS
+            writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
+            fit_start = perf_counter()
             for epoch in range(1, ENDPOINT + 1):
+                epoch_start = perf_counter()
                 total, targets, norm = 0.0, 0, 0.0
                 seen, tape = set(), []
                 for batch in runtime.loader("train", epoch=epoch):
@@ -107,6 +126,8 @@ def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, syntheti
                 })
                 log = {"epoch": epoch, "train_update_loss": total / targets, "max_gradient_norm": norm,
                        "optimizer_steps": runtime.optimizer_steps, "batch_tape_sha256": json_identity(tape)}
+                if is_g1:
+                    log["fit_epoch_wall_seconds"] = perf_counter() - epoch_start
                 writer.writerow(log)
                 stream.flush()
                 manifest["checkpoint_sha256"][str(epoch)] = sha256_file(path)
@@ -114,6 +135,16 @@ def train(run_dir, config, raw, data, fit, fit_entries, *, device, git, syntheti
                 write_json_atomic(manifest_path, manifest)
                 if not synthetic:
                     print(json.dumps(log), flush=True)
+            if is_g1:
+                manifest["fit_wall_seconds"] = perf_counter() - fit_start
+        if source_configs:
+            hashes = manifest["runtime_provenance"]["files_sha256"]
+            after = source_hashes(ROOT, source_configs)
+            if any(after.get(path) != digest for path, digest in hashes.items()):
+                raise ValueError("runtime source changed during fit")
+            manifest["runtime_provenance"]["late_imports_sha256"] = {
+                path: digest for path, digest in after.items() if path not in hashes
+            }
         manifest["status"] = "completed"
         write_json_atomic(manifest_path, manifest)
     except BaseException as error:
@@ -137,7 +168,12 @@ def evaluate(run_dir, config, raw, data, views, entries, *, device, synthetic=Fa
     }
     if (any(manifest.get(key) != value for key, value in expected.items())
             or set(manifest["checkpoint_sha256"]) != epochs):
-        raise ValueError("G0 scoring requires the completed exact fold and its fixed epoch-30 checkpoint")
+        raise ValueError("Protocol B scoring requires the completed exact fold and its fixed epoch-30 checkpoint")
+    if config["schema"] == G1_SCHEMA and not synthetic:
+        inventory = manifest["runtime_provenance"]
+        hashes = {**inventory["files_sha256"], **inventory["late_imports_sha256"]}
+        if not hashes or any(sha256_file(ROOT / path) != digest for path, digest in hashes.items()):
+            raise ValueError("G1 evaluation source differs from the fit source inventory")
     runtime, _ = build_runtime(raw, {"train": views["fit"], "dev": views["held_out"]}, device, synthetic=synthetic)
     return replay(run_dir, runtime, views, entries, manifest)
 
@@ -171,11 +207,19 @@ def main(argv=None):
     config = load_config(args.config)
     frozen, raw = read_frozen(ROOT)
     session = config["held_out_session"]
+    is_g1 = config["schema"] == G1_SCHEMA
+    source_configs = ()
     if args.command == "train":
-        if not args.execute or (session != FIRST_FOLD and args.release_fold != session):
+        if not args.execute or ((is_g1 or session != FIRST_FOLD) and args.release_fold != session):
             cli.error("single-fold training requires --execute and a matching --release-fold for deferred folds")
         if os.name == "nt" or not torch.cuda.is_available():
-            cli.error("real G0 training requires the Ubuntu CUDA environment")
+            cli.error("real Protocol B training requires the Ubuntu CUDA environment")
+        if is_g1:
+            canonical_config = ROOT / G1_CONFIG_DIR / f"{session.lower()}_seed100.yaml"
+            if args.config.resolve() != canonical_config:
+                cli.error("G1 training requires the canonical fold YAML")
+            source_configs = (canonical_config, ROOT / CONFIG_DIR / "fold_identities.json",
+                              ROOT / raw["frontend_source"]["config_path"])
     if args.command == "validate":
         if args.projection_dir:
             load_fold(config, frozen, args.projection_dir)
@@ -185,6 +229,7 @@ def main(argv=None):
             "held_out": frozen["folds"][session]["held_out"],
             "projection": "VERIFIED" if args.projection_dir else "METADATA_ONLY",
             "checkpoint_epoch": ENDPOINT,
+            **({"label_smoothing": config["label_smoothing"]} if is_g1 else {}),
         }, indent=2))
         return
 
@@ -193,7 +238,8 @@ def main(argv=None):
         raise FileExistsError(run_dir)
     views, entries, data = load_fold(config, frozen, args.projection_dir, fit_only=args.command == "train")
     if args.command == "train":
-        train(run_dir, config, raw, data, views["fit"], entries["fit"], device="cuda", git=git_identity())
+        train(run_dir, config, raw, data, views["fit"], entries["fit"], device="cuda",
+              git=git_identity(), source_configs=source_configs)
         print(run_dir)
     else:
         print(evaluate(run_dir, config, raw, data, views, entries, device=args.device))

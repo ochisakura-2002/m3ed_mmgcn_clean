@@ -6,17 +6,21 @@ import pickle
 import numpy as np
 import pytest
 import torch
+import yaml
 
-from datasets.iemocap.tav_full_audit_dataset import DIMS, MANIFEST_FIELDS, SCHEMA, VERSION, fingerprint, identity_sha
+from datasets.iemocap.tav_full_audit_dataset import DIMS, MANIFEST_FIELDS, SCHEMA, VERSION, collate, fingerprint, identity_sha
 from models.multidag_cl.fusion.base import DirectConcatFusion
 from models.multidag_cl.fusion.model import FusionTAV
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
+from scripts.analysis.models.multidag_cl import group_isolated_comparison as comparison
 from scripts.analysis.models.multidag_cl import pairwise_preflight_inputs as projection_loader
 from scripts.analysis.models.multidag_cl.post_ph.internal_protocol import write_rows
 from scripts.models.multidag_cl import group_isolated as g0
 from scripts.runtime.multidag_cl_group_isolated import protocol
-from scripts.runtime.multidag_cl_group_isolated.evaluation import checkpoint_path, summarize
+from scripts.runtime.multidag_cl_group_isolated.evaluation import TRAJECTORY_FIELDS, checkpoint_path, export_role, summarize
+from scripts.runtime.multidag_cl_group_isolated.provenance import source_hashes
 from scripts.runtime.multidag_cl_ta_v0.formal import sha256_file, write_json_atomic
+from scripts.runtime.multidag_cl_ta_v0.training import masked_cross_entropy
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import AuditRuntime
 
 
@@ -30,6 +34,9 @@ def test_frozen_fold_identity(session, fit, held_out, steps):
     frozen, raw = protocol.read_frozen(g0.ROOT)
     path = g0.ROOT / protocol.CONFIG_DIR / f"{session.lower()}_seed100.yaml"
     assert protocol.load_config(path) == protocol.fold_config(session)
+    ls_path = g0.ROOT / protocol.G1_CONFIG_DIR / path.name
+    assert protocol.load_config(ls_path) == protocol.fold_config(session, g1=True)
+    assert g0.output_path(protocol.load_config(ls_path), "20261125") != g0.output_path(protocol.load_config(path), "20261125")
     fold = frozen["folds"][session]
     assert tuple(fold["fit"][key] for key in ("dialogues", "utterances")) == fit
     assert tuple(fold["held_out"][key] for key in ("dialogues", "utterances")) == held_out
@@ -133,8 +140,10 @@ def test_projection_membership_and_order(certified, tmp_path):
         assert view.split == {"fit": "train", "held_out": "dev"}[role]
 
 
-def test_training_materializes_fit_only(certified, tmp_path, monkeypatch):
+@pytest.mark.parametrize("g1", [False, True])
+def test_training_materializes_fit_only(certified, tmp_path, monkeypatch, g1):
     config, _, frozen, _, _ = certified
+    config = protocol.fold_config(config["held_out_session"], g1=g1)
     getitem = projection_loader.TAVAuditDataset.__getitem__
     seen = []
 
@@ -186,8 +195,9 @@ def test_changed_gold_tape_rejected(certified, tmp_path):
     ("ses01", ["--execute"], "matching --release-fold"),
     ("ses04", ["--execute", "--release-fold", "Ses04"], "Ubuntu CUDA"),
 ])
-def test_real_training_cli_gates_before_assets(monkeypatch, capsys, session, args, expected):
-    cfg = g0.ROOT / protocol.CONFIG_DIR / f"{session}_seed100.yaml"
+@pytest.mark.parametrize("g1", [False, True])
+def test_real_training_cli_gates_before_assets(monkeypatch, capsys, session, args, expected, g1):
+    cfg = g0.ROOT / (protocol.G1_CONFIG_DIR if g1 else protocol.CONFIG_DIR) / f"{session}_seed100.yaml"
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     monkeypatch.setattr(g0, "load_fold", lambda *a: pytest.fail("real assets opened after a gate failure"))
     with pytest.raises(SystemExit) as exc:
@@ -196,8 +206,86 @@ def test_real_training_cli_gates_before_assets(monkeypatch, capsys, session, arg
     assert expected in capsys.readouterr().err
 
 
-def test_fixed_endpoint_and_offline_export(certified, tmp_path, monkeypatch):
+def test_g1_first_fold_explicit_release_and_config_lock(tmp_path, monkeypatch, capsys):
+    path = g0.ROOT / protocol.G1_CONFIG_DIR / "ses03_seed100.yaml"
+    monkeypatch.setattr(g0, "load_fold", lambda *args, **kwargs: pytest.fail("projection accessed before release"))
+    with pytest.raises(SystemExit):
+        g0.main(["train", "--config", str(path), "--projection-dir", "unused", "--experiment-date", "20261125",
+                 "--execute", "--release-fold", "Ses02"])
+    assert "matching --release-fold" in capsys.readouterr().err
+    modified = tmp_path / "modified.yaml"
+    cfg = protocol.load_config(path)
+    for change in ({"label_smoothing": 0.05}, {"checkpoint_epoch": 18}, {"held_out_session": "Ses05"},
+                   {"output": protocol.fold_config("Ses03")["output"]}):
+        modified.write_text(yaml.safe_dump({**cfg, **change}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            protocol.load_config(modified)
+
+
+def test_masked_label_smoothing_matches_uniform_formula_and_legacy_gradient():
+    logits = torch.tensor([[[2., 1., 0., -1., -2., -3.],
+                            [float("nan")] * 6, [0., 2., 0., 4., 0., 0.]]], requires_grad=True)
+    targets = torch.tensor([[0, 999, 4]])
+    mask = torch.tensor([[True, False, True]])
+    ce = torch.nn.functional.cross_entropy(logits[mask], targets[mask])
+    default, count = masked_cross_entropy(logits, targets, mask)
+    explicit, _ = masked_cross_entropy(logits, targets, mask, label_smoothing=0.0)
+    assert count == 2 and torch.equal(default, explicit) and torch.equal(ce, explicit)
+    legacy_grad = torch.autograd.grad(ce, logits)[0]
+    assert torch.equal(legacy_grad, torch.autograd.grad(default, logits)[0])
+    assert torch.equal(legacy_grad, torch.autograd.grad(explicit, logits)[0])
+    smoothed, _ = masked_cross_entropy(logits, targets, mask, label_smoothing=0.1)
+    soft = 0.9 * torch.nn.functional.one_hot(targets[mask], 6) + 0.1 / 6
+    assert torch.allclose(soft.sum(-1), torch.ones(2))
+    assert torch.allclose(soft[0], torch.tensor([.9 + .1 / 6, *([.1 / 6] * 5)]))
+    expected = -(soft * logits[mask].log_softmax(-1)).sum(-1).mean()
+    assert torch.allclose(smoothed, expected)
+    grad = torch.autograd.grad(smoothed, logits)[0]
+    assert torch.allclose(grad[mask], (logits[mask].softmax(-1) - soft) / count)
+    assert torch.count_nonzero(grad[~mask]) == 0
+
+
+def test_same_step_at_zero_and_g1_only_changes_fit_objective(certified, tmp_path):
+    config, raw, frozen, _, _ = certified
+    views, _, _ = protocol.load_fold(config, frozen, tmp_path)
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        default, default_init = g0.build_runtime(raw, {"train": views["fit"]}, "cpu", synthetic=True)
+        batch = collate([views["fit"][0]])
+        original = default.train_step(batch)
+        zero, zero_init = g0.build_runtime(raw, {"train": views["fit"]}, "cpu", synthetic=True, train_label_smoothing=0.0)
+        assert zero_init == default_init
+        assert zero.train_step(batch) == original
+        for p, q in zip(default.model.parameters(), zero.model.parameters()):
+            assert torch.equal(p, q)
+            assert (p.grad is None and q.grad is None) or torch.equal(p.grad, q.grad)
+            assert default.optimizer.state[p].keys() == zero.optimizer.state[q].keys()
+            for name in default.optimizer.state[p]:
+                assert torch.equal(default.optimizer.state[p][name], zero.optimizer.state[q][name])
+        smooth, ls_init = g0.build_runtime(raw, {"train": views["fit"]}, "cpu", synthetic=True, train_label_smoothing=.1)
+        assert ls_init == default_init
+        assert smooth.train_step(batch)["loss"] != original["loss"]
+        assert smooth.model.state_dict().keys() == zero.model.state_dict().keys()
+        smooth.model.load_state_dict(default.model.state_dict(), strict=True)
+        eval_batch = collate([views["held_out"][0]])
+        actual, nll = smooth.forward_batch(eval_batch, split="dev")
+        baseline, ce = default.forward_batch(eval_batch, split="dev")
+        assert torch.equal(actual.logits_ta, baseline.logits_ta) and torch.equal(nll, ce)
+        changed = {**eval_batch, **{name: tensor.clone() for name, tensor in eval_batch.items() if name in DIMS}}
+        for name in DIMS:
+            changed[name][:, 3:, :] += 25
+        prefix, _ = smooth.forward_batch(changed, split="dev")
+        assert torch.equal(actual.logits_ta[:, :3], prefix.logits_ta[:, :3])
+        assert not torch.equal(actual.logits_ta[:, 3:], prefix.logits_ta[:, 3:])
+    finally:
+        torch.set_num_threads(threads)
+
+
+@pytest.mark.parametrize("g1", [False, True])
+def test_fixed_endpoint_and_offline_export(certified, tmp_path, monkeypatch, g1):
     config, raw, frozen, expected, _ = certified
+    config = protocol.fold_config(config["held_out_session"], g1=g1)
     views, entries, data = protocol.load_fold(config, frozen, tmp_path)
     run_dir = tmp_path / "run"
     original_threads = torch.get_num_threads()
@@ -249,6 +337,16 @@ def test_fixed_endpoint_and_offline_export(certified, tmp_path, monkeypatch):
         trend = list(csv.DictReader(stream))
     assert [(int(row["epoch"]), row["population"]) for row in trend] == [
         (epoch, role) for epoch in range(1, 31) for role in ("fit", "held_out")]
+    if g1:
+        assert result["fit_objective"] == {"name": "uniform_label_smoothed_ce", "label_smoothing": .1}
+        assert result["evaluation_objective"] == "hard_label_nll"
+        assert {"hard_label_nll", "brier", "ece10"}.issubset(trend[-1])
+        assert "train_update_loss" not in trend[-1] and "loss" not in trend[-1]
+        with (run_dir / "logs" / "fit_updates.csv").open(newline="") as stream:
+            updates = list(csv.DictReader(stream))
+        assert len(updates) == 30 and "train_update_loss" in updates[-1] and "hard_label_nll" not in updates[-1]
+        held = protocol.read_json(summary / "held_out_epoch30_metrics.json")
+        assert float(trend[-1]["hard_label_nll"]) == pytest.approx(held["auxiliary"]["nll"])
     with gzip.open(summary / "trajectory_predictions.csv.gz", "rt", newline="") as stream:
         trajectory = list(csv.DictReader(stream))
     assert len(trajectory) == 29 * sum(map(len, expected.values()))
@@ -279,3 +377,84 @@ def test_reliability_edge_cases_use_full_population_and_stable_nll():
     assert [r["shift_group"] for r in export] == ["NO_HISTORY", "STABLE", "SHIFT"]
     assert sum(r["support"] for r in bins) == 3
     assert coverage[-1]["coverage"] == 1.0 and coverage[-1]["risk"] == pytest.approx(1 / 3)
+
+
+def test_source_inventory_includes_imports_and_frozen_inputs():
+    config = (g0.ROOT / protocol.G1_CONFIG_DIR / "ses03_seed100.yaml").resolve()
+    frozen_config = (g0.ROOT / protocol.CONFIG_DIR / "fold_identities.json").resolve()
+    hashes = source_hashes(g0.ROOT, (config, frozen_config))
+    assert hashes[config.relative_to(g0.ROOT).as_posix()] == sha256_file(config)
+    assert hashes[frozen_config.relative_to(g0.ROOT).as_posix()] == sha256_file(frozen_config)
+    assert "models/multidag_cl/fusion/model.py" in hashes
+    assert "scripts/runtime/multidag_cl_ta_v0/training.py" in hashes
+
+
+def test_paired_report_joins_by_id_and_rejects_changed_label():
+    did = "Ses03F_impro01"
+    rows = [{"utterance_id": f"{did}_F{gold:03}", "dialogue_id": did, "true_label": gold,
+             "predicted_label": gold, "logits": [float(c == gold) for c in range(6)]} for gold in range(6)]
+    corrected = {"predicted_label": 1, "logits": [0., 1., 0., 0., 0., 0.]}
+    before = [{**rows[0], **corrected}, *rows[1:]]
+    summary, details = comparison.paired_report(before, list(reversed(rows)))
+    assert summary["paired"]["ALL"]["r"] == 1 and summary["paired"]["ALL"]["d"] == 0
+    assert details[0]["recovered"] == 1 and len(summary["pair_confusions"]) == 6
+    assert summary["g1"]["auxiliary"]["high_confidence"]["error_rate"] is None
+    with pytest.raises(ValueError, match="order, IDs and labels"):
+        comparison.paired_report(before, [{**rows[0], "true_label": 1}, *rows[1:]])
+
+
+def test_pooled_comparison_reuses_four_authenticated_export_contracts(tmp_path, monkeypatch):
+    _, raw = protocol.read_frozen(g0.ROOT)
+    frozen = {"folds": {}}
+    ctrl_root, g1_root = tmp_path / protocol.GROUP, tmp_path / protocol.G1_GROUP
+    for session in protocol.SESSIONS:
+        did = f"{session}F_impro01"
+        expected = [(f"{did}_F{gold:03}", did, gold) for gold in range(6)]
+        predictions = [
+            {"utterance_id": uid, "dialogue_id": did, "true_label": gold,
+             "predicted_label": gold, "logits": [float(c == gold) for c in range(6)]}
+            for uid, did, gold in expected
+        ]
+        frozen["folds"][session] = {"held_out": protocol.describe(expected), "fit": {"dialogues": 48}}
+        for is_g1, root in ((False, ctrl_root), (True, g1_root)):
+            cfg = protocol.fold_config(session, g1=is_g1)
+            run = root / "runs" / cfg["run_id"]
+            export_dir = run / "reports" / "evaluation"
+            export_dir.mkdir(parents=True)
+            (run / "manifests").mkdir()
+            (run / "logs").mkdir()
+            identity = g0.run_identity(cfg, raw, {})
+            header = {**protocol.HOLD, "TEST_TOUCHED": "NO", "run_identity": identity}
+            manifest = {**header, "status": "completed", "synthetic_only": False, "f0_recipe": raw,
+                        "seed": 100, "data_identity": {}, "initialization": {"fixture": True},
+                        "steps_per_epoch": 3, "optimizer_steps": 90, "last_completed_epoch": 30,
+                        "checkpoint_sha256": {"30": "fixture"}}
+            write_json_atomic(run / "manifests" / "run_manifest.json", manifest)
+            export_role(export_dir, "held_out", predictions, expected)
+            with gzip.open(export_dir / "trajectory_predictions.csv.gz", "wt", encoding="utf-8", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(TRAJECTORY_FIELDS)
+                for epoch in range(1, 30):
+                    writer.writerows((epoch, "held_out", row["utterance_id"], did, row["true_label"],
+                                      row["predicted_label"], *row["logits"]) for row in predictions)
+            write_json_atomic(export_dir / "evaluation_manifest.json", {
+                **header, "optimizer_steps_performed": 0, "calibration": None, "endpoint_epoch": 30,
+                "checkpoint_selection": "fixed_epoch", "endpoint_sha256": "fixture",
+                "files_sha256": {path.name: sha256_file(path) for path in export_dir.iterdir()},
+            })
+            updates = [{"epoch": e, "optimizer_steps": e * 3, "batch_tape_sha256": "fixture"} for e in range(1, 31)]
+            write_rows(run / "logs" / "fit_updates.csv", updates, tuple(updates[0]))
+    monkeypatch.setattr(comparison, "read_frozen", lambda _: (frozen, raw))
+    output = comparison.compare(ctrl_root, g1_root, "fixture")
+    summary = protocol.read_json(output / "paired_summary.json")
+    assert set(summary) == {*protocol.SESSIONS, "pooled_oof"}
+    assert summary["pooled_oof"]["g1"]["metrics"]["accuracy"] == 1.0
+    assert summary["pooled_oof"]["paired"]["ALL"]["support"] == 24
+    with (output / "pooled_oof_epoch_trends.csv").open(newline="") as stream:
+        assert len(list(csv.DictReader(stream))) == 60
+    with pytest.raises(FileExistsError):
+        comparison.compare(ctrl_root, g1_root, "fixture")
+    trajectory = next(g1_root.glob("runs/*/reports/evaluation/trajectory_predictions.csv.gz"))
+    trajectory.write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        comparison.compare(ctrl_root, g1_root, "corrupt")

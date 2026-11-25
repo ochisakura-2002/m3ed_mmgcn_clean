@@ -101,7 +101,7 @@ def curve_row(arm, epoch, rows):
             "brier": float(scores["brier"].mean()), "ece10": ece}
 
 
-def paired_report(ctrl, g1):
+def paired_report(ctrl, g1, *, include_bootstrap=True):
     expected = population(ctrl)
     by_id = {row["utterance_id"]: row for row in g1}
     if len(by_id) != len(g1) or set(by_id) != {uid for uid, _, _ in expected} or len(by_id) != len(ctrl):
@@ -124,7 +124,7 @@ def paired_report(ctrl, g1):
          "recovered": int(old != target and new == target), "damaged": int(old == target and new != target)}
         for (uid, did, target), group, old, new in zip(expected, groups, a, b)
     ]
-    return {
+    report = {
         "ctrl": before, "g1": after,
         "delta_pp": {metric: 100 * (after["metrics"][metric] - before["metrics"][metric])
                      for metric in ("accuracy", "weighted_f1", "macro_f1", "uar")},
@@ -132,9 +132,11 @@ def paired_report(ctrl, g1):
                    for group, selected in (("ALL", np.ones_like(gold, dtype=bool)),
                                            *((group, groups == group) for group in ("SHIFT", "STABLE", "NO_HISTORY")))},
         "pair_confusions": pair_rates,
-        "paired_dialogue_bootstrap": bootstrap(gold, a, b, [did for _, did, _ in expected],
-                                              strata=[did[:5] for _, did, _ in expected]),
-    }, details
+    }
+    if include_bootstrap:
+        report["paired_dialogue_bootstrap"] = bootstrap(gold, a, b, [did for _, did, _ in expected],
+                                                        strata=[did[:5] for _, did, _ in expected])
+    return report, details
 
 
 def compare(ctrl_root, g1_root, batch_id):

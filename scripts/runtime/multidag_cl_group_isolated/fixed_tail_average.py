@@ -1,4 +1,4 @@
-"""Authenticate and average the four fixed CE checkpoints of one Protocol B fold."""
+"""Authenticate and average the four fixed checkpoints of one Protocol B fold."""
 
 from collections.abc import Mapping
 from copy import deepcopy
@@ -150,9 +150,11 @@ def read_checkpoint(run_dir, source, identity):
     return checkpoint["model_state_dict"]
 
 
-def load_fixed_tail(run_dir, manifest, model):
-    if manifest["run_identity"]["schema"] != SCHEMA:
-        raise ValueError("fixed tail average accepts only one CE trajectory")
+def load_fixed_tail(run_dir, manifest, model, *, g1=False):
+    schema = G1_SCHEMA if g1 else SCHEMA
+    objective = {"name": "uniform_label_smoothed_ce", "label_smoothing": G1_EPSILON} if g1 else None
+    if manifest["run_identity"]["schema"] != schema or manifest.get("fit_objective") != objective:
+        raise ValueError(f"fixed tail average requires one {'G1 LS epsilon=0.1' if g1 else 'CE'} trajectory")
     reference = parameter_schema(model)
     sources = source_inventory(run_dir, manifest)
     state = equal_average((read_checkpoint(run_dir, source, manifest["run_identity"]) for source in sources), reference)

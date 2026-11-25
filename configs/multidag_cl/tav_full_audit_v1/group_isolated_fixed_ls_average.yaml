@@ -1,0 +1,11 @@
+schema: ct_multidag_g4_fixed_ls_tail_v1
+source_group: g1_label_smoothing_ct_multidag
+source_schema: ct_multidag_g1_ls_protocol_b_v1
+fit_objective:
+  name: uniform_label_smoothed_ce
+  label_smoothing: 0.1
+seed: 100
+averaging_epochs: [21, 24, 27, 30]
+output:
+  root: outputs
+  experiment_group: g4_fixed_ls_tail_average_ct_multidag

@@ -1,6 +1,8 @@
 """Render the original Dev charts from the bundled CSV directory."""
 
 import argparse
+from io import BytesIO, StringIO
+import json
 from pathlib import Path
 
 import matplotlib as mpl
@@ -8,6 +10,7 @@ import matplotlib as mpl
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
+from matplotlib.ft2font import FT2Font
 import numpy as np
 import pandas as pd
 
@@ -24,12 +27,39 @@ METRIC_NAMES = {
 
 
 def select_font(path):
+    def supports_chinese(filename):
+        charmap = FT2Font(filename).get_charmap()
+        return all(ord(char) in charmap for char in "原验证情绪转折训练置信度风险率混淆矩阵配对误差")
+
     if path is not None:
         font_manager.fontManager.addfont(path)
-        return font_manager.FontProperties(fname=path).get_name()
+        family = font_manager.FontProperties(fname=path).get_name()
+        if not supports_chinese(font_manager.findfont(family, fallback_to_default=False)):
+            raise ValueError(f"figure font lacks required Chinese glyphs: {path}")
+        return family
     names = {entry.name for entry in font_manager.fontManager.ttflist}
     return next((name for name in ("Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
-                                   "Microsoft YaHei", "DengXian", "SimHei") if name in names), None)
+                                   "Microsoft YaHei", "DengXian", "SimHei") if name in names
+                 and supports_chinese(font_manager.findfont(name, fallback_to_default=False))), None)
+
+
+def plot_probe(font):
+    family = select_font(font)
+    fig, ax = plt.subplots(layout="constrained")
+    try:
+        frame = pd.read_csv(StringIO("x,y\n0,1\n1,2\n"))
+        ax.plot(frame.x, frame.y)
+        ax.set_title("原 Dev 置信度" if family else "Original Dev confidence",
+                     fontfamily=family or "DejaVu Sans")
+        for output_format, signature in (("png", b"\x89PNG"), ("svg", b"<svg")):
+            buffer = BytesIO()
+            fig.savefig(buffer, format=output_format)
+            if signature not in buffer.getvalue()[:1000]:
+                raise ValueError(f"failed plotting probe for {output_format}")
+    finally:
+        plt.close(fig)
+    return {"backend": mpl.get_backend(), "font": family or "DejaVu Sans", "language": "zh" if family else "en",
+            "matplotlib": mpl.__version__, "pandas": pd.__version__, "numpy": np.__version__}
 
 
 def render(tables, destination, *, font=None):
@@ -254,11 +284,18 @@ def render(tables, destination, *, font=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("tables", type=Path)
-    parser.add_argument("destination", type=Path)
+    parser.add_argument("tables", type=Path, nargs="?")
+    parser.add_argument("destination", type=Path, nargs="?")
     parser.add_argument("--font", type=Path)
+    parser.add_argument("--probe", action="store_true")
     args = parser.parse_args()
-    print(render(args.tables, args.destination, font=args.font))
+    if args.probe:
+        result = plot_probe(args.font)
+    else:
+        if args.tables is None or args.destination is None:
+            parser.error("rendering requires tables and destination")
+        result = render(args.tables, args.destination, font=args.font)
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

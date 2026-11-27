@@ -1,0 +1,11 @@
+scripts/workflows/benchmarks/run_original_dev_alignment.py
+scripts/workflows/benchmarks/original_dev_stage_b.py
+scripts/workflows/benchmarks/original_dev_source_compatibility.json
+scripts/analysis/models/multidag_cl/original_dev_analysis.py
+scripts/analysis/models/multidag_cl/plot_original_dev_alignment.py
+tests/models/multidag_cl/tav_full_audit_v1/test_original_dev_alignment.py
+docs/research/original_dev_alignment/FULL_PIPELINE_FIX_REPORT.md
+docs/research/original_dev_alignment/IMPLEMENTATION_AND_TEST_REPORT.md
+docs/research/original_dev_alignment/UBUNTU_RETRY_RUNBOOK.md
+docs/research/original_dev_alignment/REQUIRED_MODIFIED_FILES.txt
+docs/research/original_dev_alignment/MODIFIED_FILES_SHA256.csv

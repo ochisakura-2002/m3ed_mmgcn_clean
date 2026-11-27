@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "source_reference": "25271ae",
+  "files": {
+    "scripts/workflows/benchmarks/run_original_dev_alignment.py": {
+      "scope": "environment authentication and orchestration",
+      "old_sha256": "8a32e866cd1ca5f3ee4de88a173650a941c232ea369cf396f654cacddcbe834d",
+      "new_sha256": "de384292334be691dbbb2a52feff21374996b56041110c486ad56e2262ee0e82"
+    },
+    "scripts/workflows/benchmarks/original_dev_stage_b.py": {
+      "scope": "environment authentication and failure recovery",
+      "old_sha256": null,
+      "new_sha256": "953c2a3ef2886822a5741affc0155c048607484fa590350b14771c8083ad874b"
+    },
+    "scripts/analysis/models/multidag_cl/plot_original_dev_alignment.py": {
+      "scope": "isolated figure rendering and font checks",
+      "old_sha256": "b01bd379505f1c383e942d1e45c77dc3a850901c7c16dc487a804fcc51dd4943",
+      "new_sha256": "d9e4d89a53eef4db2c7b7c095f853d0f81ae841fcd9d49e9ea104ce13ab39a97"
+    },
+    "scripts/analysis/models/multidag_cl/original_dev_analysis.py": {
+      "scope": "post-fit table completeness and empty curve exports",
+      "old_sha256": "47f5f4c5a2fc06ff83c97c7342692c56428eec48b01ffa6084a20d15f6d5f917",
+      "new_sha256": "db49c84e4f63beed2ad24f976b05643e3915cf3b393c5ac5079e11391e1d47c0"
+    }
+  }
+}

@@ -1,11 +1,16 @@
 import csv
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from scripts.analysis.models.multidag_cl import original_dev_analysis as analysis
+from scripts.analysis.models.multidag_cl import plot_original_dev_alignment as plotting
 from scripts.analysis.models.multidag_cl.plot_original_dev_alignment import render
 from scripts.runtime.multidag_cl_fusion import original_dev_alignment as alignment
 from scripts.runtime.multidag_cl_fusion.runtime import paired_runtime
@@ -13,6 +18,7 @@ from scripts.runtime.multidag_cl_group_isolated.protocol import read_frozen
 from scripts.runtime.multidag_cl_ta_v0.formal import sha256_file, write_json_atomic
 from scripts.runtime.multidag_cl_tav_full_audit_v1.formal import execute
 from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import SyntheticDialogues
+from scripts.workflows.benchmarks import original_dev_stage_b as gates
 from scripts.workflows.benchmarks import run_original_dev_alignment as workflow
 
 
@@ -129,12 +135,12 @@ def test_load_inputs_rejects_changed_loaded_projection(projected_inputs):
         projected_inputs.load()
 
 
-def synthetic():
+def synthetic(train_size=17):
     datasets, entries = {}, {}
     for session, split in enumerate(("train", "dev"), 1):
         dataset = SyntheticDialogues(split)
         if split == "train":
-            dataset.items = [dict(dataset.items[i % len(dataset.items)]) for i in range(17)]
+            dataset.items = [dict(dataset.items[i % len(dataset.items)]) for i in range(train_size)]
         rows = []
         for index, item in enumerate(dataset.items):
             did = f"Ses{session:02d}F_impro{index:02d}"
@@ -306,3 +312,237 @@ def test_budget_lock_cannot_change_after_review(artifact_dir):
     write_json_atomic(lock_path, {**lock, "selected_updates": 60})
     with pytest.raises(ValueError, match="budget lock changed"):
         workflow.checked_approval(paths, approved, config)
+
+
+def test_environment_canonicalization():
+    live = {"gpu_compute_capability": (np.int64(7), 0), "nested": {"v": (None, np.bool_(True), np.float32(0.5))},
+            "torch_build": "Intel oneAPI MKL 2023.1 Build 20230303"}
+    old = json.loads(gates.canonical(live))
+    gates.check_environment(old, live)
+    assert json.loads(gates.canonical(old)) == old
+    for actual in ({**old, "torch_build": "Intel oneAPI MKL 2024.2.0 Build 20240605"},
+                   {**old, "gpu_compute_capability": [8, 0]},
+                   {**old, "nested": {"v": [None, 1, 0.5]}},
+                   {**old, "nested": {}}, {**old, "new_field": None}):
+        with pytest.raises(ValueError, match="environment differs"):
+            gates.check_environment(old, actual)
+    with pytest.raises(ValueError, match="Out of range"):
+        gates.canonical({"threads": float("nan")})
+
+
+def test_independent_initialization_and_plot_worker_without_display(monkeypatch):
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("MPLBACKEND", "TkAgg")
+    command = [sys.executable, "-B", "-m", workflow.__name__, "environment-probe", "--probe-device", "cpu"]
+
+    def probe(*args):
+        return json.loads(subprocess.check_output([*command, *args], cwd=workflow.ROOT, encoding="utf-8"))
+
+    first, second = probe(), probe()
+    gates.check_environment(first["environment"], second["environment"])
+    assert first["diagnostics"] == second["diagnostics"]
+    assert "matplotlib" not in first["diagnostics"]["import_order"]
+    assert "matplotlib" in probe("--probe-plot-first")["diagnostics"]["import_order"]
+    worker = workflow.plot_worker(None)
+    assert worker["backend"].lower() == "agg"
+    family = plotting.select_font(None)
+    if family:
+        font = Path(plotting.font_manager.findfont(family))
+        assert workflow.plot_worker(font)["language"] == "zh"
+    fonts = plotting.font_manager.fontManager.ttflist
+    monkeypatch.setattr(plotting.font_manager.fontManager, "ttflist", [f for f in fonts if f.name == "DejaVu Sans"])
+    assert plotting.plot_probe(None)["language"] == "en"
+
+
+def reviewed_sources(current):
+    policy = alignment.read_json(workflow.ROOT / gates.SOURCE_POLICY)
+    historical = dict(current)
+    for path, record in policy["files"].items():
+        assert current[path] == record["new_sha256"]
+        if record["old_sha256"] is None:
+            del historical[path]
+        else:
+            historical[path] = record["old_sha256"]
+    return historical
+
+
+def test_source_policy_exact_signed_scope():
+    current = workflow.provenance("cpu")["files_sha256"]
+    historical = reviewed_sources(current)
+    certificate = gates.certify_sources(workflow.ROOT, "stage_a_locked", historical, current)
+    assert certificate["stage_a_sha256"] == "stage_a_locked"
+    assert set(certificate["changes"]) == set(gates.SOURCE_ROLES)
+    core = "scripts/runtime/multidag_cl_ta_v0/training.py"
+    for changed in ({**current, core: "0" * 64}, {k: v for k, v in current.items() if k != core},
+                    {**current, next(iter(gates.SOURCE_ROLES)): "0" * 64}):
+        with pytest.raises(ValueError, match="unapproved Stage A source difference"):
+            gates.certify_sources(workflow.ROOT, "stage_a_locked", historical, changed)
+
+
+def test_stage_b_preflight_recovery_with_real_cpu_fit_and_sealed_bundle(artifact_dir, monkeypatch):
+    frozen, raw = read_frozen(alignment.ROOT)
+    config = alignment.read_config(frozen)
+    datasets, entries = synthetic(train_size=97)
+    git = {"git_head": "synthetic-stage-a"}
+    projection = {"sha256": {}}
+    paths = SimpleNamespace(manifest_root=artifact_dir / "manifests" / "synthetic90",
+                            runs_root=artifact_dir / "runs", analysis_root=artifact_dir / "analysis" / "synthetic90")
+    paths.manifest_root.mkdir(parents=True)
+    lock = {**workflow.HOLD, "status": "LOCKED", "candidate_updates": config["budget_candidate_updates"],
+            "selected_updates": 90, "scores": [], "means": [{"updates": 90, "hard_nll": 1.0}]}
+    lock_file = paths.manifest_root / "budget_lock.json"
+    write_json_atomic(lock_file, lock)
+    original, _ = paired_runtime(raw, datasets, device="cpu", synthetic_only=True, git_head=git["git_head"])
+    reference = execute(original, raw, artifact_dir / "reference", git=git, synthetic_epochs=30)
+    d0, d1 = (workflow.arm_run(paths, arm) for arm in ("D0", "D1"))
+    baseline = workflow.make_runtime(raw, datasets, d0, config, "D0", lock, reference, git, expected=reference,
+                                     synthetic=True)
+    workflow.fit(baseline, raw, git, projection, synthetic_epochs=30)
+    d0_record = workflow.checked_arm(baseline, synthetic_epochs=30)
+    assert d0_record["snapshots"]["u_star"] | {"path": None, "sha256": None} == {
+        "epoch": 13, "optimizer_steps": 90, "epoch_complete": False, "path": None, "sha256": None,
+    }
+    stage_a = paths.manifest_root / "stage_a.json"
+    status = paths.manifest_root / "stage_b.json"
+    provenance = workflow.provenance("cpu")
+    legacy = {"files_sha256": reviewed_sources(provenance["files_sha256"]), "environment": provenance["environment"]}
+    write_json_atomic(stage_a, {**workflow.HOLD, "status": "PASS", "run_id": d0.name, "d3_status": lock["status"],
+        "config_sha256": workflow.json_identity(config), "budget_sha256": sha256_file(lock_file),
+        "numerical_audit": {"numerical_identity": True}, "projection": projection, "runtime": legacy,
+        "run_evidence_sha256": workflow.training_evidence(d0)})
+    args = SimpleNamespace(approved_stage_a_sha256=sha256_file(stage_a), figure_font=None, resume_analysis=False,
+                           preflight_only=True)
+    monkeypatch.setattr(workflow, "prepare_stage", lambda *args: (reference, {}, [], datasets, entries, projection, {}))
+    monkeypatch.setattr(workflow, "git_identity", lambda: git)
+    before_assets = {p: sha256_file(p) for p in (stage_a, lock_file, d0 / "checkpoints/best_model.pt")}
+
+    def invoke():
+        with gates.batch_lock(paths.manifest_root / ".stage_b.lock", readonly=args.preflight_only):
+            workflow.execute_stage_b(args, paths, frozen, raw, config, synthetic_epochs=30)
+
+    def drift(_device):
+        return {**provenance, "environment": {**provenance["environment"], "torch_build": "other MKL"}}
+
+    with monkeypatch.context() as patch:
+        patch.setattr(workflow, "provenance", drift)
+        for preflight_only in (True, False):
+            args.preflight_only = preflight_only
+            with pytest.raises(ValueError, match="other MKL"):
+                invoke()
+            assert not d1.exists() and not status.exists() and not paths.analysis_root.exists()
+    paths.analysis_root.mkdir(parents=True)
+    write_json_atomic(status, {**workflow.HOLD, "protocol": workflow.PROTOCOL, "d3_status": lock["status"],
+                               "stage_a_sha256": args.approved_stage_a_sha256, "status": "FAIL",
+                               "error": "previous pre-fit failure"})
+    old_failure = status.read_bytes()
+    args.preflight_only = True
+    invoke()
+    assert status.read_bytes() == old_failure and not list(paths.analysis_root.iterdir())
+    args.preflight_only = False
+    plot_worker = workflow.plot_worker
+
+    def failed_render(font, tables=None, destination=None):
+        if tables is not None:
+            raise RuntimeError("injected renderer failure")
+        return plot_worker(font)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(workflow, "plot_worker", failed_render)
+        with pytest.raises(RuntimeError, match="injected renderer failure"):
+            invoke()
+    assert not paths.analysis_root.exists()
+    result = alignment.read_json(status)
+    assert result["phase"] == "trained" and result["status"] == "FAIL"
+    assert (paths.manifest_root / result["archived_attempt"] / "stage_b.json").read_bytes() == old_failure
+    asset = d1 / "checkpoints/alignment/u_star.pt"
+    d1_assets = {p: sha256_file(p) for p in (asset, d1 / "checkpoints/best_model.pt")}
+    with monkeypatch.context() as patch:
+        patch.setattr(workflow, "fit", lambda *args, **kwargs: pytest.fail("existing D1 must not be overwritten"))
+        args.resume_analysis = True
+        with monkeypatch.context() as interrupted:
+            real_publish = workflow.publish
+
+            def stop_during_publish(state, destination, archive, status_file):
+                directory, _ = workflow.checked_publication(state, destination, archive)
+                directory.rename(destination)
+                raise RuntimeError("injected interruption after moving analysis")
+
+            interrupted.setattr(workflow, "publish", stop_during_publish)
+            with pytest.raises(RuntimeError, match="interruption after moving analysis"):
+                invoke()
+        assert alignment.read_json(status)["phase"] == "publishing"
+        assert workflow.publish is real_publish
+        invoke()
+        invoke()
+    final = alignment.read_json(status)
+    assert final["status"] == "PASS" and final["phase"] == "published" and final["endpoint_count"] == 8
+    assert final["d1_evidence_sha256"] == workflow.training_evidence(d1)
+    assert {p: sha256_file(p) for p in before_assets | d1_assets} == before_assets | d1_assets
+    package = Path(final["archive"])
+    assert sha256_file(package) == final["archive_sha256"]
+    with tarfile.open(package) as archive:
+        members = set(archive.getnames())
+        assert {"RESULTS.md", "SHA256SUMS.txt", "figures/FIGURE_INDEX.md", "stage_a_source_compatibility.json"} <= members
+        assert not any(name.endswith((".pt", ".pkl")) for name in members)
+        assert len([name for name in members if name.endswith(".png")]) == 13
+        assert len([name for name in members if name.endswith(".svg")]) == 13
+        assert archive.extractfile("figures/overview.png").read(8) == b"\x89PNG\r\n\x1a\n"
+        assert b"<svg" in archive.extractfile("figures/overview.svg").read(1000)
+    checksums = (paths.analysis_root / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
+    for line in checksums:
+        digest, name = line.split("  ", 1)
+        assert sha256_file(paths.analysis_root / name) == digest
+    with (paths.analysis_root / "tables/overall_metrics.csv").open(encoding="utf-8", newline="") as stream:
+        assert {row["arm"] for row in csv.DictReader(stream)} == set(analysis.ENDPOINTS)
+    evidence = alignment.read_json(paths.analysis_root / "tables/analysis_protocol.json")
+    for tag in ("CE", "LS"):
+        assert evidence["sources"][f"{tag} U*"]["sources"][0]["optimizer_steps"] == 90
+        assert [item["epoch"] for item in evidence["sources"][f"{tag} AVG"]["sources"]] == [21, 24, 27, 30]
+    for arm in ("D0", "D1"):
+        assert alignment.read_json(workflow.arm_run(paths, arm) / "manifests/run_manifest.json")["optimizer_steps"] == 210
+
+
+def test_unknown_or_incomplete_d1_blocks_recovery(artifact_dir):
+    receipt = artifact_dir / "stage_b.json"
+    destination, archive, d1 = (artifact_dir / name for name in ("analysis", "report.tar.gz", "d1"))
+    write_json_atomic(receipt, {"status": "FAIL", "stage_a_sha256": "reviewed"})
+    d1.mkdir()
+    checkpoint = d1 / "partial.pt"
+    checkpoint.write_bytes(b"incomplete")
+    with pytest.raises(ValueError, match="training assets exist"):
+        gates.inspect_attempt(receipt, destination, archive, d1, "reviewed")
+    assert checkpoint.read_bytes() == b"incomplete"
+    write_json_atomic(receipt, {"status": "FAIL", "phase": "fit_started", "stage_a_sha256": "reviewed"})
+    (d1 / ".training.lock").touch()
+    with pytest.raises(ValueError, match="training lock is present"):
+        gates.inspect_attempt(receipt, destination, archive, d1, "reviewed")
+
+
+def test_undefined_curves_and_empty_groups_export_with_headers(artifact_dir, monkeypatch):
+    did = "Ses04F_impro01"
+    uid = f"{did}_F000"
+    expected = [(uid, did, 0)]
+    predictions = [{"utterance_id": uid, "dialogue_id": did, "true_label": 0, "predicted_label": 0,
+                    "logits": [1.0, 0, 0, 0, 0, 0]}]
+    fields = {"accuracy": 1, "weighted_f1": 1, "macro_f1": 1 / 6, "uar": 1 / 6,
+              "loss": 1, "valid_target_count": 1}
+    endpoints = dict.fromkeys(analysis.ENDPOINTS[:-2], predictions)
+    sources = dict.fromkeys(endpoints, {"formal_metrics": fields})
+    learning = [{"arm": arm, "epoch": 1, "population": role, "weighted_f1": 1, "hard_label_nll": 1}
+                for arm in ("CE", "LS") for role in ("Fit", "Dev")]
+    budget = {"status": "UNAVAILABLE"}
+    monkeypatch.setattr(analysis, "ENDPOINT", 1)
+    analysis.stage_tables(artifact_dir, endpoints, sources, learning, expected, budget)
+    assert (artifact_dir / "roc_pr.csv").read_text().splitlines() == ["arm,curve,fpr,tpr,precision,recall,threshold"]
+    assert (artifact_dir / "class_roc_pr.csv").read_text().splitlines() == ["arm,label,curve,x,y"]
+    with (artifact_dir / "shift.csv").open(newline="") as stream:
+        shift = list(csv.DictReader(stream))
+    assert all(row["valid_target_count"] == "0" for row in shift if row["group"] in ("SHIFT", "STABLE"))
+    with pytest.raises(ValueError, match="unique utterances"):
+        analysis.stage_tables(artifact_dir, endpoints, sources, learning, expected * 2, budget)
+    with pytest.raises(ValueError, match="trajectory rows"):
+        analysis.stage_tables(artifact_dir, endpoints, sources, learning[:-1], expected, budget)
+    predictions[0]["logits"][0] = float("nan")
+    with pytest.raises(ValueError, match="nonfinite frozen logits"):
+        analysis.stage_tables(artifact_dir, endpoints, sources, learning, expected, budget)

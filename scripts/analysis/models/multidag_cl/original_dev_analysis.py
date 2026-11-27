@@ -142,6 +142,8 @@ def resampled_metrics(rows, inverse, weights):
 
 
 def stage_tables(directory, endpoints, sources, learning, expected, budget):
+    if not expected or len({uid for uid, _, _ in expected}) != len(expected):
+        raise ValueError("Dev analysis requires a nonempty population of unique utterances")
     required = set(ENDPOINTS if budget["status"] == "LOCKED" else ENDPOINTS[:-2])
     if set(endpoints) != required or set(sources) != required:
         raise ValueError("endpoint inventory disagrees with the locked design")
@@ -221,6 +223,10 @@ def stage_tables(directory, endpoints, sources, learning, expected, budget):
                            for a in ("CE", "LS") for b in ("E30", "AVG")]
     tables["trajectory"] = learning
     by_trajectory = {(r["arm"], r["epoch"], r["population"]): r for r in learning}
+    required_trajectory = {(arm, epoch, role) for arm in ("CE", "LS") for epoch in range(1, ENDPOINT + 1)
+                           for role in ("Fit", "Dev")}
+    if len(learning) != len(by_trajectory) or set(by_trajectory) != required_trajectory:
+        raise ValueError("missing or duplicate Train/Dev trajectory rows")
     for (arm, epoch, role), fit in by_trajectory.items():
         if role == "Fit":
             dev = by_trajectory[(arm, epoch, "Dev")]
@@ -234,6 +240,12 @@ def stage_tables(directory, endpoints, sources, learning, expected, budget):
         if rows:
             fields = tuple(dict.fromkeys(key for row in rows for key in row))
             write_rows(directory / f"{name}.csv", rows, fields)
+    for name, fields in (
+        ("roc_pr", ("arm", "curve", "fpr", "tpr", "precision", "recall", "threshold")),
+        ("class_roc_pr", ("arm", "label", "curve", "x", "y")),
+    ):
+        if not tables[name]:
+            write_rows(directory / f"{name}.csv", (), fields)
     write_json_atomic(directory / "analysis_protocol.json", {
         "comparison_population": {"utterances": len(expected), "dialogues": weights.shape[1]},
         "bootstrap": {"seed": BOOTSTRAP_SEED, "resamples": BOOTSTRAP_RESAMPLES, "unit": "whole_dialogue",

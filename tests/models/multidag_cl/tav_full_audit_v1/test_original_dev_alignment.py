@@ -16,6 +16,119 @@ from scripts.runtime.multidag_cl_tav_full_audit_v1.runtime import SyntheticDialo
 from scripts.workflows.benchmarks import run_original_dev_alignment as workflow
 
 
+@pytest.fixture
+def projected_inputs(artifact_dir, monkeypatch):
+    def rows(*ids):
+        return [(uid, uid.rsplit("_", 1)[0], i % 6) for i, uid in enumerate(ids)]
+
+    entries = {
+        "train": rows("Ses01F_impro01_F000", "Ses04F_impro01_F000", "Ses04F_impro01_M001"),
+        "dev": rows("Ses04F_impro02_F000", "Ses04F_impro02_M001"),
+    }
+    summaries = {split: alignment.describe(tape) for split, tape in entries.items()}
+    counts = {split: {key: summary[key] for key in ("dialogues", "utterances")}
+              for split, summary in summaries.items()}
+    historical = {
+        "data_identity": {"sha256": {"asset": "a" * 64}},
+        "batch_pairing": {"population": {split: {**counts[split], "sha256": summary["order_sha256"]}
+                                         for split, summary in summaries.items()}},
+    }
+    evidence = {"predictions": [
+        {"utterance_id": uid, "dialogue_id": did, "true_label": gold} for uid, did, gold in entries["dev"]
+    ]}
+    frozen = {
+        "certified_projection": {"schema": "ct_multidag_train_dev_projection_v1",
+                                 "sha256": {"train_dev_tav.pkl": "b" * 64}, "row_order_identity_sha256": "c" * 64},
+        "formal_f0": {"labeled_tape_sha256": {split: summary["labeled_tape_sha256"]
+                                             for split, summary in summaries.items()}},
+    }
+    projection = {**frozen["certified_projection"], **alignment.HOLD, "splits": ["train", "dev"],
+                  "split_counts": counts, "source_data_identity": historical["data_identity"]}
+    manifest = artifact_dir / alignment.PROJECTION_MANIFEST
+    write_json_atomic(manifest, projection)
+    monkeypatch.setattr(alignment, "TRAIN_DEV_COUNTS", counts)
+
+    def load_projection(_directory, _source):
+        datasets = {}
+        for split, tape in entries.items():
+            ordered = {}
+            for uid, did, _ in tape:
+                ordered.setdefault(did, []).append((None, None, uid))
+            datasets[split] = SimpleNamespace(
+                dialogue_ids=list(ordered), ordered=ordered,
+                rows={uid: {"dialogue_id": did, "benchmark_label_id": gold} for uid, did, gold in tape},
+            )
+        return datasets, projection
+
+    monkeypatch.setattr(alignment, "load_projected_train_dev", load_projection)
+    return SimpleNamespace(entries=entries, rows=rows, projection=projection, manifest=manifest,
+                           load=lambda: alignment.load_inputs(artifact_dir, frozen, historical, evidence))
+
+
+def test_load_inputs_accepts_frozen_f0_group_overlap(projected_inputs):
+    _, entries, projection, summaries = projected_inputs.load()
+    assert entries == projected_inputs.entries
+    assert projection == projected_inputs.projection
+    assert summaries["dev"]["sessions"] == ["Ses04"]
+    assert summaries["dev"]["actors"] == ["Ses04F", "Ses04M"]
+
+
+@pytest.mark.parametrize(("extra_dev_id", "reason"), [
+    ("Ses01F_impro02_F000", "shared sessions mismatch"),
+    ("Ses02F_impro02_F000", "Dev sessions mismatch"),
+    ("Ses04F_impro01_F003", "dialogue IDs overlap"),
+    ("Ses04F_impro01_F000", "utterance IDs overlap"),
+])
+def test_load_inputs_rejects_unexpected_overlap(projected_inputs, extra_dev_id, reason):
+    projected_inputs.entries["dev"].extend(projected_inputs.rows(extra_dev_id))
+    with pytest.raises(ValueError, match=reason):
+        projected_inputs.load()
+
+
+def test_load_inputs_rejects_wrong_shared_session(projected_inputs):
+    projected_inputs.entries["dev"] = projected_inputs.rows("Ses01F_impro02_F000", "Ses01F_impro02_M001")
+    with pytest.raises(ValueError, match=r"shared sessions mismatch.*Ses01"):
+        projected_inputs.load()
+
+
+def test_load_inputs_rejects_missing_shared_actor(projected_inputs):
+    projected_inputs.entries["dev"][-1] = projected_inputs.rows("Ses04F_impro02_F001")[0]
+    with pytest.raises(ValueError, match="shared actors mismatch"):
+        projected_inputs.load()
+
+
+@pytest.mark.parametrize(("split", "fault", "reason"), [
+    ("train", "label", "train labeled population SHA-256 mismatch"),
+    ("dev", "label", "Dev projection order/IDs/gold differ"),
+    ("train", "order", "train canonical population differs"),
+    ("train", "population", "train canonical population differs"),
+])
+def test_load_inputs_rejects_changed_population(projected_inputs, split, fault, reason):
+    tape = projected_inputs.entries[split]
+    if fault == "label":
+        uid, did, gold = tape[0]
+        tape[0] = (uid, did, gold + 1)
+    elif fault == "order":
+        tape[:] = tape[1:] + tape[:1]
+    else:
+        del tape[0]
+    with pytest.raises(ValueError, match=reason):
+        projected_inputs.load()
+
+
+@pytest.mark.parametrize("field", ["sha256", "row_order_identity_sha256", "source_data_identity"])
+def test_load_inputs_rejects_changed_certificate(projected_inputs, field):
+    write_json_atomic(projected_inputs.manifest, {**projected_inputs.projection, field: None})
+    with pytest.raises(ValueError, match="^projection differs from the authenticated"):
+        projected_inputs.load()
+
+
+def test_load_inputs_rejects_changed_loaded_projection(projected_inputs):
+    projected_inputs.projection["sha256"] = {}
+    with pytest.raises(ValueError, match="^loaded projection differs from the authenticated"):
+        projected_inputs.load()
+
+
 def synthetic():
     datasets, entries = {}, {}
     for session, split in enumerate(("train", "dev"), 1):

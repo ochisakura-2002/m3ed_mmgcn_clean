@@ -125,15 +125,29 @@ def load_inputs(directory, frozen, historical, evidence):
     dev_rows = tuple((r["utterance_id"], r["dialogue_id"], r["true_label"]) for r in evidence["predictions"])
     source = SimpleNamespace(manifest=historical, population=dev_rows)
     datasets, projection = load_projected_train_dev(directory, source)
-    validate_population(datasets, source)
-    entries = {split: population(dataset) for split, dataset in datasets.items()}
+    if projection != expected:
+        raise ValueError("loaded projection differs from the authenticated POST-PH J/K Train/Dev asset")
+    entries = {split: population(datasets[split]) for split in SPLITS}
+    for group, index in (("utterance", 0), ("dialogue", 1)):
+        if {row[index] for row in entries["train"]} & {row[index] for row in entries["dev"]}:
+            raise ValueError(f"F0 Train/Dev {group} IDs overlap")
+
     summaries = {split: describe(rows) for split, rows in entries.items()}
-    if (projection != expected or any(summaries[s]["labeled_tape_sha256"]
-            != frozen["formal_f0"]["labeled_tape_sha256"][s] for s in SPLITS)
-            or any(set(summaries["train"][key]) & set(summaries["dev"][key])
-                   for key in ("dialogue_ids", "actors", "sessions"))
-            or len(summaries["dev"]["sessions"]) != 1 or len(summaries["dev"]["actors"]) != 2):
-        raise ValueError("F0 Train/Dev labeled population or isolation mismatch")
+    # These identities are shared by the archived F0 Dev predictions and the frozen formal Train folds.
+    for key, expected_overlap in (("sessions", {"Ses04"}), ("actors", {"Ses04F", "Ses04M"})):
+        dev_groups = set(summaries["dev"][key])
+        overlap = set(summaries["train"][key]) & dev_groups
+        if overlap != expected_overlap:
+            raise ValueError(
+                f"F0 Train/Dev shared {key} mismatch: expected {sorted(expected_overlap)}, got {sorted(overlap)}"
+            )
+        if dev_groups != expected_overlap:
+            raise ValueError(f"F0 Dev {key} mismatch: expected {sorted(expected_overlap)}, got {sorted(dev_groups)}")
+
+    validate_population(datasets, source)
+    for split in SPLITS:
+        if summaries[split]["labeled_tape_sha256"] != frozen["formal_f0"]["labeled_tape_sha256"][split]:
+            raise ValueError(f"F0 {split} labeled population SHA-256 mismatch")
     return datasets, entries, projection, summaries
 
 

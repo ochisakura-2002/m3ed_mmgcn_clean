@@ -1,0 +1,12 @@
+protocol: ORIGINAL_CT_MULTIDAG_DEV
+seed: 100
+train_label_smoothing:
+  D0: 0.0
+  D1: 0.1
+average_epochs: [21, 24, 27, 30]
+budget_candidate_updates: [30, 60, 90, 120, 150]
+output:
+  root: outputs
+  experiment_group: original_dev_alignment
+  experiment_date: null
+test: HOLD

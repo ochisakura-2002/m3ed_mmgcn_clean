@@ -1,0 +1,16 @@
+task: PIL_SCREEN_001
+protocol: ORIGINAL_CT_MULTIDAG_DEV
+seed: 100
+arms:
+  - C01-CURRENT
+  - C01-PREV
+  - C07-NULL
+  - C07-TRUE
+shared_control: certify_d0_else_one_off
+aux_weight: 0.1
+null_seed: 10007
+test: HOLD
+output:
+  root: outputs
+  experiment_date: null
+  experiment_group: pil_screen_001

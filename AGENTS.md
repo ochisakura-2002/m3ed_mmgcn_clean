@@ -9,6 +9,7 @@
 - 分支、工作区和修改边界：[Git Workstream Policy](docs/workflows/GIT_WORKSTREAM_POLICY.md)。
 - 组件复用与阶段架构：[Asymmetric MERC Architecture](docs/workflows/ASYMMETRIC_MERC_ARCHITECTURE.md)。
 - 本地/远程工作区及共享资产：[Active Workstreams](docs/handoffs/ACTIVE_WORKSTREAMS.md)。
+- MERC / CT-MultiDAG 工程任务同时遵循 [Codex 长期工作规范 v1.0](docs/workflows/MERC_CODEX_WORK_STANDARD_V1_0_20261128.md)。工作区身份按各自 workstream 规则核验。
 
 ## 任务开始规则
 

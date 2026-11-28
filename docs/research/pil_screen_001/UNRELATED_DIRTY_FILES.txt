@@ -1,0 +1,61 @@
+PIL_SCREEN_001_PREFLIGHT_COMPATIBILITY_FIX | 2026-11-28
+Base HEAD b6a6938ae15efb4eb47f9b1c66c069020b4ab74a
+Pre-existing entries from git status --short --untracked-files=normal.
+Directory entries group untracked contents. The index had no staged changes.
+
+ M .gitignore
+ M docs/research/post_fusion/PARALLEL_FASTKILL_HANDOFF.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_IMPLEMENTATION_REPORT.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_RUNBOOK.md
+ M docs/research/post_fusion/PARALLEL_FASTKILL_TEST_REPORT.md
+ M docs/research/post_fusion/POST_FUSION_PARALLEL_FASTKILL_001_DESIGN.md
+ M scripts/analysis/models/multidag_cl/export_fastkill_bundle.py
+ M scripts/runtime/multidag_cl_fastkill/runtime.py
+ M tests/models/multidag_cl/tav_full_audit_v1/test_post_fusion_fastkill.py
+?? CROSS_DOMAIN_METHOD_DISCOVERY_001_REVIEW.zip
+?? configs/multidag_cl/fusion_candidates/prototype_smoke.yaml
+?? datasets/asymmetric_iemocap.py
+?? docs/IEMOCAP_ASYMMETRIC_MERC_PROJECT_SOURCE_20261021_v1.2.md
+?? docs/MERC_PATHS_PROJECT_SOURCE_20261022.md
+?? docs/analysis/
+?? docs/fusion/
+?? docs/reproduction/MULTIDAG_CL_FEATURE_REPRODUCTION_STAGE_C1.md
+?? docs/research/cross_domain_method_discovery_001/
+?? docs/research/cross_domain_method_discovery_001_round2/
+?? docs/research/fusion/CT_MULTIDAG_FUSION_DESIGN_STUDY_20261121.md
+?? docs/research/g1_regularization_cross_domain_001/
+?? docs/research/g2_fixed_tail_weight_averaging/
+?? docs/research/g3_fit_side_budget_selection/
+?? docs/research/g4_fixed_ls_tail_averaging_factorial_control/
+?? docs/research/merc_pil_research_002/
+?? docs/research/original_dev_alignment/EXPERIMENT_DESIGN.md
+?? docs/research/original_dev_alignment/PROTOCOL_ALIGNMENT_REPORT.md
+?? docs/research/original_dev_alignment/UBUNTU_RUNBOOK.md
+?? docs/research/original_dev_alignment/UNRELATED_DIRTY_FILES.txt
+?? docs/research/post_failure_method_design_001/01_FAILURE_MECHANISM_INTERPRETATION.md
+?? docs/research/post_failure_method_design_001/02_RECENT_2024_2026_LITERATURE_MATRIX.csv
+?? docs/research/post_failure_method_design_001/03_CORE_PAPER_DEEP_REVIEW.md
+?? docs/research/post_failure_method_design_001/04_CANDIDATE_METHODS.md
+?? docs/research/post_failure_method_design_001/05_METHOD_COMPARISON_MATRIX.csv
+?? docs/research/post_failure_method_design_001/06_PRIMARY_METHOD_DESIGN.md
+?? docs/research/post_failure_method_design_001/07_PRIMARY_METHOD_ARCHITECTURE.md
+?? docs/research/post_failure_method_design_001/08_FASTKILL_EXPERIMENT_PLAN.md
+?? docs/research/post_failure_method_design_001/09_RISKS_AND_FAILURE_MODES.md
+?? docs/research/post_failure_method_design_001/10_FINAL_RECOMMENDATION.md
+?? docs/research/post_failure_method_design_001/papers/
+?? docs/research/post_fusion/NEXT_ROUTE_CANDIDATE_MATRIX.csv
+?? docs/research/post_fusion/ORIGINAL_MULTIDAG_FUTURE_WORK_TRACE.md
+?? docs/research/post_fusion/POST_FUSION_ROUTE_AUDIT_001.md
+?? docs/research/post_fusion/TOP2_ROUTE_RECOMMENDATION.md
+?? docs/research/post_fusion/b1_signal_review_001/
+?? docs/research/post_ph_joint_audit_001/
+?? docs/research/visual_representation_audit/
+?? models/experimental/ct_multidag_fusion.py
+?? scripts/analysis/models/multidag_cl/plot_overfitting_diagnostics.py
+?? scripts/diagnostics/experiments/run_va1d_visual_representation_probe.py
+?? scripts/diagnostics/experiments/run_va2d_visual_replacement.py
+?? scripts/diagnostics/experiments/va2d_inputs.py
+?? scripts/diagnostics/models/multidag_cl/smoke_ct_multidag_fusion.py
+?? tests/analysis/models/
+?? tests/data/build/multidag_cl/test_official_feature_pipeline.py
+?? tests/test_iemocap_canonical_manifest.py

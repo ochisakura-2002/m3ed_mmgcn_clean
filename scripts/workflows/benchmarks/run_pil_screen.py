@@ -6,6 +6,7 @@ from scripts.workflows.benchmarks import run_original_dev_alignment as d
 import argparse
 import csv
 import io
+from math import isfinite
 import os
 from pathlib import Path
 import platform
@@ -22,6 +23,7 @@ import yaml
 from models.multidag_cl.ta_v0 import LABEL_VOCAB
 from scripts.analysis.models.multidag_cl.pairwise_preflight_inputs import ASSET, MODEL_MANIFEST, PROJECTION_MANIFEST
 from scripts.analysis.models.multidag_cl.pil_screen_analysis import export_analysis, plot_tables
+from scripts.runtime.multidag_cl_fusion.original_dev_alignment import CLASSIFICATION
 from scripts.runtime.multidag_cl_pil_screen import (
     ARMS, AUX_WEIGHT, CONTROL, InvalidRun, PILRuntime, build_target_tape,
     device_parity, read_completed_arm, train_arm, validate_target_tape,
@@ -95,37 +97,59 @@ def read_history_archive(path, dev_entries, logs, best):
     if sha256_file(path) != STAGE_B_SHA:
         raise InvalidRun("D Stage B bundle SHA differs from the final reviewed archive")
     with tarfile.open(path, "r:gz") as bundle:
-        def rows(name):
-            member = bundle.getmember(f"tables/{name}.csv")
-            if not member.isfile():
-                raise InvalidRun("expected a regular D trajectory table")
+        def rows(name, required):
+            members = [member for member in bundle.getmembers() if member.name == f"tables/{name}.csv"]
+            if len(members) != 1 or not members[0].isfile():
+                raise InvalidRun(f"UNSUPPORTED_SCHEMA: expected exactly one regular D {name} table")
+            member = members[0]
             with bundle.extractfile(member) as stream:
-                return list(csv.DictReader(io.TextIOWrapper(stream, encoding="utf-8")))
+                reader = csv.DictReader(io.TextIOWrapper(stream, encoding="utf-8", newline=""))
+                fields = reader.fieldnames or []
+                if not required.issubset(fields) or len(set(fields)) != len(fields):
+                    raise InvalidRun(f"UNSUPPORTED_SCHEMA: invalid D {name} header")
+                records = list(reader)
+                if any(None in row or any(value is None for value in row.values()) for row in records):
+                    raise InvalidRun(f"UNSUPPORTED_SCHEMA: malformed D {name} row")
+                return records
 
-        learning = [row for row in rows("trajectory") if row["arm"] == "CE"]
-        evidence = [row for row in rows("predictions") if row["arm"] == "CE E30"]
+        learning_fields = {"arm", "epoch", "population", "valid_target_count", "formal_hard_ce",
+                           "train_update_loss", *CLASSIFICATION}
+        prediction_fields = {"arm", "utterance_id", "dialogue_id", "true_label_id", "predicted_label_id",
+                             *(f"{prefix}_{label}" for prefix in ("logit", "prob") for label in LABEL_VOCAB)}
+        learning = [row for row in rows("trajectory", learning_fields) if row["arm"] == "CE"]
+        evidence = [row for row in rows("predictions", prediction_fields) if row["arm"] == "CE E30"]
     grid = {(int(row["epoch"]), row["population"]): row for row in learning}
-    if len(learning) != 60 or set(grid) != {(i, role) for i in range(1, 31) for role in ("Fit", "Dev")}:
+    epochs = range(1, ENDPOINT + 1)
+    if len(learning) != 2 * ENDPOINT or set(grid) != {(i, role) for i in epochs for role in ("Fit", "Dev")}:
         raise InvalidRun("D0 fixed-weight learning curves are incomplete")
+    if [int(row["epoch"]) for row in logs] != list(epochs):
+        raise InvalidRun("D0 history requires the complete ordered certified epoch log")
     history = []
     for i, log in enumerate(logs, 1):
         fit, dev = (grid[i, role] for role in ("Fit", "Dev"))
-        if any(float(dev[key]) != float(log[f"dev_{key}"]) for key in d.CLASSIFICATION):
+        fit_metrics, dev_metrics = ({**{key: float(row[key]) for key in CLASSIFICATION},
+                                     "loss": float(row["formal_hard_ce"]),
+                                     "valid_target_count": int(row["valid_target_count"])} for row in (fit, dev))
+        update_loss = float(fit["train_update_loss"])
+        if not all(isfinite(value) for value in (*fit_metrics.values(), *dev_metrics.values(), update_loss)):
+            raise InvalidRun("D0 archived trajectory contains nonfinite values")
+        if any(dev_metrics[key] != float(log[f"dev_{key}"]) for key in CLASSIFICATION):
             raise InvalidRun("D0 archived trajectory disagrees with the certified Dev log")
-        if (float(dev["formal_hard_ce"]) != float(log["dev_loss"])
-                or float(fit["train_update_loss"]) != float(log["train_loss"])
-                or (int(fit["valid_target_count"]), int(dev["valid_target_count"])) != (4830, 980)):
+        if (dev_metrics["loss"] != float(log["dev_loss"]) or update_loss != float(log["train_loss"])
+                or (fit_metrics["valid_target_count"], dev_metrics["valid_target_count"]) != (4830, 980)):
             raise InvalidRun("D0 archived hard CE, objective, or population disagrees")
-        history.append({"epoch": i, "fit": {**{k: float(fit[k]) for k in d.CLASSIFICATION},
-                                            "loss": float(fit["formal_hard_ce"]), "valid_target_count": 4830},
-                        "dev": {**{k: float(dev[k]) for k in d.CLASSIFICATION},
-                                "loss": float(dev["formal_hard_ce"]), "valid_target_count": 980},
-                        "steps": [], "historical_train_update_loss": float(log["train_loss"])})
+        history.append({"epoch": i, "fit": fit_metrics, "dev": dev_metrics, "steps": [],
+                        "historical_train_update_loss": update_loss})
     predictions = [{"utterance_id": row["utterance_id"], "dialogue_id": row["dialogue_id"],
                     "true_label": int(row["true_label_id"]), "predicted_label": int(row["predicted_label_id"]),
                     "logits": [float(row[f"logit_{k}"]) for k in LABEL_VOCAB],
                     "probabilities": [float(row[f"prob_{k}"]) for k in LABEL_VOCAB]} for row in evidence]
     validate_predictions(predictions, dev_entries)
+    for row in predictions:
+        logits, probabilities = row["logits"], row["probabilities"]
+        if (not all(isfinite(value) for value in logits) or not all(0 <= value <= 1 for value in probabilities)
+                or row["predicted_label"] != max(range(len(logits)), key=logits.__getitem__)):
+            raise InvalidRun("D0 archived E30 prediction values disagree with the logits contract")
     report = classification_report([r["true_label"] for r in predictions], [r["predicted_label"] for r in predictions],
                                    loss=history[-1]["dev"]["loss"])
     if report["metrics"] != history[-1]["dev"]:
@@ -133,9 +157,13 @@ def read_history_archive(path, dev_entries, logs, best):
     return {"Best": best, "E30": {**report, "predictions": predictions}, "history": history}
 
 
+def history_paths():
+    return resolve_output_paths(output_base=D0_ROOT.parent.parent, experiment_date="20261127",
+                                experiment_group=d.GROUP, batch_id=D0_BATCH)
+
+
 def certify_d0(d_config, stage, historical, f0_best, f0_logs, entries):
-    paths = resolve_output_paths(output_base="outputs", experiment_date="20261127",
-                                 experiment_group=d.GROUP, batch_id=D0_BATCH)
+    paths = history_paths()
     reviewed, lock = d.checked_approval(paths, STAGE_A_SHA, d_config)
     run = d.arm_run(paths, "D0")
     manifest = read_json(run / "manifests/run_manifest.json")
@@ -149,6 +177,8 @@ def certify_d0(d_config, stage, historical, f0_best, f0_logs, entries):
                        "curriculum_membership_sha256", "batch_pairing", "training_config", "active_modalities")
     if (reviewed != stage or manifest["git_head"] != D0_HEAD or manifest["run_id"] != run.name
             or manifest["optimizer_steps"] != 210 or manifest["best_epoch"] != 21
+            or manifest["parameter_count"] != historical["parameter_count"]
+            or best["split"] != "dev" or best["optimizer_steps_performed"] != 0
             or sha256_file(run / "checkpoints/best_model.pt") != manifest["best_checkpoint_sha256"]
             or manifest["best_checkpoint_sha256"] != best["checkpoint_sha256"]
             or resolved["experiment"] != manifest["experiment"]
@@ -161,29 +191,50 @@ def certify_d0(d_config, stage, historical, f0_best, f0_logs, entries):
     audit = d.numerical_audit(run, f0_logs, f0_best, {"run": manifest, "best_evidence": best})
     if not audit["numerical_identity"] or best["metrics"] != manifest["best_dev_metrics"]:
         raise InvalidRun("D0 lacks exact E21 logits or original epoch trajectory")
-    archive = D0_ROOT / "analysis/batches" / f"{D0_BATCH}_stage_b.tar.gz"
+    archive = paths.analysis_root.with_name(f"{D0_BATCH}_stage_b.tar.gz")
     result = read_history_archive(archive, entries["dev"], rows, best)
     return {**result, "best_epoch": 21, "parameter_count": manifest["parameter_count"],
             "experiment": {"arm": "D0", "run_id": run.name}, "checkpoints": {
                 str(run / "checkpoints/best_model.pt"): manifest["best_checkpoint_sha256"]}}
 
 
+def select_baseline(d_config, stage, historical, f0_best, f0_logs, entries):
+    try:
+        d0 = certify_d0(d_config, stage, historical, f0_best, f0_logs, entries)
+    except FileNotFoundError as error:
+        paths = history_paths()
+        run = d.arm_run(paths, "D0")
+        optional = {paths.manifest_root / "budget_lock.json",
+                    paths.analysis_root.with_name(f"{D0_BATCH}_stage_b.tar.gz"),
+                    *(run / name for name in (*d.RUN_EVIDENCE, "checkpoints/best_model.pt"))}
+        if (error.filename is None or Path(error.filename).absolute() not in {p.absolute() for p in optional}
+                or os.path.lexists(error.filename)):
+            raise
+        return None, {"arm": CONTROL, "status": "ONE_SHARED_OFF_REQUIRED",
+                      "d0_reuse_blocker": f"ASSET_UNAVAILABLE: {error}"}
+    return d0, {"arm": "D0", "status": "CERTIFIED_REUSE", "run_id": d0["experiment"]["run_id"],
+                "stage_a_sha256": STAGE_A_SHA, "stage_b_sha256": STAGE_B_SHA,
+                "checkpoints": d0["checkpoints"], "best_epoch": d0["best_epoch"]}
+
+
 def verify_shared_control(result, f0_logs, f0_best):
     """Apply the exact numerical identity standard registered in D Stage A."""
+    epochs = list(range(1, ENDPOINT + 1))
+    if (result["best_epoch"] != 21 or [row["epoch"] for row in result["history"]] != epochs
+            or [int(row["epoch"]) for row in f0_logs] != epochs):
+        raise InvalidRun("REVIEW: shared CTRL selection or budget differs")
     for record, row in zip(result["history"], f0_logs):
         steps = record["steps"]
         count = sum(step["valid_targets"] for step in steps)
         actual = {"train_loss": sum(step["objective"] * step["valid_targets"] for step in steps) / count,
                   "gradient_norm": max(step["gradient_norm"] for step in steps),
                   "train_targets": count, "optimizer_steps": steps[-1]["step"],
-                  **{f"dev_{key}": record["dev"][key] for key in ("loss", *d.CLASSIFICATION)}}
+                  **{f"dev_{key}": record["dev"][key] for key in ("loss", *CLASSIFICATION)}}
         if any(value != float(row[key]) for key, value in actual.items()):
             raise InvalidRun(f"REVIEW: shared CTRL exceeds exact D tolerance at E{record['epoch']:02d}")
     for key in ("metrics", "per_class", "confusion_matrix", "predictions"):
         if result["Best"][key] != f0_best[key]:
             raise InvalidRun(f"REVIEW: shared CTRL Best {key} differs from F0 E21")
-    if result["best_epoch"] != 21 or len(result["history"]) != len(f0_logs) or len(f0_logs) != ENDPOINT:
-        raise InvalidRun("REVIEW: shared CTRL selection or budget differs")
 
 
 def setup(args):
@@ -237,15 +288,7 @@ def setup(args):
                     "import io, matplotlib; matplotlib.use('Agg'); from matplotlib import pyplot as p; "
                     "f=p.figure(); f.savefig(io.BytesIO(), format='png'); f.savefig(io.BytesIO(), format='svg')"],
                    cwd=ROOT, check=True)
-    try:
-        d0 = certify_d0(d.read_config(frozen), stage, historical, f0_best, f0_logs, entries)
-        baseline = {"arm": "D0", "status": "CERTIFIED_REUSE",
-                    "run_id": d0["experiment"]["run_id"], "stage_a_sha256": STAGE_A_SHA, "stage_b_sha256": STAGE_B_SHA,
-                    "checkpoints": d0["checkpoints"], "best_epoch": d0["best_epoch"]}
-    except (OSError, ValueError, KeyError, TypeError, tarfile.TarError) as error:
-        d0 = None
-        baseline = {"arm": CONTROL, "status": "ONE_SHARED_OFF_REQUIRED",
-                    "d0_reuse_blocker": f"{type(error).__name__}: {error}"}
+    d0, baseline = select_baseline(d.read_config(frozen), stage, historical, f0_best, f0_logs, entries)
     identity = {**HOLD, "task": TASK, "config": config, "f0_config": raw, "projection": projection,
                 "projection_provenance_sha256": sha256_file(args.projection_dir / PROJECTION_MANIFEST),
                 "population": summary, "initial_pairing_sha256": pairing_sha, "runtime": provenance,
